@@ -541,7 +541,7 @@ export default function Home() {
         .header { background:var(--forest);padding:24px 20px 16px; }
         .header h1 { font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:700;color:white; }
         .header h1 em { color:var(--sage);font-style:normal; }
-        .header p { color:rgba(255,255,255,0.45);font-size:12px;margin-top:3px; }
+        .header p { color:rgba(255,255,255,0.45);font-size:12px;margin-top:3px; } .disclaimer { color:rgba(255,255,255,0.35);font-size:11px;margin-top:6px;line-height:1.4;background:rgba(255,255,255,0.08);border-radius:6px;padding:6px 10px; }
         .bottom-nav { position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid rgba(0,0,0,0.1);display:flex;z-index:100;box-shadow:0 -4px 20px rgba(0,0,0,0.08); }
         .nav-item { flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px 12px;cursor:pointer;border:none;background:none;font-family:'Outfit',sans-serif;color:#bbb;font-size:11px;transition:color 0.2s;gap:3px;position:relative; }
         .nav-item.active { color:var(--moss); }
@@ -673,7 +673,7 @@ export default function Home() {
 
       <div className="header">
         <h1>Plante <em>Expert</em></h1>
-        <p>Botaniste IA · Identification & Mon Jardin</p>
+        <p>Botaniste IA · Identification & Mon Jardin</p><p className="disclaimer">⚠️ Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</p>
       </div>
 
       {activeNav === "identifier" && <IdentifierTab jardin={jardin} setJardin={setJardin} />}
