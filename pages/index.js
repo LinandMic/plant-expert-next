@@ -140,11 +140,11 @@ function resizeImage(file, maxSize = 1024) {
 function PlantationModal({ onConfirm, onSkip }) {
   const [step, setStep] = useState(1);
   const [plantation, setPlantation] = useState(null);
-  const [usage, setUsage] = useState(null);
+  const [usageSelected, setUsageSelected] = useState(null);
 
   const handleConfirm = () => {
     if (step === 1 && plantation) { setStep(2); return; }
-    if (step === 2) { onConfirm(plantation, usage); }
+    if (step === 2) { onConfirm(plantation, usageSelected); }
   };
 
   return (
@@ -172,7 +172,7 @@ function PlantationModal({ onConfirm, onSkip }) {
             <div className="modal-sub">Les conseils de taille seront adaptés à cet usage</div>
             <div className="plantation-grid">
               {USAGE_TYPES.map(u => (
-                <button key={u.id} className={"plantation-btn" + (usage && usage.id === u.id ? " active" : "")} onClick={() => setUsage(u)}>
+                <button key={u.id} className={"plantation-btn" + (usageSelected && usageSelected.id === u.id ? " active" : "")} onClick={() => setUsageSelected(u)}>
                   <span className="plantation-icon">{u.icon}</span>
                   <span className="plantation-label">{u.label}</span>
                 </button>
