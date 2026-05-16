@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 const JARDIN_KEY = "mon_jardin_v2";
 function loadJardin() { try { const r = localStorage.getItem(JARDIN_KEY); return r ? JSON.parse(r) : []; } catch { return []; } }
@@ -18,7 +18,18 @@ const PLANTATION_TYPES = [
   { id: "suspension", label: "Suspension", icon: "🪣" },
 ];
 
-function buildSystemPrompt(plantation) {
+const USAGE_TYPES = [
+  { id: "isole", label: "Arbre / plante isolé(e)", icon: "🌳" },
+  { id: "haie_taillee", label: "Haie taillée", icon: "✂️" },
+  { id: "haie_libre", label: "Haie libre / champêtre", icon: "🌿" },
+  { id: "massif", label: "Massif / mixed-border", icon: "🌺" },
+  { id: "couvre_sol", label: "Couvre-sol", icon: "🍃" },
+  { id: "palisse", label: "Palissé / espalier", icon: "🪟" },
+  { id: "bordure", label: "Bordure", icon: "〰️" },
+  { id: "potager", label: "Potager / carré", icon: "🥕" },
+];
+
+function buildSystemPrompt(plantation, usage) {
   const ctx = plantation ? `
 CONTEXTE DE PLANTATION : ${plantation.label}
 Adapte TOUS tes conseils (quantités d eau en litres, doses d engrais en grammes, fréquences) à ce contexte spécifique.
@@ -26,8 +37,19 @@ Adapte TOUS tes conseils (quantités d eau en litres, doses d engrais en grammes
 - Pour la terre : donne des conseils adaptés à la pleine terre
 - Pour semi-enterré : combine les deux approches` : "";
 
+  const usageCtx = usage ? `
+USAGE / FORME DE CULTURE : ${usage.label}
+IMPORTANT : Adapte TOUS tes conseils à cet usage spécifique.
+- Pour haie taillée : conseils de taille adaptés à la haie (pas à l'arbre isolé), fréquence de taille pour maintien de forme
+- Pour haie libre : conseils naturalistes, taille minimale
+- Pour arbre isolé : conseils pour port naturel, taille de formation uniquement
+- Pour palissé/espalier : techniques de palissage, taille en vert
+- Pour massif : conseils de cohabitation, espacement
+Les conseils de taille en particulier doivent être radicalement différents selon l'usage.` : "";
+
   return `Tu es un expert botaniste et horticulteur francophone spécialisé en jardinage européen (Belgique, France).
 ${ctx}
+${usageCtx}
 
 Quand on te donne une photo ou un nom de plante, tu fournis une analyse complète structurée en JSON.
 IMPORTANT : Réponds UNIQUEMENT en JSON valide, sans backticks, sans texte avant ou après.
@@ -80,7 +102,7 @@ IMPORTANT : Réponds UNIQUEMENT en JSON valide, sans backticks, sans texte avant
 }`;
 }
 
-async function analyzeWithClaude(imageBase64, plantName, plantation) {
+async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   const content = [];
   if (imageBase64) {
     content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } });
@@ -90,7 +112,7 @@ async function analyzeWithClaude(imageBase64, plantName, plantation) {
   }
   const response = await fetch("/api/proxy", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 4000, system: buildSystemPrompt(plantation), messages: [{ role: "user", content }] })
+    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 2000, system: buildSystemPrompt(plantation), messages: [{ role: "user", content }] })
   });
   if (!response.ok) throw new Error(`API error ${response.status}`);
   const data = await response.json();
@@ -116,23 +138,53 @@ function resizeImage(file, maxSize = 1024) {
 }
 
 function PlantationModal({ onConfirm, onSkip }) {
-  const [selected, setSelected] = useState(null);
+  const [step, setStep] = useState(1);
+  const [plantation, setPlantation] = useState(null);
+  const [usage, setUsage] = useState(null);
+
+  const handleConfirm = () => {
+    if (step === 1 && plantation) { setStep(2); return; }
+    if (step === 2) { onConfirm(plantation, usage); }
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal">
-        <div className="modal-title">Contexte de plantation</div>
-        <div className="modal-sub">Les conseils (quantités eau, engrais) seront adaptés à ta situation</div>
-        <div className="plantation-grid">
-          {PLANTATION_TYPES.map(p => (
-            <button key={p.id} className={"plantation-btn" + (selected && selected.id === p.id ? " active" : "")} onClick={() => setSelected(p)}>
-              <span className="plantation-icon">{p.icon}</span>
-              <span className="plantation-label">{p.label}</span>
-            </button>
-          ))}
-        </div>
+        {step === 1 && (
+          <>
+            <div className="modal-step">Étape 1/2</div>
+            <div className="modal-title">Contexte de plantation</div>
+            <div className="modal-sub">Les quantités eau et engrais seront adaptées</div>
+            <div className="plantation-grid">
+              {PLANTATION_TYPES.map(p => (
+                <button key={p.id} className={"plantation-btn" + (plantation && plantation.id === p.id ? " active" : "")} onClick={() => setPlantation(p)}>
+                  <span className="plantation-icon">{p.icon}</span>
+                  <span className="plantation-label">{p.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <div className="modal-step">Étape 2/2</div>
+            <div className="modal-title">Usage de la plante</div>
+            <div className="modal-sub">Les conseils de taille seront adaptés à cet usage</div>
+            <div className="plantation-grid">
+              {USAGE_TYPES.map(u => (
+                <button key={u.id} className={"plantation-btn" + (usage && usage.id === u.id ? " active" : "")} onClick={() => setUsage(u)}>
+                  <span className="plantation-icon">{u.icon}</span>
+                  <span className="plantation-label">{u.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <div className="modal-actions">
-          <button className="btn-modal-confirm" disabled={!selected} onClick={() => selected && onConfirm(selected)}>
-            Obtenir les conseils adaptés
+          <button className="btn-modal-confirm"
+            disabled={step === 1 ? !plantation : false}
+            onClick={handleConfirm}>
+            {step === 1 ? "Suivant →" : "Obtenir les conseils adaptés"}
           </button>
           <button className="btn-modal-skip" onClick={() => onSkip()}>
             Passer (conseils généraux)
@@ -197,6 +249,7 @@ function PlanteFiche({ result, imagePreview, plantation, onSave, alreadySaved })
             <div className="hero-latin">{r.identite && r.identite.nom_latin}</div>
             <div className="hero-family">{r.identite && r.identite.famille}</div>
             {plantation && <div className="plantation-tag">{plantation.icon} {plantation.label}</div>}
+            {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}
           </div>
         </div>
         <div className="hero-desc">{r.identite && r.identite.description}</div>
@@ -285,6 +338,7 @@ function IdentifierTab({ jardin, setJardin }) {
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [usage, setUsage] = useState(null);
   const [plantation, setPlantation] = useState(null);
   const fileRef = useRef();
 
@@ -294,12 +348,12 @@ function IdentifierTab({ jardin, setJardin }) {
     setResult(null); setError(null); setSaved(false);
   }, []);
 
-  const doAnalyze = async (plantationCtx) => {
+  const doAnalyze = async (plantationCtx, usageCtx) => {
     setLoading(true); setError(null); setResult(null); setSaved(false); setShowModal(false);
     try {
       let b64 = null;
       if (imageFile) b64 = await resizeImage(imageFile);
-      const data = await analyzeWithClaude(b64, plantName.trim(), plantationCtx);
+      const data = await analyzeWithClaude(b64, plantName.trim(), plantationCtx, usageCtx);
       setResult(data);
     } catch (e) {
       setError("Erreur d analyse. Vérifie ta connexion ou réessaie.");
@@ -327,7 +381,7 @@ function IdentifierTab({ jardin, setJardin }) {
     <div className="tab-page">
       {showModal && (
         <PlantationModal
-          onConfirm={(p) => { setPlantation(p); doAnalyze(p); }}
+          onConfirm={(p, u) => { setPlantation(p); setUsage(u); doAnalyze(p, u); }}
           onSkip={() => { setPlantation(null); doAnalyze(null); }}
         />
       )}
@@ -499,6 +553,7 @@ export default function Home() {
         .btn-modal-confirm { background:var(--forest);color:white;border:none;border-radius:12px;padding:14px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer; }
         .btn-modal-confirm:disabled { opacity:0.4;cursor:not-allowed; }
         .btn-modal-skip { background:none;border:1px solid rgba(0,0,0,0.12);border-radius:12px;padding:12px;font-family:'Outfit',sans-serif;font-size:14px;color:#888;cursor:pointer; }
+        .modal-step { font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--sage);font-weight:600;margin-bottom:6px; }
         .input-panel { background:white;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow); }
         .drop-zone { border:2px dashed rgba(58,107,58,0.25);border-radius:10px;margin:16px;padding:28px 16px;text-align:center;cursor:pointer;background:var(--mist);position:relative;overflow:hidden; }
         .drop-zone.has-image { padding:0;border-style:solid; }
