@@ -117,7 +117,7 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   if (!response.ok) throw new Error(`API error ${response.status}`);
   const data = await response.json();
   const text = data.content.map(b => b.text || "").join("");
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  const clean = text.replace(/```json|```/g, "").trim(); const start = clean.indexOf("{"); const end = clean.lastIndexOf("}"); return JSON.parse(clean.slice(start, end + 1));
 }
 
 function resizeImage(file, maxSize = 1024) {
