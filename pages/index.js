@@ -40,7 +40,7 @@ Adapte TOUS tes conseils (quantités d eau en litres, doses d engrais en grammes
   const usageCtx = usage ? `
 USAGE / FORME DE CULTURE : ${usage.label}
 IMPORTANT : Adapte TOUS tes conseils à cet usage spécifique.
-- Pour haie taillée : conseils de taille adaptés à la haie (pas à l'arbre isolé), fréquence de taille pour maintien de forme
+- Pour haie taillée : REGLES : taille annuelle 1-2x/an juin/aout, etetage autorise, trapeze, eviter mars-mai, pas mastic. NE PAS ('arbre isolé), fréquence de taille pour maintien de forme
 - Pour haie libre : conseils naturalistes, taille minimale
 - Pour arbre isolé : conseils pour port naturel, taille de formation uniquement
 - Pour palissé/espalier : techniques de palissage, taille en vert
