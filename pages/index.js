@@ -112,7 +112,7 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   }
   const response = await fetch("/api/proxy", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 2000, system: buildSystemPrompt(plantation), messages: [{ role: "user", content }] })
+    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation), messages: [{ role: "user", content }] })
   });
   if (!response.ok) throw new Error(`API error ${response.status}`);
   const data = await response.json();
