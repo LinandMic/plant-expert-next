@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 
 const JARDIN_KEY = "mon_jardin_v2";
 function loadJardin() { try { const r = localStorage.getItem(JARDIN_KEY); return r ? JSON.parse(r) : []; } catch { return []; } }
