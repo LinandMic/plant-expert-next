@@ -228,7 +228,7 @@ function CalendrierGrid({ data }) {
   );
 }
 
-function PlanteFiche({ result, imagePreview, plantation, onSave, alreadySaved }) {
+function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved }) {
   const [activeTab, setActiveTab] = useState("maladies");
   const tabs = [
     { key: "maladies", label: "Maladies", icon: "🔬" },
@@ -249,7 +249,7 @@ function PlanteFiche({ result, imagePreview, plantation, onSave, alreadySaved })
             <div className="hero-latin">{r.identite && r.identite.nom_latin}</div>
             <div className="hero-family">{r.identite && r.identite.famille}</div>
             {plantation && <div className="plantation-tag">{plantation.icon} {plantation.label}</div>}
-            {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}
+            {plantation {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}{usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>} usage {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}{usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>} <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}
           </div>
         </div>
         <div className="hero-desc">{r.identite && r.identite.description}</div>
@@ -417,7 +417,7 @@ function IdentifierTab({ jardin, setJardin }) {
       {result && !loading && (
         <>
           <div className="reset-row"><button className="btn-reset" onClick={reset}>← Nouvelle analyse</button></div>
-          <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} onSave={handleSave} alreadySaved={saved} />
+          <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} />
         </>
       )}
     </div>
