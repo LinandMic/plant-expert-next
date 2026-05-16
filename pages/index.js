@@ -249,7 +249,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
             <div className="hero-latin">{r.identite && r.identite.nom_latin}</div>
             <div className="hero-family">{r.identite && r.identite.famille}</div>
             {plantation && <div className="plantation-tag">{plantation.icon} {plantation.label}</div>}
-            {plantation {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}{usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>} usage {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}{usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>} <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}
+            {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}
           </div>
         </div>
         <div className="hero-desc">{r.identite && r.identite.description}</div>
