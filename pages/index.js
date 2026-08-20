@@ -1,10 +1,7 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/useAuth";
+import { useGarden } from "@/lib/useGarden";
 import AuthModal from "@/components/AuthModal";
-
-const JARDIN_KEY = "mon_jardin_v2";
-function loadJardin() { try { const r = localStorage.getItem(JARDIN_KEY); return r ? JSON.parse(r) : []; } catch { return []; } }
-function saveJardin(p) { try { localStorage.setItem(JARDIN_KEY, JSON.stringify(p)); } catch {} }
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Aoû"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -339,7 +336,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
   );
 }
 
-function IdentifierTab({ jardin, setJardin }) {
+function IdentifierTab({ addPlant }) {
   const [plantName, setPlantName] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -347,6 +344,7 @@ function IdentifierTab({ jardin, setJardin }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [usage, setUsage] = useState(null);
   const [plantation, setPlantation] = useState(null);
@@ -375,16 +373,18 @@ function IdentifierTab({ jardin, setJardin }) {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!result) return;
+    setSaveError(null);
     const plante = { id: Date.now(), dateAjout: new Date().toISOString(), imagePreview, plantation, usage, data: result };
-    const updated = [plante, ...jardin];
-    setJardin(updated); saveJardin(updated); setSaved(true);
+    const { error: err } = await addPlant(plante);
+    if (err) { setSaveError(err); return; }
+    setSaved(true);
   };
 
   const reset = () => {
     setResult(null); setError(null); setImageFile(null);
-    setImagePreview(null); setPlantName(""); setSaved(false); setPlantation(null); setUsage(null);
+    setImagePreview(null); setPlantName(""); setSaved(false); setSaveError(null); setPlantation(null); setUsage(null);
   };
 
   return (
@@ -428,20 +428,23 @@ function IdentifierTab({ jardin, setJardin }) {
         <>
           <div className="reset-row"><button className="btn-reset" onClick={reset}>← Nouvelle analyse</button></div>
           <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} />
+          {saveError && <div className="error-box" style={{marginTop:12}}>⚠️ {saveError}</div>}
         </>
       )}
     </div>
   );
 }
 
-function MonJardinTab({ jardin, setJardin }) {
+function MonJardinTab({ jardin, deletePlant, loading, migrating, error }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
+  const [deleteError, setDeleteError] = useState(null);
 
-  const handleDelete = (id) => {
-    const updated = jardin.filter(p => p.id !== id);
-    setJardin(updated); saveJardin(updated);
+  const handleDelete = async (id) => {
+    setDeleteError(null);
+    const { error: err } = await deletePlant(id);
+    if (err) { setDeleteError(err); return; }
     if (selected && selected.id === id) setSelected(null);
   };
 
@@ -460,6 +463,7 @@ function MonJardinTab({ jardin, setJardin }) {
       <div className="tab-page">
         <button className="back-btn" onClick={() => setSelected(null)}>← Mon Jardin</button>
         <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} />
+        {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
         <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selected.id)}>🗑 Retirer du jardin</button></div>
       </div>
     );
@@ -467,7 +471,15 @@ function MonJardinTab({ jardin, setJardin }) {
 
   return (
     <div className="tab-page">
-      {jardin.length === 0 ? (
+      {migrating && <div className="context-banner">🔄 Synchronisation de votre jardin avec votre compte...</div>}
+      {error && <div className="error-box">⚠️ {error}</div>}
+      {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
+      {loading && jardin.length === 0 ? (
+        <div className="loading-state">
+          <div className="leaf-spin">🌿</div>
+          <div className="loading-title">Chargement de votre jardin</div>
+        </div>
+      ) : jardin.length === 0 ? (
         <div className="empty-jardin">
           <div className="empty-icon">🌾</div>
           <div className="empty-title">Ton jardin est vide</div>
@@ -529,9 +541,8 @@ function MonJardinTab({ jardin, setJardin }) {
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState("identifier");
-  const [jardin, setJardin] = useState([]);
-  useEffect(() => { setJardin(loadJardin()); }, []);
   const auth = useAuth();
+  const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
@@ -705,8 +716,8 @@ export default function Home() {
 
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
-      {activeNav === "identifier" && <IdentifierTab jardin={jardin} setJardin={setJardin} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={jardin} setJardin={setJardin} />}
+      {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} loading={garden.loading} migrating={garden.migrating} error={garden.error} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
@@ -714,7 +725,7 @@ export default function Home() {
         </button>
         <button className={"nav-item" + (activeNav === "jardin" ? " active" : "")} onClick={() => setActiveNav("jardin")}>
           <span className="nav-icon">🌳</span>Mon Jardin
-          {jardin.length > 0 && <span className="nav-badge">{jardin.length}</span>}
+          {garden.jardin.length > 0 && <span className="nav-badge">{garden.jardin.length}</span>}
         </button>
       </nav>
     </div>
