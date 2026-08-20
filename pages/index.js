@@ -1,4 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useAuth } from "@/lib/useAuth";
+import AuthModal from "@/components/AuthModal";
 
 const JARDIN_KEY = "mon_jardin_v2";
 function loadJardin() { try { const r = localStorage.getItem(JARDIN_KEY); return r ? JSON.parse(r) : []; } catch { return []; } }
@@ -529,6 +531,8 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("identifier");
   const [jardin, setJardin] = useState([]);
   useEffect(() => { setJardin(loadJardin()); }, []);
+  const auth = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
     <div className="app">
@@ -668,13 +672,38 @@ export default function Home() {
         .jardin-count { text-align:center;color:#bbb;font-size:12px;margin-top:14px; }
         .back-btn { display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-bottom:16px;font-weight:500; }
         .btn-danger { background:#ffebee;color:var(--rust);border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:9px 16px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer; }
+        .auth-bar { display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px; }
+        .auth-email { color:rgba(255,255,255,0.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px; }
+        .auth-link { background:none;border:none;color:var(--sage);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:0; }
+        .auth-tabs { display:flex;gap:6px;margin-bottom:18px; }
+        .auth-tab { flex:1;padding:9px;text-align:center;border-radius:10px;border:1.5px solid rgba(0,0,0,0.1);background:var(--cream);font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:#888;cursor:pointer; }
+        .auth-tab.active { border-color:var(--moss);background:var(--mist);color:var(--forest); }
+        .auth-field { margin-bottom:12px; }
+        .auth-field .plant-input { width:100%; }
+        .auth-label { font-size:11px;font-weight:600;color:var(--forest);margin-bottom:5px;display:block; }
+        .auth-success-box { background:var(--mist);border-radius:8px;padding:12px 14px;color:var(--forest);font-size:13px;margin-bottom:16px;line-height:1.5; }
+        .modal .error-box { margin:0 0 16px; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
       <div className="header">
         <h1>Plante <em>Expert</em></h1>
         <p>Botaniste IA · Identification & Mon Jardin</p><p className="disclaimer">⚠️ Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</p>
+        {!auth.loading && (
+          <div className="auth-bar">
+            {auth.user ? (
+              <>
+                <span className="auth-email">{auth.user.email}</span>
+                <button className="auth-link" onClick={() => auth.signOut()}>Se déconnecter</button>
+              </>
+            ) : (
+              <button className="auth-link" onClick={() => setShowAuthModal(true)}>Se connecter</button>
+            )}
+          </div>
+        )}
       </div>
+
+      {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab jardin={jardin} setJardin={setJardin} />}
       {activeNav === "jardin" && <MonJardinTab jardin={jardin} setJardin={setJardin} />}
