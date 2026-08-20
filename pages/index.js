@@ -120,7 +120,7 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   }
   const response = await fetch("/api/proxy", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation), messages: [{ role: "user", content }] })
+    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation, usage), messages: [{ role: "user", content }] })
   });
   if (!response.ok) throw new Error(`API error ${response.status}`);
   const data = await response.json();
@@ -360,7 +360,7 @@ function IdentifierTab({ jardin, setJardin }) {
     setLoading(true); setError(null); setResult(null); setSaved(false); setShowModal(false);
     try {
       let b64 = null;
-      if (imageFile) b64 = await resizeImage(imageFile);
+      if (imageFile) { b64 = await resizeImage(imageFile); setImagePreview(`data:image/jpeg;base64,${b64}`); }
       const data = await analyzeWithClaude(b64, plantName.trim(), plantationCtx, usageCtx);
       setResult(data);
     } catch (e) {
@@ -375,14 +375,14 @@ function IdentifierTab({ jardin, setJardin }) {
 
   const handleSave = () => {
     if (!result) return;
-    const plante = { id: Date.now(), dateAjout: new Date().toISOString(), imagePreview, plantation, data: result };
+    const plante = { id: Date.now(), dateAjout: new Date().toISOString(), imagePreview, plantation, usage, data: result };
     const updated = [plante, ...jardin];
     setJardin(updated); saveJardin(updated); setSaved(true);
   };
 
   const reset = () => {
     setResult(null); setError(null); setImageFile(null);
-    setImagePreview(null); setPlantName(""); setSaved(false); setPlantation(null);
+    setImagePreview(null); setPlantName(""); setSaved(false); setPlantation(null); setUsage(null);
   };
 
   return (
@@ -457,7 +457,7 @@ function MonJardinTab({ jardin, setJardin }) {
     return (
       <div className="tab-page">
         <button className="back-btn" onClick={() => setSelected(null)}>← Mon Jardin</button>
-        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} onSave={() => {}} alreadySaved={true} />
+        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} />
         <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selected.id)}>🗑 Retirer du jardin</button></div>
       </div>
     );
