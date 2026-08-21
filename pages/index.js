@@ -11,7 +11,7 @@ import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
-const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Aoû"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
+const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
 
 const PLANTATION_TYPES = [
   { id: "terre", label: "En pleine terre", icon: "🌍" },
@@ -552,7 +552,7 @@ function todayLocalDateString() {
   return `${y}-${m}-${day}`;
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather }) {
+function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather, weatherLoading }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
@@ -561,12 +561,35 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [reminderNotice, setReminderNotice] = useState(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [aFaireOpen, setAFaireOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const handleDelete = async (id) => {
     setDeleteError(null);
     const { error: err } = await deletePlant(id);
     if (err) { setDeleteError(err); return; }
     if (selected && selected.id === id) setSelected(null);
+  };
+
+  // Delete stays a two-step, in-card confirmation — no window.confirm, no
+  // new package. Only one card can be in confirm state at a time; clicking
+  // anywhere inside the confirm overlay must never bubble up to the card's
+  // own onClick (which would open the fiche or toggle selection).
+  const handleRequestDelete = (e, id) => {
+    e.stopPropagation();
+    setConfirmDeleteId(id);
+  };
+
+  const handleCancelDeleteClick = (e) => {
+    e.stopPropagation();
+    setConfirmDeleteId(null);
+  };
+
+  const handleConfirmDeleteClick = async (e, id) => {
+    e.stopPropagation();
+    await handleDelete(id);
+    setConfirmDeleteId(null);
   };
 
   const moisIdx = new Date().getMonth();
@@ -647,6 +670,23 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   }
   const weatherLocationName = (weather && weather.location && weather.location.name) || null;
 
+  // Same active pending/snoozed filter as lib/reminderGrouping.js's
+  // groupRemindersForDashboard, so the summary/Tâches-closed count always
+  // matches exactly what RemindersOverview itself would show once opened.
+  const activeTasksForSummary = (reminders.reminders || []).filter(
+    (r) => r.isActive && (r.status === "pending" || r.status === "snoozed")
+  );
+  const tasksCount = activeTasksForSummary.length;
+  const wateringTasksCount = activeTasksForSummary.filter((r) => r.type === "watering").length;
+
+  // Plants with a real (non "—") AI calendar tip for the current month —
+  // computed once here and reused both for the collapsed count and the
+  // expanded list, instead of filtering twice.
+  const moisTasks = jardin.filter((p) => {
+    const tache = p.data && p.data.calendrier && p.data.calendrier[moisActuel];
+    return tache && tache !== "—";
+  });
+
   if (selected) {
     return (
       <div className="tab-page">
@@ -676,31 +716,72 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
         </div>
       ) : (
         <>
-          <div className="mois-card">
-            <div className="mois-title">📅 À faire en {moisLabel}</div>
-            <div className="mois-list">
-              {jardin.map(p => {
-                const tache = p.data && p.data.calendrier && p.data.calendrier[moisActuel];
-                if (!tache || tache === "—") return null;
-                return (
-                  <div key={p.id} className="mois-item">
-                    <span className="mois-plante">{p.data && p.data.identite && p.data.identite.nom_commun}</span>
-                    <span className="mois-tache">{tache}</span>
-                  </div>
-                );
-              }).filter(Boolean)}
-              {jardin.every(p => !(p.data && p.data.calendrier && p.data.calendrier[moisActuel]) || (p.data.calendrier[moisActuel] === "—")) && (
-                <div className="mois-vide">Rien de particulier ce mois-ci 🌿</div>
-              )}
-            </div>
+          <div className="jardin-summary">
+            <span className="jardin-summary-chip">🌿 {jardin.length} plante{jardin.length > 1 ? "s" : ""}</span>
+            <span className="jardin-summary-chip">📋 {tasksCount} tâche{tasksCount > 1 ? "s" : ""}</span>
+            <span className="jardin-summary-chip">💧 {wateringTasksCount} arrosage{wateringTasksCount > 1 ? "s" : ""}</span>
+            {weatherLoading ? (
+              <span className="jardin-summary-chip">🌦️ Météo…</span>
+            ) : weatherLocationName ? (
+              <span className="jardin-summary-chip">🌦️ {weatherLocationName}</span>
+            ) : null}
           </div>
-          <RemindersOverview
-            reminders={reminders}
-            garden={{ jardin }}
-            actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
-            weatherRecommendations={weatherRecommendationsByReminderId}
-            weatherLocationName={weatherLocationName}
-          />
+
+          <div className="filters-row">
+            <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
+          </div>
+          <div className="cats-row">
+            {["Tout", ...CATEGORIES].map(c => (
+              <button key={c} className={"cat-btn" + (filterCat === c ? " active" : "")} onClick={() => setFilterCat(c)}>{c}</button>
+            ))}
+          </div>
+
+          {!tasksOpen ? (
+            <button type="button" className="jardin-section-toggle" onClick={() => setTasksOpen(true)}>
+              <span>📋 Tâches — {tasksCount} à venir</span>
+              <span className="jardin-section-toggle-action">Voir</span>
+            </button>
+          ) : (
+            <div className="jardin-section">
+              <button type="button" className="jardin-section-collapse-btn" onClick={() => setTasksOpen(false)}>Masquer les tâches</button>
+              <RemindersOverview
+                reminders={reminders}
+                garden={{ jardin }}
+                actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
+                weatherRecommendations={weatherRecommendationsByReminderId}
+                weatherLocationName={weatherLocationName}
+              />
+            </div>
+          )}
+
+          {!aFaireOpen ? (
+            <button type="button" className="jardin-section-toggle" onClick={() => setAFaireOpen(true)}>
+              <span>
+                📅 À faire en {moisLabel} — {moisTasks.length > 0 ? `${moisTasks.length} plante${moisTasks.length > 1 ? "s" : ""}` : "rien de particulier"}
+              </span>
+              <span className="jardin-section-toggle-action">Voir</span>
+            </button>
+          ) : (
+            <div className="mois-card">
+              <div className="mois-title-row">
+                <div className="mois-title">📅 À faire en {moisLabel}</div>
+                <button type="button" className="mois-collapse-btn" onClick={() => setAFaireOpen(false)}>Masquer</button>
+              </div>
+              <div className="mois-list">
+                {moisTasks.length === 0 ? (
+                  <div className="mois-vide">Rien de particulier ce mois-ci 🌿</div>
+                ) : (
+                  moisTasks.map(p => (
+                    <div key={p.id} className="mois-item">
+                      <span className="mois-plante">{p.data && p.data.identite && p.data.identite.nom_commun}</span>
+                      <span className="mois-tache">{p.data.calendrier[moisActuel]}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="jardin-select-bar">
             {!selectionMode ? (
               <button type="button" className="cat-btn" onClick={() => setSelectionMode(true)}>☑️ Sélectionner</button>
@@ -729,14 +810,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
               onSubmit={handleSubmitReminders}
             />
           )}
-          <div className="filters-row">
-            <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
-          </div>
-          <div className="cats-row">
-            {["Tout", ...CATEGORIES].map(c => (
-              <button key={c} className={"cat-btn" + (filterCat === c ? " active" : "")} onClick={() => setFilterCat(c)}>{c}</button>
-            ))}
-          </div>
+
           <div className="jardin-grid">
             {filtered.map(p => (
               <div
@@ -761,11 +835,21 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
                   <div className="jardin-card-latin">{p.data && p.data.identite && p.data.identite.nom_latin}</div>
                   <div className="jardin-card-cat">{(p.data && p.data.identite && p.data.identite.categorie) || "Plante"}</div>
                   {p.plantation && <div className="jardin-card-plantation">{p.plantation.icon} {p.plantation.label}</div>}
-                  {p.data && p.data.calendrier && p.data.calendrier[moisActuel] && p.data.calendrier[moisActuel] !== "—" && (
-                    <span className="tache-badge">📅 {p.data.calendrier[moisActuel]}</span>
-                  )}
                 </div>
-                <button className="jardin-delete" onClick={e => { e.stopPropagation(); handleDelete(p.id); }}>✕</button>
+                {!selectionMode && <span className="jardin-card-chevron" aria-hidden="true">›</span>}
+                {!selectionMode && (
+                  confirmDeleteId === p.id ? (
+                    <div className="jardin-delete-confirm" onClick={e => e.stopPropagation()}>
+                      <span className="jardin-delete-confirm-text">Supprimer cette plante ?</span>
+                      <div className="jardin-delete-confirm-actions">
+                        <button type="button" className="jardin-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
+                        <button type="button" className="jardin-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button className="jardin-delete" onClick={(e) => handleRequestDelete(e, p.id)}>✕</button>
+                  )
+                )}
               </div>
             ))}
           </div>
@@ -774,6 +858,18 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
       )}
     </div>
   );
+}
+
+// One bounded retry each for the profile and weather loads — never a
+// polling loop, never unbounded: each is a plain for-loop capped at
+// MAX_ATTEMPTS, so a normal first-try success always makes exactly one
+// call and a failing one makes at most two, then stops for good.
+const RETRY_DELAY_MS = 1000;
+const PROFILE_MAX_ATTEMPTS = 2;
+const WEATHER_MAX_ATTEMPTS = 2;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export default function Home() {
@@ -809,18 +905,33 @@ export default function Home() {
     setProfileLoading(true);
     setProfileError(null);
 
-    fetchProfile(userId)
-      .then((data) => {
-        if (!cancelled) setProfile(data);
-      })
-      .catch(() => {
-        // A profile load failure must never break Mon Jardin — it only
-        // means weather/localisation stays unavailable this session.
-        if (!cancelled) setProfileError("Impossible de charger le profil.");
-      })
-      .finally(() => {
-        if (!cancelled) setProfileLoading(false);
-      });
+    // A profile load failure must never break Mon Jardin — it only means
+    // weather/localisation stays unavailable this session. One retry after
+    // a short delay covers a transient blip (e.g. a cold start) without
+    // ever polling: this loop always runs at most PROFILE_MAX_ATTEMPTS
+    // times, and `cancelled` is checked before every state update and
+    // before every retry attempt, so a logout/user change/unmount that
+    // happens mid-retry is never applied.
+    (async () => {
+      for (let attempt = 0; attempt < PROFILE_MAX_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          await wait(RETRY_DELAY_MS);
+          if (cancelled) return;
+        }
+        try {
+          const data = await fetchProfile(userId);
+          if (cancelled) return;
+          setProfile(data);
+          setProfileLoading(false);
+          return;
+        } catch {
+          if (cancelled) return;
+        }
+      }
+      if (cancelled) return;
+      setProfileError("Impossible de charger le profil.");
+      setProfileLoading(false);
+    })();
 
     return () => {
       cancelled = true;
@@ -876,28 +987,50 @@ export default function Home() {
     setWeatherLoading(true);
     setWeatherError(null);
 
-    fetchWeatherForProfile({ city: rawCity, region: rawRegion, country: rawCountry })
-      .then((result) => {
+    // Same bounded-retry shape as the profile load: at most
+    // WEATHER_MAX_ATTEMPTS calls for this key, `cancelled` gates every
+    // state update and every retry attempt (a key/location change runs
+    // this effect's cleanup synchronously before the next run starts, so a
+    // stale retry can never apply its result — see the race trace already
+    // validated for the single-attempt version of this effect). A failed
+    // attempt is never recorded in lastSuccessfulWeatherKeyRef, so this
+    // location can always be retried later by a fresh effect run.
+    (async () => {
+      let lastErrorMessage = null;
+      for (let attempt = 0; attempt < WEATHER_MAX_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          await wait(RETRY_DELAY_MS);
+          if (cancelled) return;
+        }
+        let result;
+        try {
+          result = await fetchWeatherForProfile({ city: rawCity, region: rawRegion, country: rawCountry });
+        } catch {
+          result = { data: null, error: "Impossible de récupérer la météo pour le moment." };
+        }
         if (cancelled) return;
-        if (result.error) {
-          // Deliberately not recorded in lastSuccessfulWeatherKeyRef —
-          // a failure must never permanently block a retry of this key.
-          setWeather(null);
-          setWeatherError(result.error);
-        } else {
+        if (!result.error) {
           setWeather(result.data);
           setWeatherError(null);
           lastSuccessfulWeatherKeyRef.current = weatherRequestKey;
+          if (weatherInFlightKeyRef.current === weatherRequestKey) {
+            weatherInFlightKeyRef.current = null;
+          }
+          setWeatherLoading(false);
+          return;
         }
-      })
-      .finally(() => {
-        // Only clear if this is still the request that set it — a newer
-        // request for a different key may already be in flight.
-        if (weatherInFlightKeyRef.current === weatherRequestKey) {
-          weatherInFlightKeyRef.current = null;
-        }
-        if (!cancelled) setWeatherLoading(false);
-      });
+        lastErrorMessage = result.error;
+      }
+      if (cancelled) return;
+      setWeather(null);
+      setWeatherError(lastErrorMessage);
+      // Only clear if this is still the request that set it — a newer
+      // request for a different key may already be in flight.
+      if (weatherInFlightKeyRef.current === weatherRequestKey) {
+        weatherInFlightKeyRef.current = null;
+      }
+      setWeatherLoading(false);
+    })();
 
     return () => {
       cancelled = true;
@@ -1022,6 +1155,15 @@ export default function Home() {
         .mois-plante { font-size:13px;font-weight:600;color:var(--sage); }
         .mois-tache { font-size:13px;color:rgba(255,255,255,0.7); }
         .mois-vide { color:rgba(255,255,255,0.4);font-size:13px;font-style:italic; }
+        .mois-title-row { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px; }
+        .mois-title-row .mois-title { margin-bottom:0; }
+        .mois-collapse-btn { background:none;border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.85);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:20px; }
+        .jardin-summary { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px; }
+        .jardin-summary-chip { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest); }
+        .jardin-section-toggle { width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid rgba(0,0,0,0.08);border-radius:var(--r);padding:12px 16px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--forest);cursor:pointer;margin-bottom:16px;box-shadow:var(--shadow); }
+        .jardin-section-toggle-action { color:var(--moss);font-size:12px;font-weight:600; }
+        .jardin-section { margin-bottom:16px; }
+        .jardin-section-collapse-btn { background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:0;margin-bottom:8px;display:block; }
         .filters-row { margin-bottom:10px; }
         .search-input { width:100%;border:1.5px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:14px;outline:none;background:white; }
         .cats-row { display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;margin-bottom:14px; }
@@ -1037,8 +1179,14 @@ export default function Home() {
         .jardin-card-cat { display:inline-block;background:var(--mist);color:var(--moss);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:500;margin-top:4px; }
         .jardin-card-plantation { font-size:11px;color:var(--gold);margin-top:3px; }
         .tache-badge { display:block;margin-top:5px;font-size:11px;color:var(--gold);font-weight:500; }
+        .jardin-card-chevron { align-self:center;font-size:20px;line-height:1;color:#ccc;padding-right:26px;flex-shrink:0; }
         .jardin-delete { position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;color:#ccc;font-size:14px;padding:4px;border-radius:4px; }
         .jardin-delete:hover { background:#ffebee;color:var(--rust); }
+        .jardin-delete-confirm { position:absolute;inset:0;background:rgba(255,255,255,0.97);border-radius:var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px;z-index:3;text-align:center; }
+        .jardin-delete-confirm-text { font-size:13px;font-weight:600;color:var(--ink); }
+        .jardin-delete-confirm-actions { display:flex;gap:8px; }
+        .jardin-delete-confirm-yes { background:var(--rust);color:white;border:none;border-radius:8px;padding:7px 14px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer; }
+        .jardin-delete-confirm-no { background:none;border:1px solid rgba(0,0,0,0.12);border-radius:8px;padding:7px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#666;cursor:pointer; }
         .jardin-count { text-align:center;color:#bbb;font-size:12px;margin-top:14px; }
         .back-btn { display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-bottom:16px;font-weight:500; }
         .btn-danger { background:#ffebee;color:var(--rust);border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:9px 16px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer; }
@@ -1126,7 +1274,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
