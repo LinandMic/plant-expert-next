@@ -359,7 +359,15 @@ export default function RemindersOverview({ reminders, garden, actions, weatherR
     <div className="reminders-overview">
       <div className="reminders-overview-title">📋 Tâches</div>
       {weatherLocationName && (
-        <div className="reminders-weather-location">🌤️ Météo : {weatherLocationName}</div>
+        <>
+          <div className="reminders-weather-location">🌤️ Météo : {weatherLocationName}</div>
+          <div className="reminders-weather-attribution">
+            Données météo :{" "}
+            <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>
+            {" · "}
+            <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
+          </div>
+        </>
       )}
       {groups.length === 0 ? (
         <div className="reminders-empty">Aucune tâche planifiée.</div>

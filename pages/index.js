@@ -1098,6 +1098,8 @@ export default function Home() {
         .reminders-group-busy { font-size:12px;color:#999;font-style:italic; }
         .reminders-group-confirm-text { display:block;font-size:12px;color:var(--ink);margin-bottom:6px; }
         .reminders-weather-location { font-size:12px;color:var(--sage);font-weight:600;margin-bottom:10px; }
+        .reminders-weather-attribution { font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:10px; }
+        .reminders-weather-attribution a { color:#aaa;text-decoration:underline; }
         .reminders-weather-hint { margin-top:8px;padding-top:8px;border-top:1px dashed rgba(0,0,0,0.1);display:flex;flex-direction:column;gap:6px; }
         .reminders-weather-text { font-size:12px;color:var(--moss);line-height:1.4; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
