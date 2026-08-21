@@ -64,6 +64,48 @@ function normalize(value) {
   return (value || "").trim().toLowerCase();
 }
 
+// Node's Intl.DisplayNames ships with full ICU data on both this project's
+// Node runtime and Vercel's serverless Node runtime (both Node >=18), so
+// it's a reliable way to turn a 2-letter ISO country_code into its English
+// and French names without hand-maintaining a country name table. Wrapped
+// defensively in case a given code isn't a recognized region.
+const countryNameCache = new Map();
+function localizedCountryNames(countryCode) {
+  if (typeof countryCode !== "string" || !countryCode) return [];
+  const code = countryCode.toUpperCase();
+  if (countryNameCache.has(code)) return countryNameCache.get(code);
+
+  const names = [];
+  for (const locale of ["en", "fr"]) {
+    try {
+      const displayNames = new Intl.DisplayNames([locale], { type: "region" });
+      const name = displayNames.of(code);
+      if (name && name !== code) names.push(name);
+    } catch {
+      // Intl.DisplayNames or the "region" type unavailable — the
+      // country_code/country-name comparisons below still work without it.
+    }
+  }
+  countryNameCache.set(code, names);
+  return names;
+}
+
+// Open-Meteo's geocoding response is localized by the `language` param we
+// send (fr), so result.country comes back as e.g. "Belgique" — comparing it
+// directly against a client-supplied "Belgium" would never match. Comparing
+// against the country_code plus its English/French display names covers a
+// user typing the country in either language, regardless of the response
+// locale.
+function countryMatchesInput(result, wantCountryNormalized) {
+  const candidateNames = new Set();
+  if (result.country) candidateNames.add(normalize(result.country));
+  if (result.country_code) candidateNames.add(normalize(result.country_code));
+  for (const name of localizedCountryNames(result.country_code)) {
+    candidateNames.add(normalize(name));
+  }
+  return candidateNames.has(wantCountryNormalized);
+}
+
 function numOrNull(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
@@ -92,7 +134,7 @@ async function fetchJsonWithTimeout(url) {
 // city in a different country. A supplied region is only a soft
 // preference — Open-Meteo's admin1 naming doesn't always line up exactly
 // with a profile's free-text region.
-function pickBestGeocodingResult(results, country, region) {
+export function pickBestGeocodingResult(results, country, region) {
   if (!Array.isArray(results) || results.length === 0) return null;
 
   const wantCountry = normalize(country);
@@ -100,9 +142,7 @@ function pickBestGeocodingResult(results, country, region) {
 
   let candidates = results;
   if (wantCountry) {
-    const countryMatches = results.filter(
-      (r) => normalize(r.country) === wantCountry || normalize(r.country_code) === wantCountry
-    );
+    const countryMatches = results.filter((r) => countryMatchesInput(r, wantCountry));
     if (countryMatches.length === 0) return null;
     candidates = countryMatches;
   }
