@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import AuthModal from "@/components/AuthModal";
@@ -236,7 +236,7 @@ function CalendrierGrid({ data }) {
   );
 }
 
-function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext }) {
+function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions }) {
   const [activeTab, setActiveTab] = useState("maladies");
   const tabs = [
     { key: "maladies", label: "Maladies", icon: "🔬" },
@@ -257,14 +257,47 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
             <div className="hero-name">{r.identite && r.identite.nom_commun}</div>
             <div className="hero-latin">{r.identite && r.identite.nom_latin}</div>
             <div className="hero-family">{r.identite && r.identite.famille}</div>
+            {alreadySaved && identificationStatus === "confirmed" && <div className="id-status-badge id-status-confirmed">✓ Identification confirmée</div>}
+            {alreadySaved && identificationStatus === "uncertain" && <div className="id-status-badge id-status-uncertain">🤔 Identification à confirmer</div>}
             {plantation && <div className="plantation-tag">{plantation.icon} {plantation.label}</div>}
             {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}
           </div>
         </div>
         <div className="hero-desc">{r.identite && r.identite.description}</div>
         <div className="hero-save">
-          {!alreadySaved ? <button className="btn-save" onClick={onSave}>+ Ajouter à Mon Jardin</button> : <span className="saved-badge">✓ Dans Mon Jardin</span>}
+          {alreadySaved ? (
+            <span className="saved-badge">✓ Dans Mon Jardin</span>
+          ) : identificationStatus === "rejected" ? (
+            <span className="id-blocked-note">Ajout à Mon Jardin bloqué — identification rejetée</span>
+          ) : (
+            <button className="btn-save" onClick={onSave}>+ Ajouter à Mon Jardin</button>
+          )}
         </div>
+        {identificationActions && identificationStatus && !alreadySaved && (
+          <div className="identification-check">
+            <button
+              type="button"
+              className={"id-check-btn" + (identificationStatus === "confirmed" ? " active-yes" : "")}
+              onClick={identificationActions.onConfirm}
+            >
+              ✅ Oui, c&apos;est ça
+            </button>
+            <button
+              type="button"
+              className={"id-check-btn" + (identificationStatus === "rejected" ? " active-no" : "")}
+              onClick={identificationActions.onReject}
+            >
+              ❌ Non
+            </button>
+            <button
+              type="button"
+              className={"id-check-btn" + (identificationStatus === "uncertain" ? " active-unsure" : "")}
+              onClick={identificationActions.onUncertain}
+            >
+              🤷 Je ne sais pas
+            </button>
+          </div>
+        )}
         <div className="tabs-wrap">
           <div className="tabs">
             {tabs.map(s => (
@@ -275,6 +308,26 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
           </div>
         </div>
       </div>
+      {identificationStatus === "rejected" && identificationActions && !alreadySaved && (
+        <div className="tab-content" style={{marginBottom:12}}>
+          <div className="section-title">❌ Identification rejetée</div>
+          <div className="error-box" style={{margin:"0 0 16px"}}>
+            Vous avez indiqué que ce résultat n&apos;était pas correct. Il ne peut pas être ajouté à Mon Jardin tel quel.
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn-modal-confirm" onClick={identificationActions.onRetakePhoto}>📷 Reprendre une photo</button>
+            <button type="button" className="btn-modal-skip" onClick={identificationActions.onSwitchToNameSearch}>🔍 Identifier par nom</button>
+          </div>
+        </div>
+      )}
+      {identificationStatus === "uncertain" && !alreadySaved && (
+        <div className="tab-content" style={{marginBottom:12}}>
+          <div className="section-title">🤔 Identification à confirmer</div>
+          <div className="highlight-box">
+            Pour confirmer cette identification, essaie une nouvelle photo : la plante entière, une feuille, une fleur ou un fruit si disponible, et l&apos;écorce ou la tige si pertinent.
+          </div>
+        </div>
+      )}
       <div className="tab-content">
         {activeTab === "maladies" && r.maladies && (
           <div>
@@ -356,21 +409,40 @@ function IdentifierTab({ addPlant }) {
   const [showModal, setShowModal] = useState(false);
   const [usage, setUsage] = useState(null);
   const [plantation, setPlantation] = useState(null);
+  const [identificationStatus, setIdentificationStatus] = useState(null);
+  const [pendingFocus, setPendingFocus] = useState(null); // "photo" | "name" | null
   const fileRef = useRef();
+  const nameInputRef = useRef();
+
+  // Runs strictly after React has committed the reset (result cleared, back
+  // to the input-panel), instead of racing a requestAnimationFrame against
+  // the click event that triggered it — avoids the programmatic focus/click
+  // landing before the DOM has actually switched view, or picking up a
+  // still-in-flight keyboard event from the button that was just clicked.
+  useEffect(() => {
+    if (pendingFocus === "photo") {
+      fileRef.current && fileRef.current.click();
+      setPendingFocus(null);
+    } else if (pendingFocus === "name") {
+      nameInputRef.current && nameInputRef.current.focus();
+      setPendingFocus(null);
+    }
+  }, [pendingFocus]);
 
   const handleFile = useCallback((file) => {
     if (!file || !file.type.startsWith("image/")) return;
     setImageFile(file); setImagePreview(URL.createObjectURL(file));
-    setResult(null); setError(null); setSaved(false);
+    setResult(null); setError(null); setSaved(false); setIdentificationStatus(null);
   }, []);
 
   const doAnalyze = async (plantationCtx, usageCtx) => {
-    setLoading(true); setError(null); setResult(null); setSaved(false); setShowModal(false);
+    setLoading(true); setError(null); setResult(null); setSaved(false); setShowModal(false); setIdentificationStatus(null);
     try {
       let b64 = null;
       if (imageFile) { b64 = await resizeImage(imageFile); setImagePreview(`data:image/jpeg;base64,${b64}`); }
       const data = await analyzeWithClaude(b64, plantName.trim(), plantationCtx, usageCtx);
       setResult(data);
+      setIdentificationStatus(imageFile ? "unreviewed" : null);
     } catch (e) {
       setError("Erreur d analyse. Vérifie ta connexion ou réessaie.");
     } finally { setLoading(false); }
@@ -382,9 +454,9 @@ function IdentifierTab({ addPlant }) {
   };
 
   const handleSave = async () => {
-    if (!result) return;
+    if (!result || identificationStatus === "rejected") return;
     setSaveError(null);
-    const plante = { id: Date.now(), dateAjout: new Date().toISOString(), imagePreview, plantation, usage, data: result };
+    const plante = { id: Date.now(), dateAjout: new Date().toISOString(), imagePreview, plantation, usage, data: result, identificationStatus };
     const { error: err } = await addPlant(plante);
     if (err) { setSaveError(err); return; }
     setSaved(true);
@@ -392,7 +464,28 @@ function IdentifierTab({ addPlant }) {
 
   const reset = () => {
     setResult(null); setError(null); setImageFile(null);
-    setImagePreview(null); setPlantName(""); setSaved(false); setSaveError(null); setPlantation(null); setUsage(null);
+    setImagePreview(null); setPlantName(""); setSaved(false); setSaveError(null);
+    setPlantation(null); setUsage(null); setIdentificationStatus(null);
+  };
+
+  const handleRetakePhoto = (e) => {
+    if (e && e.currentTarget) e.currentTarget.blur();
+    reset();
+    setPendingFocus("photo");
+  };
+
+  const handleSwitchToNameSearch = (e) => {
+    if (e && e.currentTarget) e.currentTarget.blur();
+    reset();
+    setPendingFocus("name");
+  };
+
+  const identificationActions = {
+    onConfirm: () => setIdentificationStatus("confirmed"),
+    onReject: () => setIdentificationStatus("rejected"),
+    onUncertain: () => setIdentificationStatus("uncertain"),
+    onRetakePhoto: handleRetakePhoto,
+    onSwitchToNameSearch: handleSwitchToNameSearch,
   };
 
   return (
@@ -419,7 +512,7 @@ function IdentifierTab({ addPlant }) {
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e => e.target.files && handleFile(e.target.files[0])} />
           <div className="divider"><div className="divider-line" /><span className="divider-text">ou</span><div className="divider-line" /></div>
           <div className="name-row">
-            <input className="plant-input" placeholder="Nom de la plante..." value={plantName} onChange={e => setPlantName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAnalyze()} />
+            <input ref={nameInputRef} className="plant-input" placeholder="Nom de la plante..." value={plantName} onChange={e => setPlantName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAnalyze()} />
             <button className="btn-analyze" onClick={handleAnalyze}>🔍 Analyser</button>
           </div>
           {error && <div className="error-box">⚠️ {error}</div>}
@@ -435,7 +528,7 @@ function IdentifierTab({ addPlant }) {
       {result && !loading && (
         <>
           <div className="reset-row"><button className="btn-reset" onClick={reset}>← Nouvelle analyse</button></div>
-          <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} />
+          <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} identificationStatus={identificationStatus} identificationActions={identificationActions} />
           {saveError && <div className="error-box" style={{marginTop:12}}>⚠️ {saveError}</div>}
         </>
       )}
@@ -470,7 +563,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
     return (
       <div className="tab-page">
         <button className="back-btn" onClick={() => setSelected(null)}>← Mon Jardin</button>
-        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} context={selected.context} onSaveContext={(ctx) => updateContext(selected.id, ctx)} />
+        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} context={selected.context} onSaveContext={(ctx) => updateContext(selected.id, ctx)} identificationStatus={selected.identificationStatus} />
         {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
         <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selected.id)}>🗑 Retirer du jardin</button></div>
       </div>
@@ -702,6 +795,15 @@ export default function Home() {
         .auth-label { font-size:11px;font-weight:600;color:var(--forest);margin-bottom:5px;display:block; }
         .auth-success-box { background:var(--mist);border-radius:8px;padding:12px 14px;color:var(--forest);font-size:13px;margin-bottom:16px;line-height:1.5; }
         .modal .error-box { margin:0 0 16px; }
+        .id-status-badge { display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-bottom:5px; }
+        .id-status-confirmed { background:rgba(122,173,122,0.25);color:var(--sage); }
+        .id-status-uncertain { background:rgba(196,150,42,0.2);color:#f0d890; }
+        .id-blocked-note { color:rgba(255,255,255,0.55);font-size:13px;font-style:italic; }
+        .identification-check { padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap; }
+        .id-check-btn { flex:1;min-width:90px;padding:9px 10px;border:1.5px solid rgba(255,255,255,0.25);border-radius:20px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.85);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all 0.15s; }
+        .id-check-btn.active-yes { background:var(--sage);color:var(--forest);border-color:var(--sage); }
+        .id-check-btn.active-no { background:var(--rust);color:white;border-color:var(--rust); }
+        .id-check-btn.active-unsure { background:var(--gold);color:var(--forest);border-color:var(--gold); }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
