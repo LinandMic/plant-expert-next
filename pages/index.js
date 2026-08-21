@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import AuthModal from "@/components/AuthModal";
@@ -410,8 +410,24 @@ function IdentifierTab({ addPlant }) {
   const [usage, setUsage] = useState(null);
   const [plantation, setPlantation] = useState(null);
   const [identificationStatus, setIdentificationStatus] = useState(null);
+  const [pendingFocus, setPendingFocus] = useState(null); // "photo" | "name" | null
   const fileRef = useRef();
   const nameInputRef = useRef();
+
+  // Runs strictly after React has committed the reset (result cleared, back
+  // to the input-panel), instead of racing a requestAnimationFrame against
+  // the click event that triggered it — avoids the programmatic focus/click
+  // landing before the DOM has actually switched view, or picking up a
+  // still-in-flight keyboard event from the button that was just clicked.
+  useEffect(() => {
+    if (pendingFocus === "photo") {
+      fileRef.current && fileRef.current.click();
+      setPendingFocus(null);
+    } else if (pendingFocus === "name") {
+      nameInputRef.current && nameInputRef.current.focus();
+      setPendingFocus(null);
+    }
+  }, [pendingFocus]);
 
   const handleFile = useCallback((file) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -452,14 +468,16 @@ function IdentifierTab({ addPlant }) {
     setPlantation(null); setUsage(null); setIdentificationStatus(null);
   };
 
-  const handleRetakePhoto = () => {
+  const handleRetakePhoto = (e) => {
+    if (e && e.currentTarget) e.currentTarget.blur();
     reset();
-    requestAnimationFrame(() => fileRef.current && fileRef.current.click());
+    setPendingFocus("photo");
   };
 
-  const handleSwitchToNameSearch = () => {
+  const handleSwitchToNameSearch = (e) => {
+    if (e && e.currentTarget) e.currentTarget.blur();
     reset();
-    requestAnimationFrame(() => nameInputRef.current && nameInputRef.current.focus());
+    setPendingFocus("name");
   };
 
   const identificationActions = {
