@@ -1,8 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
+import { useReminders } from "@/lib/useReminders";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
+import ReminderBulkModal from "@/components/ReminderBulkModal";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Aoû"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -536,11 +538,15 @@ function IdentifierTab({ addPlant }) {
   );
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error }) {
+function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
   const [deleteError, setDeleteError] = useState(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [reminderNotice, setReminderNotice] = useState(null);
 
   const handleDelete = async (id) => {
     setDeleteError(null);
@@ -558,6 +564,51 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
     const cat = (p.data && p.data.identite && p.data.identite.categorie) || "";
     return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase()));
   });
+
+  const toggleSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allVisibleSelected = filtered.length > 0 && filtered.every(p => selectedIds.has(p.id));
+
+  const handleSelectAll = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) filtered.forEach(p => next.delete(p.id));
+      else filtered.forEach(p => next.add(p.id));
+      return next;
+    });
+  };
+
+  const handleCancelSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setReminderNotice(null);
+  };
+
+  const handleOpenReminderModal = () => {
+    if (reminders.requiresAuth) {
+      setReminderNotice({ type: "error", text: "Connectez-vous pour créer et synchroniser vos rappels sur tous vos appareils." });
+      return;
+    }
+    setReminderNotice(null);
+    setShowReminderModal(true);
+  };
+
+  const handleSubmitReminders = async (configs) => {
+    const result = await reminders.createBulk(Array.from(selectedIds), configs);
+    if (!result.error) {
+      setShowReminderModal(false);
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+      setReminderNotice({ type: "success", text: "Rappels créés." });
+    }
+    return result;
+  };
 
   if (selected) {
     return (
@@ -606,6 +657,34 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
               )}
             </div>
           </div>
+          <div className="jardin-select-bar">
+            {!selectionMode ? (
+              <button type="button" className="cat-btn" onClick={() => setSelectionMode(true)}>☑️ Sélectionner</button>
+            ) : (
+              <>
+                <button type="button" className="cat-btn" onClick={handleSelectAll}>
+                  {allVisibleSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                </button>
+                <span className="jardin-select-count">
+                  {selectedIds.size} plante{selectedIds.size > 1 ? "s" : ""} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+                </span>
+                <button type="button" className="cat-btn" onClick={handleCancelSelection}>Annuler</button>
+                {selectedIds.size > 0 && (
+                  <button type="button" className="btn-analyze" onClick={handleOpenReminderModal}>🔔 Créer des rappels</button>
+                )}
+              </>
+            )}
+          </div>
+          {reminderNotice && (
+            <div className={reminderNotice.type === "success" ? "auth-success-box" : "error-box"}>{reminderNotice.text}</div>
+          )}
+          {showReminderModal && (
+            <ReminderBulkModal
+              plantCount={selectedIds.size}
+              onClose={() => setShowReminderModal(false)}
+              onSubmit={handleSubmitReminders}
+            />
+          )}
           <div className="filters-row">
             <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
           </div>
@@ -616,7 +695,20 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
           </div>
           <div className="jardin-grid">
             {filtered.map(p => (
-              <div key={p.id} className="jardin-card" onClick={() => setSelected(p)}>
+              <div
+                key={p.id}
+                className={"jardin-card" + (selectionMode && selectedIds.has(p.id) ? " jardin-card-selected" : "")}
+                onClick={() => selectionMode ? toggleSelected(p.id) : setSelected(p)}
+              >
+                {selectionMode && (
+                  <input
+                    type="checkbox"
+                    className="jardin-select-checkbox"
+                    checked={selectedIds.has(p.id)}
+                    onChange={() => toggleSelected(p.id)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                )}
                 <div className="jardin-card-img">
                   {p.imagePreview ? <img src={p.imagePreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} /> : <span style={{fontSize:36}}>🌱</span>}
                 </div>
@@ -644,6 +736,7 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("identifier");
   const auth = useAuth();
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
+  const reminders = useReminders(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
@@ -804,6 +897,16 @@ export default function Home() {
         .id-check-btn.active-yes { background:var(--sage);color:var(--forest);border-color:var(--sage); }
         .id-check-btn.active-no { background:var(--rust);color:white;border-color:var(--rust); }
         .id-check-btn.active-unsure { background:var(--gold);color:var(--forest);border-color:var(--gold); }
+        .jardin-select-bar { display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px; }
+        .jardin-select-count { font-size:13px;color:var(--moss);font-weight:600; }
+        .jardin-card-selected { border-color:var(--moss);box-shadow:0 0 0 2px var(--moss) inset; }
+        .jardin-select-checkbox { position:absolute;top:8px;left:8px;width:20px;height:20px;accent-color:var(--moss);cursor:pointer;z-index:2;background:white;border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.25); }
+        .reminder-type-row { border:1.5px solid rgba(0,0,0,0.1);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--cream); }
+        .reminder-type-header { display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'Outfit',sans-serif; }
+        .reminder-type-header input[type="checkbox"] { width:18px;height:18px;accent-color:var(--moss);cursor:pointer; }
+        .reminder-type-icon { font-size:18px; }
+        .reminder-type-label { font-size:14px;font-weight:600;color:var(--ink); }
+        .reminder-type-config { margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,0,0,0.08); }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
@@ -828,7 +931,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
