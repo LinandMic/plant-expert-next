@@ -935,6 +935,9 @@ export default function Home() {
         .reminders-snooze-form { display:flex;flex-direction:column;gap:6px; }
         .reminders-snooze-form .plant-input { width:100%; }
         .reminders-item-error { color:var(--rust);font-size:11px;margin-top:4px; }
+        .reminders-group-actions { margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed rgba(0,0,0,0.12); }
+        .reminders-group-busy { font-size:12px;color:#999;font-style:italic; }
+        .reminders-group-confirm-text { display:block;font-size:12px;color:var(--ink);margin-bottom:6px; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
