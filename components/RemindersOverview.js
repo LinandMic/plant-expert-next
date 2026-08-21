@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { groupRemindersForDashboard } from "@/lib/reminderGrouping";
 import { REMINDER_TYPES } from "@/lib/reminderOptions";
 
@@ -31,6 +31,14 @@ function formatDateLabel(dateStr) {
   // Plain string comparison on YYYY-MM-DD is chronological — no Date
   // parsing/UTC involved here at all.
   return dateStr < todayStr ? `En retard · ${formatted}` : formatted;
+}
+
+// A reminder can only meaningfully be snoozed while it's still in a
+// pending/snoozed, active state — once any other action (individual or
+// grouped) has moved it to done/skipped, or moved it to a different date,
+// snoozing it further makes no sense and must never be attempted.
+function isReminderActionable(reminder) {
+  return !!reminder && reminder.isActive && (reminder.status === "pending" || reminder.status === "snoozed");
 }
 
 function plantName(garden, plantId) {
@@ -88,6 +96,26 @@ export default function RemindersOverview({ reminders, garden, actions }) {
   const [confirmingGroup, setConfirmingGroup] = useState(null); // { groupKey, action: "done" | "skip" | "snooze", date } | null
   const [groupBusyKeys, setGroupBusyKeys] = useState(() => new Set());
   const [groupResultMessages, setGroupResultMessages] = useState({});
+
+  // Self-healing: whenever the underlying reminders change (e.g. a grouped
+  // action just moved one of them to done/skipped/a new date from under an
+  // open individual "Reporter" form), drop any snoozeState entry that is no
+  // longer actionable so the stale form closes on its own.
+  useEffect(() => {
+    const list = reminders.reminders || [];
+    setSnoozeState((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const reminderId of Object.keys(prev)) {
+        const current = list.find((r) => r.id === reminderId);
+        if (!isReminderActionable(current)) {
+          delete next[reminderId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [reminders.reminders]);
 
   if (reminders.requiresAuth || reminders.loading) return null;
 
@@ -156,6 +184,14 @@ export default function RemindersOverview({ reminders, garden, actions }) {
     const draft = snoozeState[reminderId];
     if (!draft || !draft.date) {
       setItemError(reminderId, "Choisis une nouvelle date.");
+      return;
+    }
+    // Hard backstop: even if the pruning effect above hasn't run yet (e.g.
+    // this confirm fires in the same tick as a concurrent grouped action),
+    // never mutate a reminder that isn't actionable anymore.
+    const current = (reminders.reminders || []).find((r) => r.id === reminderId);
+    if (!isReminderActionable(current)) {
+      closeSnooze(reminderId);
       return;
     }
     setBusy(reminderId, true);
