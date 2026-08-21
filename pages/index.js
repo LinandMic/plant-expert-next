@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import AuthModal from "@/components/AuthModal";
+import PlantContextEditor from "@/components/PlantContextEditor";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Aoû"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -235,7 +236,7 @@ function CalendrierGrid({ data }) {
   );
 }
 
-function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved }) {
+function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext }) {
   const [activeTab, setActiveTab] = useState("maladies");
   const tabs = [
     { key: "maladies", label: "Maladies", icon: "🔬" },
@@ -244,6 +245,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
     { key: "arrosage", label: "Arrosage", icon: "💧" },
     { key: "calendrier", label: "Calendrier", icon: "📅" },
   ];
+  if (onSaveContext) tabs.push({ key: "jardin", label: "Jardin", icon: "🪴" });
   const r = result;
   return (
     <div className="result-panel">
@@ -329,6 +331,12 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
           <div>
             <div className="section-title">📅 Calendrier annuel</div>
             <CalendrierGrid data={r.calendrier} />
+          </div>
+        )}
+        {activeTab === "jardin" && onSaveContext && (
+          <div>
+            <div className="section-title">🪴 Contexte du jardin</div>
+            <PlantContextEditor context={context} onSave={onSaveContext} />
           </div>
         )}
       </div>
@@ -435,7 +443,7 @@ function IdentifierTab({ addPlant }) {
   );
 }
 
-function MonJardinTab({ jardin, deletePlant, loading, migrating, error }) {
+function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
@@ -462,7 +470,7 @@ function MonJardinTab({ jardin, deletePlant, loading, migrating, error }) {
     return (
       <div className="tab-page">
         <button className="back-btn" onClick={() => setSelected(null)}>← Mon Jardin</button>
-        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} />
+        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} context={selected.context} onSaveContext={(ctx) => updateContext(selected.id, ctx)} />
         {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
         <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selected.id)}>🗑 Retirer du jardin</button></div>
       </div>
@@ -718,7 +726,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} loading={garden.loading} migrating={garden.migrating} error={garden.error} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
