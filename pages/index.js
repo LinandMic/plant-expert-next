@@ -5,6 +5,7 @@ import { useReminders } from "@/lib/useReminders";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
+import RemindersOverview from "@/components/RemindersOverview";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Aoû"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -657,6 +658,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
               )}
             </div>
           </div>
+          <RemindersOverview reminders={reminders} garden={{ jardin }} />
           <div className="jardin-select-bar">
             {!selectionMode ? (
               <button type="button" className="cat-btn" onClick={() => setSelectionMode(true)}>☑️ Sélectionner</button>
@@ -907,6 +909,17 @@ export default function Home() {
         .reminder-type-icon { font-size:18px; }
         .reminder-type-label { font-size:14px;font-weight:600;color:var(--ink); }
         .reminder-type-config { margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,0,0,0.08); }
+        .reminders-overview { background:white;border-radius:var(--r);padding:16px 18px;margin-bottom:16px;box-shadow:var(--shadow); }
+        .reminders-overview-title { font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--forest);font-weight:700;margin-bottom:12px; }
+        .reminders-empty { color:#aaa;font-size:13px;font-style:italic; }
+        .reminders-date-group { margin-bottom:14px; }
+        .reminders-date-group:last-child { margin-bottom:0; }
+        .reminders-date-label { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--sage);margin-bottom:6px; }
+        .reminders-type-group { padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06); }
+        .reminders-type-group:last-child { border-bottom:none; }
+        .reminders-type-line { font-size:13px;font-weight:600;color:var(--ink); }
+        .reminders-snoozed-tag { font-weight:500;color:var(--gold);font-style:italic; }
+        .reminders-plant-names { font-size:12px;color:#999;margin-top:2px; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
