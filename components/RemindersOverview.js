@@ -85,7 +85,7 @@ export default function RemindersOverview({ reminders, garden, actions }) {
   const [busyIds, setBusyIds] = useState(() => new Set());
   const [itemErrors, setItemErrors] = useState({});
   const [snoozeState, setSnoozeState] = useState({});
-  const [confirmingGroup, setConfirmingGroup] = useState(null); // { groupKey, action: "done" | "skip" } | null
+  const [confirmingGroup, setConfirmingGroup] = useState(null); // { groupKey, action: "done" | "skip" | "snooze", date } | null
   const [groupBusyKeys, setGroupBusyKeys] = useState(() => new Set());
   const [groupResultMessages, setGroupResultMessages] = useState({});
 
@@ -196,25 +196,34 @@ export default function RemindersOverview({ reminders, garden, actions }) {
   //     captured by a render-time JSX closure — so a stale closure can
   //     never feed it the wrong target list.
   const requestGroupAction = (groupKey, action) => {
-    setConfirmingGroup({ groupKey, action });
+    setConfirmingGroup({ groupKey, action, date: "" });
   };
 
   const cancelGroupAction = () => {
     setConfirmingGroup(null);
   };
 
-  // Reuses markDone/markSkipped exactly as the individual actions do — no
-  // business logic (recurrence math, status transitions) is duplicated
-  // here, this only fans the same per-item call out concurrently and
-  // tallies the outcomes. Any reminderId already mid an individual action
-  // is skipped from the batch (never double-submitted), and the group
-  // keeps going through every remaining id even if some fail, so partial
-  // success is never silently reported as full success.
+  const changeGroupSnoozeDate = (date) => {
+    setConfirmingGroup((prev) => (prev ? { ...prev, date } : prev));
+  };
+
+  // Reuses markDone/markSkipped/snooze exactly as the individual actions
+  // do — no business logic (recurrence math, status transitions) is
+  // duplicated here, this only fans the same per-item call out
+  // concurrently and tallies the outcomes. Any reminderId already mid an
+  // individual action is skipped from the batch (never double-submitted),
+  // and the group keeps going through every remaining id even if some
+  // fail, so partial success is never silently reported as full success.
   const confirmGroupAction = async () => {
     const pending = confirmingGroup;
     if (!pending) return;
     const { groupKey, action } = pending;
     if (groupBusyKeys.has(groupKey)) return;
+
+    if (action === "snooze" && !pending.date) {
+      setGroupResultMessage(groupKey, "Choisis une nouvelle date.");
+      return;
+    }
 
     const [date, type] = groupKey.split("::");
     const group = groups.find((g) => g.date === date);
@@ -229,7 +238,12 @@ export default function RemindersOverview({ reminders, garden, actions }) {
     targetIds.forEach((id) => setBusy(id, true));
     setGroupResultMessage(groupKey, null);
 
-    const actionFn = action === "done" ? actions.markDone : actions.markSkipped;
+    const actionFn =
+      action === "done"
+        ? actions.markDone
+        : action === "skip"
+        ? actions.markSkipped
+        : (id) => actions.snooze(id, pending.date);
     const results = await Promise.allSettled(targetIds.map((id) => actionFn(id)));
 
     const failCount = results.filter(
@@ -284,11 +298,27 @@ export default function RemindersOverview({ reminders, garden, actions }) {
                         <span key="busy" className="reminders-group-busy">Mise à jour…</span>
                       ) : confirmingGroup && confirmingGroup.groupKey === groupKey ? (
                         <div key="confirm">
-                          <span className="reminders-group-confirm-text">
-                            {confirmingGroup.action === "done"
-                              ? `Marquer ces ${t.items.length} rappels comme faits ?`
-                              : `Ignorer ces ${t.items.length} rappels ?`}
-                          </span>
+                          {confirmingGroup.action === "snooze" ? (
+                            <>
+                              <span className="reminders-group-confirm-text">Reporter ces {t.items.length} rappels</span>
+                              <div className="auth-field">
+                                <label className="auth-label" htmlFor={`group-snooze-${groupKey}`}>Nouvelle date</label>
+                                <input
+                                  id={`group-snooze-${groupKey}`}
+                                  type="date"
+                                  className="plant-input"
+                                  value={confirmingGroup.date || ""}
+                                  onChange={(e) => changeGroupSnoozeDate(e.target.value)}
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <span className="reminders-group-confirm-text">
+                              {confirmingGroup.action === "done"
+                                ? `Marquer ces ${t.items.length} rappels comme faits ?`
+                                : `Ignorer ces ${t.items.length} rappels ?`}
+                            </span>
+                          )}
                           <div className="reminders-item-actions">
                             <button type="button" className="reminders-action-btn reminders-action-confirm" onClick={() => confirmGroupAction()}>
                               Confirmer
@@ -299,6 +329,7 @@ export default function RemindersOverview({ reminders, garden, actions }) {
                       ) : (
                         <div key="default" className="reminders-item-actions">
                           <button type="button" className="reminders-action-btn" onClick={() => requestGroupAction(groupKey, "done")}>✓ Tout fait</button>
+                          <button type="button" className="reminders-action-btn" onClick={() => requestGroupAction(groupKey, "snooze")}>⏰ Reporter tout</button>
                           <button type="button" className="reminders-action-btn" onClick={() => requestGroupAction(groupKey, "skip")}>Ignorer tout</button>
                         </div>
                       )}
