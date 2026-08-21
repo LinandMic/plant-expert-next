@@ -835,21 +835,20 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
                   <div className="jardin-card-latin">{p.data && p.data.identite && p.data.identite.nom_latin}</div>
                   <div className="jardin-card-cat">{(p.data && p.data.identite && p.data.identite.categorie) || "Plante"}</div>
                   {p.plantation && <div className="jardin-card-plantation">{p.plantation.icon} {p.plantation.label}</div>}
-                  {p.data && p.data.calendrier && p.data.calendrier[moisActuel] && p.data.calendrier[moisActuel] !== "—" && (
-                    <span className="tache-badge">📅 {p.data.calendrier[moisActuel]}</span>
-                  )}
                 </div>
-                <span className="jardin-card-chevron" aria-hidden="true">›</span>
-                {confirmDeleteId === p.id ? (
-                  <div className="jardin-delete-confirm" onClick={e => e.stopPropagation()}>
-                    <span className="jardin-delete-confirm-text">Supprimer cette plante ?</span>
-                    <div className="jardin-delete-confirm-actions">
-                      <button type="button" className="jardin-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
-                      <button type="button" className="jardin-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+                {!selectionMode && <span className="jardin-card-chevron" aria-hidden="true">›</span>}
+                {!selectionMode && (
+                  confirmDeleteId === p.id ? (
+                    <div className="jardin-delete-confirm" onClick={e => e.stopPropagation()}>
+                      <span className="jardin-delete-confirm-text">Supprimer cette plante ?</span>
+                      <div className="jardin-delete-confirm-actions">
+                        <button type="button" className="jardin-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
+                        <button type="button" className="jardin-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <button className="jardin-delete" onClick={(e) => handleRequestDelete(e, p.id)}>✕</button>
+                  ) : (
+                    <button className="jardin-delete" onClick={(e) => handleRequestDelete(e, p.id)}>✕</button>
+                  )
                 )}
               </div>
             ))}
