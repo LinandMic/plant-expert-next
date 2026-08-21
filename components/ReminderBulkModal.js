@@ -20,8 +20,14 @@ export default function ReminderBulkModal({ plantCount, onClose, onSubmit }) {
     setConfigByType((prev) => (prev[typeId] ? prev : { ...prev, [typeId]: { ...EMPTY_CONFIG } }));
   };
 
-  const handleActivateAll = () => {
+  const allSelected = selectedTypes.size === REMINDER_TYPES.length;
+
+  const handleToggleAll = () => {
     setError("");
+    if (allSelected) {
+      setSelectedTypes(new Set());
+      return;
+    }
     setSelectedTypes(new Set(REMINDER_TYPES.map((t) => t.id)));
     setConfigByType((prev) => {
       const next = { ...prev };
@@ -82,7 +88,10 @@ export default function ReminderBulkModal({ plantCount, onClose, onSubmit }) {
         </div>
 
         <div className="modal-actions" style={{ marginBottom: 16 }}>
-          <button type="button" className="btn-modal-skip" onClick={handleActivateAll}>✅ Tout activer</button>
+          <label className="reminder-type-header">
+            <input type="checkbox" checked={allSelected} onChange={handleToggleAll} />
+            <span className="reminder-type-label">Tout activer</span>
+          </label>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -148,7 +157,7 @@ export default function ReminderBulkModal({ plantCount, onClose, onSubmit }) {
           {error && <div className="error-box">{error}</div>}
 
           <div className="modal-actions">
-            <button type="submit" className="btn-modal-confirm" disabled={submitting}>
+            <button type="submit" className="btn-modal-confirm" disabled={submitting || selectedTypes.size === 0}>
               {submitting ? "Création en cours..." : "Créer les rappels"}
             </button>
             <button type="button" className="btn-modal-skip" onClick={onClose} disabled={submitting}>Annuler</button>
