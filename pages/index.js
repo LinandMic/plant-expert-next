@@ -783,6 +783,14 @@ export default function Home() {
   const reminders = useReminders(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  // auth.user is a fresh object reference on every Supabase auth event
+  // (including redundant ones like the INITIAL_SESSION event that always
+  // fires right after subscribing, on top of getSession()'s own
+  // resolution) even when it's the same logged-in user. Depending on this
+  // scalar id instead of the object itself means the effect below only
+  // re-runs when the user actually changes.
+  const userId = auth.user?.id || null;
+
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState(null);
@@ -790,7 +798,7 @@ export default function Home() {
   useEffect(() => {
     if (auth.loading) return;
 
-    if (!auth.user) {
+    if (!userId) {
       setProfile(null);
       setProfileLoading(false);
       setProfileError(null);
@@ -801,7 +809,7 @@ export default function Home() {
     setProfileLoading(true);
     setProfileError(null);
 
-    fetchProfile(auth.user.id)
+    fetchProfile(userId)
       .then((data) => {
         if (!cancelled) setProfile(data);
       })
@@ -817,46 +825,84 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [auth.user, auth.loading]);
+  }, [auth.loading, userId]);
 
   const [weather, setWeather] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState(null);
+  // In-memory only, never persisted: dedupes an identical weather request
+  // that's already in flight, and skips refetching a location that's
+  // already loaded successfully. A failed request is never recorded here,
+  // so the same location can always be retried later.
+  const weatherInFlightKeyRef = useRef(null);
+  const lastSuccessfulWeatherKeyRef = useRef(null);
+
+  // fetchProfile always returns a freshly-deserialized object, so `profile`
+  // gets a new reference on every load even when the row's content is
+  // identical. Deriving a scalar key from the actual values that matter
+  // (who + where) means the effect only re-runs when one of them really
+  // changes.
+  const rawCity = (profile && profile.city) || "";
+  const rawRegion = (profile && profile.region) || "";
+  const rawCountry = (profile && profile.country) || "";
+  const normalizedCity = rawCity.trim().toLowerCase();
+  const weatherRequestKey =
+    userId && normalizedCity
+      ? `${userId}|${normalizedCity}|${rawRegion.trim().toLowerCase()}|${rawCountry.trim().toLowerCase()}`
+      : null;
 
   useEffect(() => {
     if (auth.loading || profileLoading) return;
 
-    const city = profile && profile.city && profile.city.trim();
-    if (!auth.user || !city) {
+    if (!weatherRequestKey) {
+      // Logout, or a profile with no city: reset state AND forget any
+      // past in-flight/success marker so a future legitimate fetch for
+      // this same key (e.g. logging back in as the same user) isn't
+      // silently skipped as "already loaded".
+      weatherInFlightKeyRef.current = null;
+      lastSuccessfulWeatherKeyRef.current = null;
       setWeather(null);
       setWeatherLoading(false);
       setWeatherError(null);
       return;
     }
 
+    if (weatherInFlightKeyRef.current === weatherRequestKey) return;
+    if (lastSuccessfulWeatherKeyRef.current === weatherRequestKey) return;
+
+    weatherInFlightKeyRef.current = weatherRequestKey;
+
     let cancelled = false;
     setWeatherLoading(true);
     setWeatherError(null);
 
-    fetchWeatherForProfile(profile)
+    fetchWeatherForProfile({ city: rawCity, region: rawRegion, country: rawCountry })
       .then((result) => {
         if (cancelled) return;
         if (result.error) {
+          // Deliberately not recorded in lastSuccessfulWeatherKeyRef —
+          // a failure must never permanently block a retry of this key.
           setWeather(null);
           setWeatherError(result.error);
         } else {
           setWeather(result.data);
           setWeatherError(null);
+          lastSuccessfulWeatherKeyRef.current = weatherRequestKey;
         }
       })
       .finally(() => {
+        // Only clear if this is still the request that set it — a newer
+        // request for a different key may already be in flight.
+        if (weatherInFlightKeyRef.current === weatherRequestKey) {
+          weatherInFlightKeyRef.current = null;
+        }
         if (!cancelled) setWeatherLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [auth.user, auth.loading, profile, profileLoading]);
+  }, [auth.loading, profileLoading, weatherRequestKey]);
 
   return (
     <div className="app">
