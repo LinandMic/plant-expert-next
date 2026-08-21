@@ -11,7 +11,7 @@ import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
-const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Aoû"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
+const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
 
 const PLANTATION_TYPES = [
   { id: "terre", label: "En pleine terre", icon: "🌍" },
@@ -552,7 +552,7 @@ function todayLocalDateString() {
   return `${y}-${m}-${day}`;
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather }) {
+function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather, weatherLoading }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
@@ -720,7 +720,11 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
             <span className="jardin-summary-chip">🌿 {jardin.length} plante{jardin.length > 1 ? "s" : ""}</span>
             <span className="jardin-summary-chip">📋 {tasksCount} tâche{tasksCount > 1 ? "s" : ""}</span>
             <span className="jardin-summary-chip">💧 {wateringTasksCount} arrosage{wateringTasksCount > 1 ? "s" : ""}</span>
-            {weatherLocationName && <span className="jardin-summary-chip">🌦️ {weatherLocationName}</span>}
+            {weatherLoading ? (
+              <span className="jardin-summary-chip">🌦️ Météo…</span>
+            ) : weatherLocationName ? (
+              <span className="jardin-summary-chip">🌦️ {weatherLocationName}</span>
+            ) : null}
           </div>
 
           <div className="filters-row">
@@ -857,6 +861,18 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   );
 }
 
+// One bounded retry each for the profile and weather loads — never a
+// polling loop, never unbounded: each is a plain for-loop capped at
+// MAX_ATTEMPTS, so a normal first-try success always makes exactly one
+// call and a failing one makes at most two, then stops for good.
+const RETRY_DELAY_MS = 1000;
+const PROFILE_MAX_ATTEMPTS = 2;
+const WEATHER_MAX_ATTEMPTS = 2;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default function Home() {
   const [activeNav, setActiveNav] = useState("identifier");
   const auth = useAuth();
@@ -890,18 +906,33 @@ export default function Home() {
     setProfileLoading(true);
     setProfileError(null);
 
-    fetchProfile(userId)
-      .then((data) => {
-        if (!cancelled) setProfile(data);
-      })
-      .catch(() => {
-        // A profile load failure must never break Mon Jardin — it only
-        // means weather/localisation stays unavailable this session.
-        if (!cancelled) setProfileError("Impossible de charger le profil.");
-      })
-      .finally(() => {
-        if (!cancelled) setProfileLoading(false);
-      });
+    // A profile load failure must never break Mon Jardin — it only means
+    // weather/localisation stays unavailable this session. One retry after
+    // a short delay covers a transient blip (e.g. a cold start) without
+    // ever polling: this loop always runs at most PROFILE_MAX_ATTEMPTS
+    // times, and `cancelled` is checked before every state update and
+    // before every retry attempt, so a logout/user change/unmount that
+    // happens mid-retry is never applied.
+    (async () => {
+      for (let attempt = 0; attempt < PROFILE_MAX_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          await wait(RETRY_DELAY_MS);
+          if (cancelled) return;
+        }
+        try {
+          const data = await fetchProfile(userId);
+          if (cancelled) return;
+          setProfile(data);
+          setProfileLoading(false);
+          return;
+        } catch {
+          if (cancelled) return;
+        }
+      }
+      if (cancelled) return;
+      setProfileError("Impossible de charger le profil.");
+      setProfileLoading(false);
+    })();
 
     return () => {
       cancelled = true;
@@ -957,28 +988,50 @@ export default function Home() {
     setWeatherLoading(true);
     setWeatherError(null);
 
-    fetchWeatherForProfile({ city: rawCity, region: rawRegion, country: rawCountry })
-      .then((result) => {
+    // Same bounded-retry shape as the profile load: at most
+    // WEATHER_MAX_ATTEMPTS calls for this key, `cancelled` gates every
+    // state update and every retry attempt (a key/location change runs
+    // this effect's cleanup synchronously before the next run starts, so a
+    // stale retry can never apply its result — see the race trace already
+    // validated for the single-attempt version of this effect). A failed
+    // attempt is never recorded in lastSuccessfulWeatherKeyRef, so this
+    // location can always be retried later by a fresh effect run.
+    (async () => {
+      let lastErrorMessage = null;
+      for (let attempt = 0; attempt < WEATHER_MAX_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          await wait(RETRY_DELAY_MS);
+          if (cancelled) return;
+        }
+        let result;
+        try {
+          result = await fetchWeatherForProfile({ city: rawCity, region: rawRegion, country: rawCountry });
+        } catch {
+          result = { data: null, error: "Impossible de récupérer la météo pour le moment." };
+        }
         if (cancelled) return;
-        if (result.error) {
-          // Deliberately not recorded in lastSuccessfulWeatherKeyRef —
-          // a failure must never permanently block a retry of this key.
-          setWeather(null);
-          setWeatherError(result.error);
-        } else {
+        if (!result.error) {
           setWeather(result.data);
           setWeatherError(null);
           lastSuccessfulWeatherKeyRef.current = weatherRequestKey;
+          if (weatherInFlightKeyRef.current === weatherRequestKey) {
+            weatherInFlightKeyRef.current = null;
+          }
+          setWeatherLoading(false);
+          return;
         }
-      })
-      .finally(() => {
-        // Only clear if this is still the request that set it — a newer
-        // request for a different key may already be in flight.
-        if (weatherInFlightKeyRef.current === weatherRequestKey) {
-          weatherInFlightKeyRef.current = null;
-        }
-        if (!cancelled) setWeatherLoading(false);
-      });
+        lastErrorMessage = result.error;
+      }
+      if (cancelled) return;
+      setWeather(null);
+      setWeatherError(lastErrorMessage);
+      // Only clear if this is still the request that set it — a newer
+      // request for a different key may already be in flight.
+      if (weatherInFlightKeyRef.current === weatherRequestKey) {
+        weatherInFlightKeyRef.current = null;
+      }
+      setWeatherLoading(false);
+    })();
 
     return () => {
       cancelled = true;
@@ -1222,7 +1275,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
