@@ -705,6 +705,7 @@ export default function Home() {
             {auth.user ? (
               <>
                 <span className="auth-email">{auth.user.email}</span>
+                <a className="auth-link" href="/profile" style={{textDecoration:"none"}}>Mon profil</a>
                 <button className="auth-link" onClick={() => auth.signOut()}>Se déconnecter</button>
               </>
             ) : (
