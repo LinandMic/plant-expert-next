@@ -183,6 +183,26 @@ export default function RemindersOverview({ reminders, garden, actions }) {
     setGroupResultMessages((prev) => ({ ...prev, [groupKey]: message || null }));
   };
 
+  // Three strictly separated entry points so a click can never both open
+  // and execute a group action:
+  //   - requestGroupAction only ever calls setConfirmingGroup(...) — it
+  //     never touches the network.
+  //   - cancelGroupAction only ever calls setConfirmingGroup(null) —
+  //     likewise inert.
+  //   - confirmGroupAction is the ONLY function that may call
+  //     markDone/markSkipped, and it re-derives everything (which group,
+  //     which action, which reminder ids) from the current confirmingGroup
+  //     state and the live `groups` at call time — never from a value
+  //     captured by a render-time JSX closure — so a stale closure can
+  //     never feed it the wrong target list.
+  const requestGroupAction = (groupKey, action) => {
+    setConfirmingGroup({ groupKey, action });
+  };
+
+  const cancelGroupAction = () => {
+    setConfirmingGroup(null);
+  };
+
   // Reuses markDone/markSkipped exactly as the individual actions do — no
   // business logic (recurrence math, status transitions) is duplicated
   // here, this only fans the same per-item call out concurrently and
@@ -190,12 +210,21 @@ export default function RemindersOverview({ reminders, garden, actions }) {
   // is skipped from the batch (never double-submitted), and the group
   // keeps going through every remaining id even if some fail, so partial
   // success is never silently reported as full success.
-  const runGroupAction = async (groupKey, action, allReminderIds) => {
+  const confirmGroupAction = async () => {
+    const pending = confirmingGroup;
+    if (!pending) return;
+    const { groupKey, action } = pending;
     if (groupBusyKeys.has(groupKey)) return;
+
+    const [date, type] = groupKey.split("::");
+    const group = groups.find((g) => g.date === date);
+    const typeGroup = group && group.types.find((t) => t.type === type);
+    const allReminderIds = typeGroup ? typeGroup.items.map((i) => i.reminderId) : [];
     const targetIds = allReminderIds.filter((id) => !busyIds.has(id));
-    if (targetIds.length === 0) return;
 
     setConfirmingGroup(null);
+    if (targetIds.length === 0) return;
+
     setGroupBusy(groupKey, true);
     targetIds.forEach((id) => setBusy(id, true));
     setGroupResultMessage(groupKey, null);
@@ -252,29 +281,25 @@ export default function RemindersOverview({ reminders, garden, actions }) {
                   {isExpanded && t.items.length > 1 && (
                     <div className="reminders-group-actions">
                       {groupBusyKeys.has(groupKey) ? (
-                        <span className="reminders-group-busy">Mise à jour…</span>
+                        <span key="busy" className="reminders-group-busy">Mise à jour…</span>
                       ) : confirmingGroup && confirmingGroup.groupKey === groupKey ? (
-                        <>
+                        <div key="confirm">
                           <span className="reminders-group-confirm-text">
                             {confirmingGroup.action === "done"
                               ? `Marquer ces ${t.items.length} rappels comme faits ?`
                               : `Ignorer ces ${t.items.length} rappels ?`}
                           </span>
                           <div className="reminders-item-actions">
-                            <button
-                              type="button"
-                              className="reminders-action-btn reminders-action-confirm"
-                              onClick={() => runGroupAction(groupKey, confirmingGroup.action, t.items.map((i) => i.reminderId))}
-                            >
+                            <button type="button" className="reminders-action-btn reminders-action-confirm" onClick={() => confirmGroupAction()}>
                               Confirmer
                             </button>
-                            <button type="button" className="reminders-action-btn" onClick={() => setConfirmingGroup(null)}>Annuler</button>
+                            <button type="button" className="reminders-action-btn" onClick={() => cancelGroupAction()}>Annuler</button>
                           </div>
-                        </>
+                        </div>
                       ) : (
-                        <div className="reminders-item-actions">
-                          <button type="button" className="reminders-action-btn" onClick={() => setConfirmingGroup({ groupKey, action: "done" })}>✓ Tout fait</button>
-                          <button type="button" className="reminders-action-btn" onClick={() => setConfirmingGroup({ groupKey, action: "skip" })}>Ignorer tout</button>
+                        <div key="default" className="reminders-item-actions">
+                          <button type="button" className="reminders-action-btn" onClick={() => requestGroupAction(groupKey, "done")}>✓ Tout fait</button>
+                          <button type="button" className="reminders-action-btn" onClick={() => requestGroupAction(groupKey, "skip")}>Ignorer tout</button>
                         </div>
                       )}
                       {groupResultMessages[groupKey] && <div className="reminders-item-error">{groupResultMessages[groupKey]}</div>}
