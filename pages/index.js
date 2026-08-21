@@ -561,12 +561,35 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [reminderNotice, setReminderNotice] = useState(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [aFaireOpen, setAFaireOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const handleDelete = async (id) => {
     setDeleteError(null);
     const { error: err } = await deletePlant(id);
     if (err) { setDeleteError(err); return; }
     if (selected && selected.id === id) setSelected(null);
+  };
+
+  // Delete stays a two-step, in-card confirmation — no window.confirm, no
+  // new package. Only one card can be in confirm state at a time; clicking
+  // anywhere inside the confirm overlay must never bubble up to the card's
+  // own onClick (which would open the fiche or toggle selection).
+  const handleRequestDelete = (e, id) => {
+    e.stopPropagation();
+    setConfirmDeleteId(id);
+  };
+
+  const handleCancelDeleteClick = (e) => {
+    e.stopPropagation();
+    setConfirmDeleteId(null);
+  };
+
+  const handleConfirmDeleteClick = async (e, id) => {
+    e.stopPropagation();
+    await handleDelete(id);
+    setConfirmDeleteId(null);
   };
 
   const moisIdx = new Date().getMonth();
@@ -647,6 +670,23 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   }
   const weatherLocationName = (weather && weather.location && weather.location.name) || null;
 
+  // Same active pending/snoozed filter as lib/reminderGrouping.js's
+  // groupRemindersForDashboard, so the summary/Tâches-closed count always
+  // matches exactly what RemindersOverview itself would show once opened.
+  const activeTasksForSummary = (reminders.reminders || []).filter(
+    (r) => r.isActive && (r.status === "pending" || r.status === "snoozed")
+  );
+  const tasksCount = activeTasksForSummary.length;
+  const wateringTasksCount = activeTasksForSummary.filter((r) => r.type === "watering").length;
+
+  // Plants with a real (non "—") AI calendar tip for the current month —
+  // computed once here and reused both for the collapsed count and the
+  // expanded list, instead of filtering twice.
+  const moisTasks = jardin.filter((p) => {
+    const tache = p.data && p.data.calendrier && p.data.calendrier[moisActuel];
+    return tache && tache !== "—";
+  });
+
   if (selected) {
     return (
       <div className="tab-page">
@@ -676,31 +716,68 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
         </div>
       ) : (
         <>
-          <div className="mois-card">
-            <div className="mois-title">📅 À faire en {moisLabel}</div>
-            <div className="mois-list">
-              {jardin.map(p => {
-                const tache = p.data && p.data.calendrier && p.data.calendrier[moisActuel];
-                if (!tache || tache === "—") return null;
-                return (
-                  <div key={p.id} className="mois-item">
-                    <span className="mois-plante">{p.data && p.data.identite && p.data.identite.nom_commun}</span>
-                    <span className="mois-tache">{tache}</span>
-                  </div>
-                );
-              }).filter(Boolean)}
-              {jardin.every(p => !(p.data && p.data.calendrier && p.data.calendrier[moisActuel]) || (p.data.calendrier[moisActuel] === "—")) && (
-                <div className="mois-vide">Rien de particulier ce mois-ci 🌿</div>
-              )}
-            </div>
+          <div className="jardin-summary">
+            <span className="jardin-summary-chip">🌿 {jardin.length} plante{jardin.length > 1 ? "s" : ""}</span>
+            <span className="jardin-summary-chip">📋 {tasksCount} tâche{tasksCount > 1 ? "s" : ""}</span>
+            <span className="jardin-summary-chip">💧 {wateringTasksCount} arrosage{wateringTasksCount > 1 ? "s" : ""}</span>
+            {weatherLocationName && <span className="jardin-summary-chip">🌦️ {weatherLocationName}</span>}
           </div>
-          <RemindersOverview
-            reminders={reminders}
-            garden={{ jardin }}
-            actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
-            weatherRecommendations={weatherRecommendationsByReminderId}
-            weatherLocationName={weatherLocationName}
-          />
+
+          <div className="filters-row">
+            <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
+          </div>
+          <div className="cats-row">
+            {["Tout", ...CATEGORIES].map(c => (
+              <button key={c} className={"cat-btn" + (filterCat === c ? " active" : "")} onClick={() => setFilterCat(c)}>{c}</button>
+            ))}
+          </div>
+
+          {!tasksOpen ? (
+            <button type="button" className="jardin-section-toggle" onClick={() => setTasksOpen(true)}>
+              <span>📋 Tâches — {tasksCount} à venir</span>
+              <span className="jardin-section-toggle-action">Voir</span>
+            </button>
+          ) : (
+            <div className="jardin-section">
+              <button type="button" className="jardin-section-collapse-btn" onClick={() => setTasksOpen(false)}>Masquer les tâches</button>
+              <RemindersOverview
+                reminders={reminders}
+                garden={{ jardin }}
+                actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
+                weatherRecommendations={weatherRecommendationsByReminderId}
+                weatherLocationName={weatherLocationName}
+              />
+            </div>
+          )}
+
+          {!aFaireOpen ? (
+            <button type="button" className="jardin-section-toggle" onClick={() => setAFaireOpen(true)}>
+              <span>
+                📅 À faire en {moisLabel} — {moisTasks.length > 0 ? `${moisTasks.length} plante${moisTasks.length > 1 ? "s" : ""}` : "rien de particulier"}
+              </span>
+              <span className="jardin-section-toggle-action">Voir</span>
+            </button>
+          ) : (
+            <div className="mois-card">
+              <div className="mois-title-row">
+                <div className="mois-title">📅 À faire en {moisLabel}</div>
+                <button type="button" className="mois-collapse-btn" onClick={() => setAFaireOpen(false)}>Masquer</button>
+              </div>
+              <div className="mois-list">
+                {moisTasks.length === 0 ? (
+                  <div className="mois-vide">Rien de particulier ce mois-ci 🌿</div>
+                ) : (
+                  moisTasks.map(p => (
+                    <div key={p.id} className="mois-item">
+                      <span className="mois-plante">{p.data && p.data.identite && p.data.identite.nom_commun}</span>
+                      <span className="mois-tache">{p.data.calendrier[moisActuel]}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="jardin-select-bar">
             {!selectionMode ? (
               <button type="button" className="cat-btn" onClick={() => setSelectionMode(true)}>☑️ Sélectionner</button>
@@ -729,14 +806,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
               onSubmit={handleSubmitReminders}
             />
           )}
-          <div className="filters-row">
-            <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
-          </div>
-          <div className="cats-row">
-            {["Tout", ...CATEGORIES].map(c => (
-              <button key={c} className={"cat-btn" + (filterCat === c ? " active" : "")} onClick={() => setFilterCat(c)}>{c}</button>
-            ))}
-          </div>
+
           <div className="jardin-grid">
             {filtered.map(p => (
               <div
@@ -765,7 +835,18 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
                     <span className="tache-badge">📅 {p.data.calendrier[moisActuel]}</span>
                   )}
                 </div>
-                <button className="jardin-delete" onClick={e => { e.stopPropagation(); handleDelete(p.id); }}>✕</button>
+                <span className="jardin-card-chevron" aria-hidden="true">›</span>
+                {confirmDeleteId === p.id ? (
+                  <div className="jardin-delete-confirm" onClick={e => e.stopPropagation()}>
+                    <span className="jardin-delete-confirm-text">Supprimer cette plante ?</span>
+                    <div className="jardin-delete-confirm-actions">
+                      <button type="button" className="jardin-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
+                      <button type="button" className="jardin-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button className="jardin-delete" onClick={(e) => handleRequestDelete(e, p.id)}>✕</button>
+                )}
               </div>
             ))}
           </div>
@@ -1022,6 +1103,15 @@ export default function Home() {
         .mois-plante { font-size:13px;font-weight:600;color:var(--sage); }
         .mois-tache { font-size:13px;color:rgba(255,255,255,0.7); }
         .mois-vide { color:rgba(255,255,255,0.4);font-size:13px;font-style:italic; }
+        .mois-title-row { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px; }
+        .mois-title-row .mois-title { margin-bottom:0; }
+        .mois-collapse-btn { background:none;border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.85);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:20px; }
+        .jardin-summary { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px; }
+        .jardin-summary-chip { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest); }
+        .jardin-section-toggle { width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid rgba(0,0,0,0.08);border-radius:var(--r);padding:12px 16px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--forest);cursor:pointer;margin-bottom:16px;box-shadow:var(--shadow); }
+        .jardin-section-toggle-action { color:var(--moss);font-size:12px;font-weight:600; }
+        .jardin-section { margin-bottom:16px; }
+        .jardin-section-collapse-btn { background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:0;margin-bottom:8px;display:block; }
         .filters-row { margin-bottom:10px; }
         .search-input { width:100%;border:1.5px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:14px;outline:none;background:white; }
         .cats-row { display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;margin-bottom:14px; }
@@ -1037,8 +1127,14 @@ export default function Home() {
         .jardin-card-cat { display:inline-block;background:var(--mist);color:var(--moss);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:500;margin-top:4px; }
         .jardin-card-plantation { font-size:11px;color:var(--gold);margin-top:3px; }
         .tache-badge { display:block;margin-top:5px;font-size:11px;color:var(--gold);font-weight:500; }
+        .jardin-card-chevron { align-self:center;font-size:20px;line-height:1;color:#ccc;padding-right:26px;flex-shrink:0; }
         .jardin-delete { position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;color:#ccc;font-size:14px;padding:4px;border-radius:4px; }
         .jardin-delete:hover { background:#ffebee;color:var(--rust); }
+        .jardin-delete-confirm { position:absolute;inset:0;background:rgba(255,255,255,0.97);border-radius:var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px;z-index:3;text-align:center; }
+        .jardin-delete-confirm-text { font-size:13px;font-weight:600;color:var(--ink); }
+        .jardin-delete-confirm-actions { display:flex;gap:8px; }
+        .jardin-delete-confirm-yes { background:var(--rust);color:white;border:none;border-radius:8px;padding:7px 14px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer; }
+        .jardin-delete-confirm-no { background:none;border:1px solid rgba(0,0,0,0.12);border-radius:8px;padding:7px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#666;cursor:pointer; }
         .jardin-count { text-align:center;color:#bbb;font-size:12px;margin-top:14px; }
         .back-btn { display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-bottom:16px;font-weight:500; }
         .btn-danger { background:#ffebee;color:var(--rust);border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:9px 16px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer; }
