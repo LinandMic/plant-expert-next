@@ -2,6 +2,9 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
+import { fetchProfile } from "@/lib/profileApi";
+import { fetchWeatherForProfile } from "@/lib/weatherApi";
+import { evaluateWateringWeather } from "@/lib/weatherEngine";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
@@ -539,7 +542,17 @@ function IdentifierTab({ addPlant }) {
   );
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders }) {
+// Local calendar day only — never UTC — same convention duplicated in
+// lib/reminderApi.js and components/RemindersOverview.js.
+function todayLocalDateString() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
@@ -611,6 +624,29 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
     return result;
   };
 
+  // Recommendation-only, read-only pass: never mutates a reminder, just a
+  // per-reminder lookup for RemindersOverview to render. Recomputed fresh
+  // from the live reminders/jardin/weather on every render — no separate
+  // state, so a reminder that changes status is reflected immediately and
+  // never produces a recommendation tied to stale data.
+  const today = todayLocalDateString();
+  const weatherRecommendationsByReminderId = {};
+  if (weather) {
+    const wateringReminders = (reminders.reminders || []).filter(
+      (r) => r.type === "watering" && r.isActive && (r.status === "pending" || r.status === "snoozed")
+    );
+    for (const reminder of wateringReminders) {
+      const plant = jardin.find((p) => p.id === reminder.plantId);
+      weatherRecommendationsByReminderId[reminder.id] = evaluateWateringWeather({
+        weather,
+        reminder,
+        plantContext: plant ? plant.context : null,
+        today,
+      });
+    }
+  }
+  const weatherLocationName = (weather && weather.location && weather.location.name) || null;
+
   if (selected) {
     return (
       <div className="tab-page">
@@ -662,6 +698,8 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
             reminders={reminders}
             garden={{ jardin }}
             actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
+            weatherRecommendations={weatherRecommendationsByReminderId}
+            weatherLocationName={weatherLocationName}
           />
           <div className="jardin-select-bar">
             {!selectionMode ? (
@@ -744,6 +782,81 @@ export default function Home() {
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState(null);
+
+  useEffect(() => {
+    if (auth.loading) return;
+
+    if (!auth.user) {
+      setProfile(null);
+      setProfileLoading(false);
+      setProfileError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setProfileLoading(true);
+    setProfileError(null);
+
+    fetchProfile(auth.user.id)
+      .then((data) => {
+        if (!cancelled) setProfile(data);
+      })
+      .catch(() => {
+        // A profile load failure must never break Mon Jardin — it only
+        // means weather/localisation stays unavailable this session.
+        if (!cancelled) setProfileError("Impossible de charger le profil.");
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.user, auth.loading]);
+
+  const [weather, setWeather] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState(null);
+
+  useEffect(() => {
+    if (auth.loading || profileLoading) return;
+
+    const city = profile && profile.city && profile.city.trim();
+    if (!auth.user || !city) {
+      setWeather(null);
+      setWeatherLoading(false);
+      setWeatherError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setWeatherLoading(true);
+    setWeatherError(null);
+
+    fetchWeatherForProfile(profile)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.error) {
+          setWeather(null);
+          setWeatherError(result.error);
+        } else {
+          setWeather(result.data);
+          setWeatherError(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setWeatherLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.user, auth.loading, profile, profileLoading]);
 
   return (
     <div className="app">
@@ -938,6 +1051,9 @@ export default function Home() {
         .reminders-group-actions { margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed rgba(0,0,0,0.12); }
         .reminders-group-busy { font-size:12px;color:#999;font-style:italic; }
         .reminders-group-confirm-text { display:block;font-size:12px;color:var(--ink);margin-bottom:6px; }
+        .reminders-weather-location { font-size:12px;color:var(--sage);font-weight:600;margin-bottom:10px; }
+        .reminders-weather-hint { margin-top:8px;padding-top:8px;border-top:1px dashed rgba(0,0,0,0.1);display:flex;flex-direction:column;gap:6px; }
+        .reminders-weather-text { font-size:12px;color:var(--moss);line-height:1.4; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
@@ -962,7 +1078,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>

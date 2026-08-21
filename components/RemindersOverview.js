@@ -53,7 +53,54 @@ function formatPlantNames(names) {
   return `${shown} + ${rest} autre${rest > 1 ? "s" : ""}`;
 }
 
-function ReminderRow({ name, item, busy, error, snoozeDraft, onMarkDone, onMarkSkipped, onOpenSnooze, onCancelSnooze, onChangeSnoozeDate, onConfirmSnooze }) {
+// Renders a read-only weather hint under a watering reminder. It never
+// mutates anything itself: CONSIDER_SNOOZE's "Reporter au..." button only
+// opens/pre-fills the existing individual snooze form (via onOpenSnooze),
+// exactly like the plain "⏰ Reporter" button — the user still has to click
+// "Confirmer" there for anything to actually change. KEEP and
+// INSUFFICIENT_DATA render nothing, by design (no noise for the common
+// case, no false confidence when data is missing).
+function WeatherHint({ recommendation, busy, onOpenSnooze }) {
+  if (!recommendation) return null;
+
+  if (recommendation.status === "CONSIDER_SNOOZE") {
+    return (
+      <div className="reminders-weather-hint">
+        <div className="reminders-weather-text">
+          🌧️ Pluie récente ou prévue importante.
+          <br />
+          L&apos;arrosage est peut-être moins nécessaire.
+        </div>
+        {recommendation.suggestedDate && (
+          <button
+            type="button"
+            className="reminders-action-btn"
+            disabled={busy}
+            onClick={() => onOpenSnooze(recommendation.suggestedDate)}
+          >
+            Reporter au {formatDateLabel(recommendation.suggestedDate)}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (recommendation.status === "CHECK_SOONER") {
+    return (
+      <div className="reminders-weather-hint">
+        <div className="reminders-weather-text">
+          ☀️ Temps chaud et sec prévu.
+          <br />
+          Une vérification plus tôt peut être utile.
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function ReminderRow({ name, item, busy, error, snoozeDraft, weatherRecommendation, onMarkDone, onMarkSkipped, onOpenSnooze, onCancelSnooze, onChangeSnoozeDate, onConfirmSnooze }) {
   const isSnoozing = !!(snoozeDraft && snoozeDraft.open);
   return (
     <div className="reminders-item-row">
@@ -64,7 +111,7 @@ function ReminderRow({ name, item, busy, error, snoozeDraft, onMarkDone, onMarkS
       {!isSnoozing ? (
         <div className="reminders-item-actions">
           <button type="button" className="reminders-action-btn" disabled={busy} onClick={onMarkDone}>✅ Fait</button>
-          <button type="button" className="reminders-action-btn" disabled={busy} onClick={onOpenSnooze}>⏰ Reporter</button>
+          <button type="button" className="reminders-action-btn" disabled={busy} onClick={() => onOpenSnooze()}>⏰ Reporter</button>
           <button type="button" className="reminders-action-btn" disabled={busy} onClick={onMarkSkipped}>⏭️ Ignorer</button>
         </div>
       ) : (
@@ -83,12 +130,13 @@ function ReminderRow({ name, item, busy, error, snoozeDraft, onMarkDone, onMarkS
           </div>
         </div>
       )}
+      {!isSnoozing && <WeatherHint recommendation={weatherRecommendation} busy={busy} onOpenSnooze={onOpenSnooze} />}
       {error && <div className="reminders-item-error">{error}</div>}
     </div>
   );
 }
 
-export default function RemindersOverview({ reminders, garden, actions }) {
+export default function RemindersOverview({ reminders, garden, actions, weatherRecommendations = {}, weatherLocationName = null }) {
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
   const [busyIds, setBusyIds] = useState(() => new Set());
   const [itemErrors, setItemErrors] = useState({});
@@ -161,9 +209,16 @@ export default function RemindersOverview({ reminders, garden, actions }) {
     if (error) setItemError(reminderId, error);
   };
 
-  const openSnooze = (reminderId) => {
+  // suggestedDate is optional: the plain "⏰ Reporter" button calls this
+  // with no argument (unchanged behavior); the weather hint's "Reporter
+  // au..." button passes its suggested date to pre-fill the same form. It
+  // never overrides a date the user already started typing.
+  const openSnooze = (reminderId, suggestedDate) => {
     setItemError(reminderId, null);
-    setSnoozeState((prev) => ({ ...prev, [reminderId]: { open: true, date: (prev[reminderId] && prev[reminderId].date) || "" } }));
+    setSnoozeState((prev) => ({
+      ...prev,
+      [reminderId]: { open: true, date: (prev[reminderId] && prev[reminderId].date) || suggestedDate || "" },
+    }));
   };
 
   const closeSnooze = (reminderId) => {
@@ -303,6 +358,9 @@ export default function RemindersOverview({ reminders, garden, actions }) {
   return (
     <div className="reminders-overview">
       <div className="reminders-overview-title">📋 Tâches</div>
+      {weatherLocationName && (
+        <div className="reminders-weather-location">🌤️ Météo : {weatherLocationName}</div>
+      )}
       {groups.length === 0 ? (
         <div className="reminders-empty">Aucune tâche planifiée.</div>
       ) : (
@@ -383,9 +441,10 @@ export default function RemindersOverview({ reminders, garden, actions }) {
                           busy={busyIds.has(item.reminderId)}
                           error={itemErrors[item.reminderId]}
                           snoozeDraft={snoozeState[item.reminderId]}
+                          weatherRecommendation={weatherRecommendations[item.reminderId]}
                           onMarkDone={() => handleMarkDone(item.reminderId)}
                           onMarkSkipped={() => handleMarkSkipped(item.reminderId)}
-                          onOpenSnooze={() => openSnooze(item.reminderId)}
+                          onOpenSnooze={(suggestedDate) => openSnooze(item.reminderId, suggestedDate)}
                           onCancelSnooze={() => closeSnooze(item.reminderId)}
                           onChangeSnoozeDate={(date) => changeSnoozeDate(item.reminderId, date)}
                           onConfirmSnooze={() => confirmSnooze(item.reminderId)}
