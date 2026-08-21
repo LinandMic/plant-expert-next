@@ -658,7 +658,11 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
               )}
             </div>
           </div>
-          <RemindersOverview reminders={reminders} garden={{ jardin }} />
+          <RemindersOverview
+            reminders={reminders}
+            garden={{ jardin }}
+            actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
+          />
           <div className="jardin-select-bar">
             {!selectionMode ? (
               <button type="button" className="cat-btn" onClick={() => setSelectionMode(true)}>☑️ Sélectionner</button>
@@ -917,9 +921,20 @@ export default function Home() {
         .reminders-date-label { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--sage);margin-bottom:6px; }
         .reminders-type-group { padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06); }
         .reminders-type-group:last-child { border-bottom:none; }
-        .reminders-type-line { font-size:13px;font-weight:600;color:var(--ink); }
+        .reminders-type-line { display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:13px;font-weight:600;color:var(--ink); }
         .reminders-snoozed-tag { font-weight:500;color:var(--gold);font-style:italic; }
         .reminders-plant-names { font-size:12px;color:#999;margin-top:2px; }
+        .reminders-manage-btn { margin-left:auto;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px; }
+        .reminders-item-list { margin-top:8px;display:flex;flex-direction:column;gap:10px; }
+        .reminders-item-row { background:var(--cream);border-radius:8px;padding:8px 10px; }
+        .reminders-item-name { font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px; }
+        .reminders-item-actions { display:flex;gap:6px;flex-wrap:wrap; }
+        .reminders-action-btn { background:white;border:1px solid rgba(0,0,0,0.12);border-radius:14px;padding:5px 10px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--ink);cursor:pointer; }
+        .reminders-action-btn:disabled { opacity:0.45;cursor:not-allowed; }
+        .reminders-action-confirm { background:var(--forest);color:white;border-color:var(--forest); }
+        .reminders-snooze-form { display:flex;flex-direction:column;gap:6px; }
+        .reminders-snooze-form .plant-input { width:100%; }
+        .reminders-item-error { color:var(--rust);font-size:11px;margin-top:4px; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
