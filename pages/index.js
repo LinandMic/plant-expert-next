@@ -580,6 +580,19 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   const [aFaireOpen, setAFaireOpen] = useState(false);
   const [zonesOpen, setZonesOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [zoneFilter, setZoneFilter] = useState("all");
+
+  // A filter pinned to a specific zoneId must never keep restricting the
+  // grid once that zone can no longer be selected from the dropdown — e.g.
+  // the zone was deleted (it drops out of zones.zones), or the user logged
+  // out (zones.zones resets to []). "all"/"unassigned" are always valid and
+  // left untouched; only a real, no-longer-existing zoneId gets reset.
+  useEffect(() => {
+    if (zoneFilter === "all" || zoneFilter === "unassigned") return;
+    if (!zones.zones.some((z) => z.id === zoneFilter)) {
+      setZoneFilter("all");
+    }
+  }, [zones.zones, zoneFilter]);
 
   const handleDelete = async (id) => {
     setDeleteError(null);
@@ -615,7 +628,9 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   const filtered = jardin.filter(p => {
     const nom = (p.data && p.data.identite && p.data.identite.nom_commun || "").toLowerCase();
     const cat = (p.data && p.data.identite && p.data.identite.categorie) || "";
-    return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase()));
+    const matchesZone =
+      zoneFilter === "all" || (zoneFilter === "unassigned" ? !p.zoneId : p.zoneId === zoneFilter);
+    return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase())) && matchesZone;
   });
 
   const toggleSelected = (id) => {
@@ -779,6 +794,17 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           <div className="filters-row">
             <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
           </div>
+          {isAuthenticated && zones.zones.length > 0 && (
+            <div className="filters-row">
+              <select className="search-input" value={zoneFilter} onChange={e => setZoneFilter(e.target.value)}>
+                <option value="all">Toutes les zones</option>
+                <option value="unassigned">Sans zone</option>
+                {zones.zones.map(z => (
+                  <option key={z.id} value={z.id}>{z.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="cats-row">
             {["Tout", ...CATEGORIES].map(c => (
               <button key={c} className={"cat-btn" + (filterCat === c ? " active" : "")} onClick={() => setFilterCat(c)}>{c}</button>
