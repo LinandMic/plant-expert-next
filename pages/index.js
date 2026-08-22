@@ -2,13 +2,16 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
+import { useGardenZones } from "@/lib/useGardenZones";
 import { fetchProfile } from "@/lib/profileApi";
 import { fetchWeatherForProfile } from "@/lib/weatherApi";
 import { evaluateWateringWeather } from "@/lib/weatherEngine";
+import { getEffectivePlantContext } from "@/lib/effectivePlantContext";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
+import GardenZonesPanel from "@/components/GardenZonesPanel";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -242,7 +245,7 @@ function CalendrierGrid({ data }) {
   );
 }
 
-function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions }) {
+function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions, zoneId, zones, isAuthenticated, onSaveZone }) {
   const [activeTab, setActiveTab] = useState("maladies");
   const tabs = [
     { key: "maladies", label: "Maladies", icon: "🔬" },
@@ -395,7 +398,14 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
         {activeTab === "jardin" && onSaveContext && (
           <div>
             <div className="section-title">🪴 Contexte du jardin</div>
-            <PlantContextEditor context={context} onSave={onSaveContext} />
+            <PlantContextEditor
+              context={context}
+              onSave={onSaveContext}
+              zoneId={zoneId}
+              zones={zones}
+              isAuthenticated={isAuthenticated}
+              onSaveZone={onSaveZone}
+            />
           </div>
         )}
       </div>
@@ -552,8 +562,14 @@ function todayLocalDateString() {
   return `${y}-${m}-${day}`;
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather, weatherLoading }) {
-  const [selected, setSelected] = useState(null);
+function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated }) {
+  // selectedId (not the plant object itself) is the only state kept for the
+  // open detail view — the plant is always re-derived from the live
+  // `jardin` array below, so any update to `jardin` (e.g. a successful
+  // updatePlantZone) is reflected immediately without a second, divergent
+  // copy of the same plant going stale.
+  const [selectedId, setSelectedId] = useState(null);
+  const selectedPlant = selectedId ? jardin.find((p) => p.id === selectedId) || null : null;
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
   const [deleteError, setDeleteError] = useState(null);
@@ -563,13 +579,27 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   const [reminderNotice, setReminderNotice] = useState(null);
   const [tasksOpen, setTasksOpen] = useState(false);
   const [aFaireOpen, setAFaireOpen] = useState(false);
+  const [zonesOpen, setZonesOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [zoneFilter, setZoneFilter] = useState("all");
+
+  // A filter pinned to a specific zoneId must never keep restricting the
+  // grid once that zone can no longer be selected from the dropdown — e.g.
+  // the zone was deleted (it drops out of zones.zones), or the user logged
+  // out (zones.zones resets to []). "all"/"unassigned" are always valid and
+  // left untouched; only a real, no-longer-existing zoneId gets reset.
+  useEffect(() => {
+    if (zoneFilter === "all" || zoneFilter === "unassigned") return;
+    if (!zones.zones.some((z) => z.id === zoneFilter)) {
+      setZoneFilter("all");
+    }
+  }, [zones.zones, zoneFilter]);
 
   const handleDelete = async (id) => {
     setDeleteError(null);
     const { error: err } = await deletePlant(id);
     if (err) { setDeleteError(err); return; }
-    if (selected && selected.id === id) setSelected(null);
+    if (selectedId === id) setSelectedId(null);
   };
 
   // Delete stays a two-step, in-card confirmation — no window.confirm, no
@@ -599,7 +629,9 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   const filtered = jardin.filter(p => {
     const nom = (p.data && p.data.identite && p.data.identite.nom_commun || "").toLowerCase();
     const cat = (p.data && p.data.identite && p.data.identite.categorie) || "";
-    return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase()));
+    const matchesZone =
+      zoneFilter === "all" || (zoneFilter === "unassigned" ? !p.zoneId : p.zoneId === zoneFilter);
+    return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase())) && matchesZone;
   });
 
   const toggleSelected = (id) => {
@@ -658,12 +690,22 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
     const wateringReminders = (reminders.reminders || []).filter(
       (r) => r.type === "watering" && r.isActive && (r.status === "pending" || r.status === "snoozed")
     );
+    // Built once per render, not once per reminder — a handful of zones,
+    // no need for anything more elaborate.
+    const zoneById = new Map((zones.zones || []).map((z) => [z.id, z]));
     for (const reminder of wateringReminders) {
       const plant = jardin.find((p) => p.id === reminder.plantId);
+      const plantZone = plant && plant.zoneId ? zoneById.get(plant.zoneId) || null : null;
+      // weatherEngine only ever reads plantContext.exposure (see
+      // lib/weatherEngine.js) — so only that one field is resolved through
+      // the single source of truth (lib/effectivePlantContext.js) and
+      // handed over, exactly as before except the plant's own null now
+      // falls back to its zone's value when there's no explicit override.
+      const effectiveExposure = plant ? getEffectivePlantContext(plant.context, plantZone).exposure.value : null;
       weatherRecommendationsByReminderId[reminder.id] = evaluateWateringWeather({
         weather,
         reminder,
-        plantContext: plant ? plant.context : null,
+        plantContext: { exposure: effectiveExposure },
         today,
       });
     }
@@ -687,13 +729,13 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
     return tache && tache !== "—";
   });
 
-  if (selected) {
+  if (selectedPlant) {
     return (
       <div className="tab-page">
-        <button className="back-btn" onClick={() => setSelected(null)}>← Mon Jardin</button>
-        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} context={selected.context} onSaveContext={(ctx) => updateContext(selected.id, ctx)} identificationStatus={selected.identificationStatus} />
+        <button className="back-btn" onClick={() => setSelectedId(null)}>← Mon Jardin</button>
+        <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} />
         {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
-        <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selected.id)}>🗑 Retirer du jardin</button></div>
+        <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selectedPlant.id)}>🗑 Retirer du jardin</button></div>
       </div>
     );
   }
@@ -709,11 +751,37 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
           <div className="loading-title">Chargement de votre jardin</div>
         </div>
       ) : jardin.length === 0 ? (
-        <div className="empty-jardin">
-          <div className="empty-icon">🌾</div>
-          <div className="empty-title">Ton jardin est vide</div>
-          <div className="empty-sub">Identifie une plante et clique Ajouter à Mon Jardin</div>
-        </div>
+        <>
+          <div className="empty-jardin">
+            <div className="empty-icon">🌾</div>
+            <div className="empty-title">Ton jardin est vide</div>
+            <div className="empty-sub">Identifie une plante et clique Ajouter à Mon Jardin</div>
+          </div>
+          {isAuthenticated && (
+            <div className="jardin-summary">
+              <button type="button" className="jardin-summary-chip-btn" onClick={() => setZonesOpen((v) => !v)}>
+                {zones.zones.length === 0
+                  ? "📍 Zones · Ajouter"
+                  : `📍 ${zones.zones.length} zone${zones.zones.length > 1 ? "s" : ""}`}
+              </button>
+            </div>
+          )}
+          {isAuthenticated && zonesOpen && (
+            <div className="jardin-section">
+              <button type="button" className="jardin-section-collapse-btn" onClick={() => setZonesOpen(false)}>
+                Masquer les zones
+              </button>
+              <GardenZonesPanel
+                zones={zones.zones}
+                loading={zones.loading}
+                error={zones.error}
+                createZone={zones.createZone}
+                updateZone={zones.updateZone}
+                deleteZone={zones.deleteZone}
+              />
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div className="jardin-summary">
@@ -725,11 +793,29 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
             ) : weatherLocationName ? (
               <span className="jardin-summary-chip">🌦️ {weatherLocationName}</span>
             ) : null}
+            {isAuthenticated && (
+              <button type="button" className="jardin-summary-chip-btn" onClick={() => setZonesOpen((v) => !v)}>
+                {zones.zones.length === 0
+                  ? "📍 Zones · Ajouter"
+                  : `📍 ${zones.zones.length} zone${zones.zones.length > 1 ? "s" : ""}`}
+              </button>
+            )}
           </div>
 
           <div className="filters-row">
             <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
           </div>
+          {isAuthenticated && zones.zones.length > 0 && (
+            <div className="filters-row">
+              <select className="search-input" value={zoneFilter} onChange={e => setZoneFilter(e.target.value)}>
+                <option value="all">Toutes les zones</option>
+                <option value="unassigned">Sans zone</option>
+                {zones.zones.map(z => (
+                  <option key={z.id} value={z.id}>{z.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="cats-row">
             {["Tout", ...CATEGORIES].map(c => (
               <button key={c} className={"cat-btn" + (filterCat === c ? " active" : "")} onClick={() => setFilterCat(c)}>{c}</button>
@@ -750,6 +836,22 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
                 actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
                 weatherRecommendations={weatherRecommendationsByReminderId}
                 weatherLocationName={weatherLocationName}
+              />
+            </div>
+          )}
+
+          {isAuthenticated && zonesOpen && (
+            <div className="jardin-section">
+              <button type="button" className="jardin-section-collapse-btn" onClick={() => setZonesOpen(false)}>
+                Masquer les zones
+              </button>
+              <GardenZonesPanel
+                zones={zones.zones}
+                loading={zones.loading}
+                error={zones.error}
+                createZone={zones.createZone}
+                updateZone={zones.updateZone}
+                deleteZone={zones.deleteZone}
               />
             </div>
           )}
@@ -816,7 +918,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
               <div
                 key={p.id}
                 className={"jardin-card" + (selectionMode && selectedIds.has(p.id) ? " jardin-card-selected" : "")}
-                onClick={() => selectionMode ? toggleSelected(p.id) : setSelected(p)}
+                onClick={() => selectionMode ? toggleSelected(p.id) : setSelectedId(p.id)}
               >
                 {selectionMode && (
                   <input
@@ -877,7 +979,21 @@ export default function Home() {
   const auth = useAuth();
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
+  const gardenZones = useGardenZones(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // The DB's own ON DELETE SET NULL (zone_id) already guarantees every
+  // plant that pointed at this zone now has zone_id = NULL server-side once
+  // deleteZone has resolved without error — so the local sync below is not
+  // a guess, only a reflection of an already-committed fact, applied
+  // locally to avoid a full garden refetch after every zone deletion.
+  const handleDeleteZone = async (zoneId) => {
+    const result = await gardenZones.deleteZone(zoneId);
+    if (!result.error) {
+      garden.clearPlantsZoneLocally(zoneId);
+    }
+    return result;
+  };
 
   // auth.user is a fresh object reference on every Supabase auth event
   // (including redundant ones like the INITIAL_SESSION event that always
@@ -1160,6 +1276,7 @@ export default function Home() {
         .mois-collapse-btn { background:none;border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.85);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:20px; }
         .jardin-summary { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px; }
         .jardin-summary-chip { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest); }
+        .jardin-summary-chip-btn { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest);font-family:'Outfit',sans-serif;cursor:pointer; }
         .jardin-section-toggle { width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid rgba(0,0,0,0.08);border-radius:var(--r);padding:12px 16px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--forest);cursor:pointer;margin-bottom:16px;box-shadow:var(--shadow); }
         .jardin-section-toggle-action { color:var(--moss);font-size:12px;font-weight:600; }
         .jardin-section { margin-bottom:16px; }
@@ -1250,6 +1367,23 @@ export default function Home() {
         .reminders-weather-attribution a { color:#aaa;text-decoration:underline; }
         .reminders-weather-hint { margin-top:8px;padding-top:8px;border-top:1px dashed rgba(0,0,0,0.1);display:flex;flex-direction:column;gap:6px; }
         .reminders-weather-text { font-size:12px;color:var(--moss);line-height:1.4; }
+        .zones-panel { background:white;border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow); }
+        .zones-panel-title { font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--forest);font-weight:700;margin-bottom:10px; }
+        .zones-empty-text { color:#999;font-size:13px;margin-bottom:12px;line-height:1.5; }
+        .zones-list { display:flex;flex-direction:column;gap:8px;margin-bottom:12px; }
+        .zones-item { display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--cream);border-radius:10px;padding:10px 12px; }
+        .zones-item-name { font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+        .zones-item-actions { display:flex;gap:10px;flex-shrink:0; }
+        .zones-item-action { background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:2px 4px; }
+        .zones-item-action-danger { color:var(--rust); }
+        .zones-edit-form { flex:1;display:flex;flex-direction:column;gap:6px; }
+        .zones-edit-actions { display:flex;gap:8px; }
+        .zones-delete-confirm { flex:1;display:flex;flex-direction:column;gap:6px; }
+        .zones-delete-confirm-text { font-size:13px;font-weight:600;color:var(--ink); }
+        .zones-item-error { color:var(--rust);font-size:11px; }
+        .zones-create-form { display:flex;flex-direction:column;gap:8px;margin-top:4px; }
+        .zones-add-btn { background:none;border:1.5px dashed rgba(58,107,58,0.3);border-radius:10px;padding:10px;width:100%;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--moss);cursor:pointer;margin-top:4px; }
+        .zone-settings-panel { background:var(--mist);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
@@ -1274,7 +1408,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
