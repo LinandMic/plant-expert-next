@@ -29,7 +29,7 @@ function OptionGrid({ options, value, onChange }) {
   );
 }
 
-export default function PlantContextEditor({ context, onSave }) {
+export default function PlantContextEditor({ context, onSave, zoneId = null, zones = [], isAuthenticated = false, onSaveZone }) {
   const initial = context || EMPTY_PLANT_CONTEXT;
   const initialWatering = initial.watering || EMPTY_PLANT_CONTEXT.watering;
 
@@ -47,7 +47,24 @@ export default function PlantContextEditor({ context, onSave }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
+  const [zoneSaving, setZoneSaving] = useState(false);
+  const [zoneError, setZoneError] = useState("");
+
   const isAutomatic = wateringMode === "automatic";
+
+  // Controlled entirely by the `zoneId` prop, never by local state — the
+  // select can only ever display a value the parent's jardin state has
+  // actually confirmed. A failed save never gets a chance to "stick"
+  // locally: since we never set an intermediate value here, the select
+  // simply keeps showing whatever `zoneId` already was.
+  const handleZoneChange = async (e) => {
+    const newZoneId = e.target.value || null;
+    setZoneSaving(true);
+    setZoneError("");
+    const { error: err } = await onSaveZone(newZoneId);
+    setZoneSaving(false);
+    if (err) setZoneError(err);
+  };
 
   const markDirty = () => setSuccess(false);
 
@@ -80,6 +97,33 @@ export default function PlantContextEditor({ context, onSave }) {
 
   return (
     <form onSubmit={handleSubmit}>
+      {isAuthenticated && (
+        <div className="auth-field">
+          <label className="auth-label" htmlFor="ctx-zone">Zone du jardin</label>
+          {zones.length === 0 ? (
+            <div className="empty-text">Aucune zone créée. Gérez vos zones depuis Mon Jardin.</div>
+          ) : (
+            <>
+              <select
+                id="ctx-zone"
+                className="plant-input"
+                value={zoneId || ""}
+                onChange={handleZoneChange}
+                disabled={zoneSaving}
+              >
+                <option value="">Sans zone</option>
+                <option value="__divider__" disabled>──────</option>
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>{z.name}</option>
+                ))}
+              </select>
+              {zoneSaving && <span className="empty-text">Enregistrement...</span>}
+              {zoneError && <div className="error-box">{zoneError}</div>}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="auth-field">
         <label className="auth-label" htmlFor="ctx-location">Emplacement</label>
         <input

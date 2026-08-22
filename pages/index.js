@@ -244,7 +244,7 @@ function CalendrierGrid({ data }) {
   );
 }
 
-function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions }) {
+function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions, zoneId, zones, isAuthenticated, onSaveZone }) {
   const [activeTab, setActiveTab] = useState("maladies");
   const tabs = [
     { key: "maladies", label: "Maladies", icon: "🔬" },
@@ -397,7 +397,14 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
         {activeTab === "jardin" && onSaveContext && (
           <div>
             <div className="section-title">🪴 Contexte du jardin</div>
-            <PlantContextEditor context={context} onSave={onSaveContext} />
+            <PlantContextEditor
+              context={context}
+              onSave={onSaveContext}
+              zoneId={zoneId}
+              zones={zones}
+              isAuthenticated={isAuthenticated}
+              onSaveZone={onSaveZone}
+            />
           </div>
         )}
       </div>
@@ -554,7 +561,7 @@ function todayLocalDateString() {
   return `${y}-${m}-${day}`;
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated }) {
+function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
@@ -694,7 +701,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
     return (
       <div className="tab-page">
         <button className="back-btn" onClick={() => setSelected(null)}>← Mon Jardin</button>
-        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} context={selected.context} onSaveContext={(ctx) => updateContext(selected.id, ctx)} identificationStatus={selected.identificationStatus} />
+        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} context={selected.context} onSaveContext={(ctx) => updateContext(selected.id, ctx)} identificationStatus={selected.identificationStatus} zoneId={selected.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selected.id, newZoneId)} />
         {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
         <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selected.id)}>🗑 Retirer du jardin</button></div>
       </div>
@@ -931,6 +938,19 @@ export default function Home() {
   const reminders = useReminders(auth.user, auth.loading);
   const gardenZones = useGardenZones(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // The DB's own ON DELETE SET NULL (zone_id) already guarantees every
+  // plant that pointed at this zone now has zone_id = NULL server-side once
+  // deleteZone has resolved without error — so the local sync below is not
+  // a guess, only a reflection of an already-committed fact, applied
+  // locally to avoid a full garden refetch after every zone deletion.
+  const handleDeleteZone = async (zoneId) => {
+    const result = await gardenZones.deleteZone(zoneId);
+    if (!result.error) {
+      garden.clearPlantsZoneLocally(zoneId);
+    }
+    return result;
+  };
 
   // auth.user is a fresh object reference on every Supabase auth event
   // (including redundant ones like the INITIAL_SESSION event that always
@@ -1344,7 +1364,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={gardenZones} isAuthenticated={!!auth.user} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
