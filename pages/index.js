@@ -6,6 +6,7 @@ import { useGardenZones } from "@/lib/useGardenZones";
 import { fetchProfile } from "@/lib/profileApi";
 import { fetchWeatherForProfile } from "@/lib/weatherApi";
 import { evaluateWateringWeather } from "@/lib/weatherEngine";
+import { getEffectivePlantContext } from "@/lib/effectivePlantContext";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
@@ -689,12 +690,22 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
     const wateringReminders = (reminders.reminders || []).filter(
       (r) => r.type === "watering" && r.isActive && (r.status === "pending" || r.status === "snoozed")
     );
+    // Built once per render, not once per reminder — a handful of zones,
+    // no need for anything more elaborate.
+    const zoneById = new Map((zones.zones || []).map((z) => [z.id, z]));
     for (const reminder of wateringReminders) {
       const plant = jardin.find((p) => p.id === reminder.plantId);
+      const plantZone = plant && plant.zoneId ? zoneById.get(plant.zoneId) || null : null;
+      // weatherEngine only ever reads plantContext.exposure (see
+      // lib/weatherEngine.js) — so only that one field is resolved through
+      // the single source of truth (lib/effectivePlantContext.js) and
+      // handed over, exactly as before except the plant's own null now
+      // falls back to its zone's value when there's no explicit override.
+      const effectiveExposure = plant ? getEffectivePlantContext(plant.context, plantZone).exposure.value : null;
       weatherRecommendationsByReminderId[reminder.id] = evaluateWateringWeather({
         weather,
         reminder,
-        plantContext: plant ? plant.context : null,
+        plantContext: { exposure: effectiveExposure },
         today,
       });
     }
