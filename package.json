@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "plant:benchmark": "node scripts/plant-benchmark/src/index.js"
+    "plant:benchmark": "node scripts/plant-benchmark/src/index.js",
+    "plant:benchmark:test": "node --test scripts/plant-benchmark/test/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
