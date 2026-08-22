@@ -1,0 +1,22 @@
+[
+  { "input_name": "Acer palmatum", "type": "species" },
+  { "input_name": "Acer palmatum 'Bloodgood'", "type": "cultivar" },
+  { "input_name": "Betula pendula", "type": "species" },
+  { "input_name": "Taxus baccata", "type": "species" },
+  { "input_name": "Taxus baccata 'Fastigiata'", "type": "cultivar" },
+  { "input_name": "Hydrangea paniculata", "type": "species" },
+  { "input_name": "Hydrangea paniculata 'Bobo'", "type": "cultivar" },
+  { "input_name": "Viburnum tinus", "type": "species" },
+  { "input_name": "Lavandula angustifolia", "type": "species" },
+  { "input_name": "Echinacea purpurea", "type": "species" },
+  { "input_name": "Hosta", "type": "genus" },
+  { "input_name": "Helleborus orientalis", "type": "species" },
+  { "input_name": "Miscanthus sinensis", "type": "species" },
+  { "input_name": "Pennisetum alopecuroides", "type": "legacy_or_synonym_test" },
+  { "input_name": "Vinca minor", "type": "species" },
+  { "input_name": "Clematis montana", "type": "species" },
+  { "input_name": "Wisteria sinensis", "type": "species" },
+  { "input_name": "Malus domestica", "type": "species" },
+  { "input_name": "Rubus idaeus", "type": "species" },
+  { "input_name": "Rosmarinus officinalis", "type": "legacy_or_synonym_test" }
+]
