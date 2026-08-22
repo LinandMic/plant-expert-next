@@ -1372,6 +1372,7 @@ export default function Home() {
         .zones-item-error { color:var(--rust);font-size:11px; }
         .zones-create-form { display:flex;flex-direction:column;gap:8px;margin-top:4px; }
         .zones-add-btn { background:none;border:1.5px dashed rgba(58,107,58,0.3);border-radius:10px;padding:10px;width:100%;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--moss);cursor:pointer;margin-top:4px; }
+        .zone-settings-panel { background:var(--mist);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import GardenZoneSettings from "./GardenZoneSettings";
 
 const NAME_MAX_LENGTH = 120;
 
@@ -31,6 +32,9 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
 
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+
+  const [settingsOpenId, setSettingsOpenId] = useState(null);
+  const toggleSettings = (zoneId) => setSettingsOpenId((prev) => (prev === zoneId ? null : zoneId));
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
@@ -113,7 +117,8 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
       ) : (
         <div className="zones-list">
           {zones.map((zone) => (
-            <div key={zone.id} className="zones-item">
+            <Fragment key={zone.id}>
+            <div className="zones-item">
               {editingId === zone.id ? (
                 <form className="zones-edit-form" onSubmit={(e) => handleEditSubmit(e, zone.id)}>
                   <input
@@ -172,6 +177,9 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
                     <button type="button" className="zones-item-action" onClick={() => startEdit(zone)}>
                       Modifier
                     </button>
+                    <button type="button" className="zones-item-action" onClick={() => toggleSettings(zone.id)}>
+                      Paramètres
+                    </button>
                     <button
                       type="button"
                       className="zones-item-action zones-item-action-danger"
@@ -183,6 +191,14 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
                 </>
               )}
             </div>
+            {settingsOpenId === zone.id && (
+              <GardenZoneSettings
+                zone={zone}
+                onSave={(patch) => updateZone(zone.id, patch)}
+                onCancel={() => setSettingsOpenId(null)}
+              />
+            )}
+            </Fragment>
           ))}
         </div>
       )}
