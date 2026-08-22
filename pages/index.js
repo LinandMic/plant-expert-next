@@ -562,7 +562,13 @@ function todayLocalDateString() {
 }
 
 function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated }) {
-  const [selected, setSelected] = useState(null);
+  // selectedId (not the plant object itself) is the only state kept for the
+  // open detail view — the plant is always re-derived from the live
+  // `jardin` array below, so any update to `jardin` (e.g. a successful
+  // updatePlantZone) is reflected immediately without a second, divergent
+  // copy of the same plant going stale.
+  const [selectedId, setSelectedId] = useState(null);
+  const selectedPlant = selectedId ? jardin.find((p) => p.id === selectedId) || null : null;
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
   const [deleteError, setDeleteError] = useState(null);
@@ -579,7 +585,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
     setDeleteError(null);
     const { error: err } = await deletePlant(id);
     if (err) { setDeleteError(err); return; }
-    if (selected && selected.id === id) setSelected(null);
+    if (selectedId === id) setSelectedId(null);
   };
 
   // Delete stays a two-step, in-card confirmation — no window.confirm, no
@@ -697,13 +703,13 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
     return tache && tache !== "—";
   });
 
-  if (selected) {
+  if (selectedPlant) {
     return (
       <div className="tab-page">
-        <button className="back-btn" onClick={() => setSelected(null)}>← Mon Jardin</button>
-        <PlanteFiche result={selected.data} imagePreview={selected.imagePreview} plantation={selected.plantation} usage={selected.usage} onSave={() => {}} alreadySaved={true} context={selected.context} onSaveContext={(ctx) => updateContext(selected.id, ctx)} identificationStatus={selected.identificationStatus} zoneId={selected.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selected.id, newZoneId)} />
+        <button className="back-btn" onClick={() => setSelectedId(null)}>← Mon Jardin</button>
+        <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} />
         {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
-        <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selected.id)}>🗑 Retirer du jardin</button></div>
+        <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selectedPlant.id)}>🗑 Retirer du jardin</button></div>
       </div>
     );
   }
@@ -875,7 +881,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
               <div
                 key={p.id}
                 className={"jardin-card" + (selectionMode && selectedIds.has(p.id) ? " jardin-card-selected" : "")}
-                onClick={() => selectionMode ? toggleSelected(p.id) : setSelected(p)}
+                onClick={() => selectionMode ? toggleSelected(p.id) : setSelectedId(p.id)}
               >
                 {selectionMode && (
                   <input
