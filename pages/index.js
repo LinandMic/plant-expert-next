@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
+import { useGardenZones } from "@/lib/useGardenZones";
 import { fetchProfile } from "@/lib/profileApi";
 import { fetchWeatherForProfile } from "@/lib/weatherApi";
 import { evaluateWateringWeather } from "@/lib/weatherEngine";
@@ -9,6 +10,7 @@ import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
+import GardenZonesPanel from "@/components/GardenZonesPanel";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -552,7 +554,7 @@ function todayLocalDateString() {
   return `${y}-${m}-${day}`;
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather, weatherLoading }) {
+function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated }) {
   const [selected, setSelected] = useState(null);
   const [filterCat, setFilterCat] = useState("Tout");
   const [searchQ, setSearchQ] = useState("");
@@ -563,6 +565,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
   const [reminderNotice, setReminderNotice] = useState(null);
   const [tasksOpen, setTasksOpen] = useState(false);
   const [aFaireOpen, setAFaireOpen] = useState(false);
+  const [zonesOpen, setZonesOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const handleDelete = async (id) => {
@@ -725,6 +728,13 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
             ) : weatherLocationName ? (
               <span className="jardin-summary-chip">🌦️ {weatherLocationName}</span>
             ) : null}
+            {isAuthenticated && (
+              <button type="button" className="jardin-summary-chip-btn" onClick={() => setZonesOpen((v) => !v)}>
+                {zones.zones.length === 0
+                  ? "📍 Zones · Ajouter"
+                  : `📍 ${zones.zones.length} zone${zones.zones.length > 1 ? "s" : ""}`}
+              </button>
+            )}
           </div>
 
           <div className="filters-row">
@@ -750,6 +760,22 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
                 actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
                 weatherRecommendations={weatherRecommendationsByReminderId}
                 weatherLocationName={weatherLocationName}
+              />
+            </div>
+          )}
+
+          {isAuthenticated && zonesOpen && (
+            <div className="jardin-section">
+              <button type="button" className="jardin-section-collapse-btn" onClick={() => setZonesOpen(false)}>
+                Masquer les zones
+              </button>
+              <GardenZonesPanel
+                zones={zones.zones}
+                loading={zones.loading}
+                error={zones.error}
+                createZone={zones.createZone}
+                updateZone={zones.updateZone}
+                deleteZone={zones.deleteZone}
               />
             </div>
           )}
@@ -877,6 +903,7 @@ export default function Home() {
   const auth = useAuth();
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
+  const gardenZones = useGardenZones(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   // auth.user is a fresh object reference on every Supabase auth event
@@ -1160,6 +1187,7 @@ export default function Home() {
         .mois-collapse-btn { background:none;border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.85);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:20px; }
         .jardin-summary { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px; }
         .jardin-summary-chip { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest); }
+        .jardin-summary-chip-btn { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest);font-family:'Outfit',sans-serif;cursor:pointer; }
         .jardin-section-toggle { width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid rgba(0,0,0,0.08);border-radius:var(--r);padding:12px 16px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--forest);cursor:pointer;margin-bottom:16px;box-shadow:var(--shadow); }
         .jardin-section-toggle-action { color:var(--moss);font-size:12px;font-weight:600; }
         .jardin-section { margin-bottom:16px; }
@@ -1250,6 +1278,22 @@ export default function Home() {
         .reminders-weather-attribution a { color:#aaa;text-decoration:underline; }
         .reminders-weather-hint { margin-top:8px;padding-top:8px;border-top:1px dashed rgba(0,0,0,0.1);display:flex;flex-direction:column;gap:6px; }
         .reminders-weather-text { font-size:12px;color:var(--moss);line-height:1.4; }
+        .zones-panel { background:white;border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow); }
+        .zones-panel-title { font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--forest);font-weight:700;margin-bottom:10px; }
+        .zones-empty-text { color:#999;font-size:13px;margin-bottom:12px;line-height:1.5; }
+        .zones-list { display:flex;flex-direction:column;gap:8px;margin-bottom:12px; }
+        .zones-item { display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--cream);border-radius:10px;padding:10px 12px; }
+        .zones-item-name { font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+        .zones-item-actions { display:flex;gap:10px;flex-shrink:0; }
+        .zones-item-action { background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:2px 4px; }
+        .zones-item-action-danger { color:var(--rust); }
+        .zones-edit-form { flex:1;display:flex;flex-direction:column;gap:6px; }
+        .zones-edit-actions { display:flex;gap:8px; }
+        .zones-delete-confirm { flex:1;display:flex;flex-direction:column;gap:6px; }
+        .zones-delete-confirm-text { font-size:13px;font-weight:600;color:var(--ink); }
+        .zones-item-error { color:var(--rust);font-size:11px; }
+        .zones-create-form { display:flex;flex-direction:column;gap:8px;margin-top:4px; }
+        .zones-add-btn { background:none;border:1.5px dashed rgba(58,107,58,0.3);border-radius:10px;padding:10px;width:100%;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--moss);cursor:pointer;margin-top:4px; }
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
@@ -1274,7 +1318,7 @@ export default function Home() {
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={gardenZones} isAuthenticated={!!auth.user} />}
 
       <nav className="bottom-nav">
         <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
