@@ -712,11 +712,37 @@ function MonJardinTab({ jardin, deletePlant, updateContext, loading, migrating, 
           <div className="loading-title">Chargement de votre jardin</div>
         </div>
       ) : jardin.length === 0 ? (
-        <div className="empty-jardin">
-          <div className="empty-icon">🌾</div>
-          <div className="empty-title">Ton jardin est vide</div>
-          <div className="empty-sub">Identifie une plante et clique Ajouter à Mon Jardin</div>
-        </div>
+        <>
+          <div className="empty-jardin">
+            <div className="empty-icon">🌾</div>
+            <div className="empty-title">Ton jardin est vide</div>
+            <div className="empty-sub">Identifie une plante et clique Ajouter à Mon Jardin</div>
+          </div>
+          {isAuthenticated && (
+            <div className="jardin-summary">
+              <button type="button" className="jardin-summary-chip-btn" onClick={() => setZonesOpen((v) => !v)}>
+                {zones.zones.length === 0
+                  ? "📍 Zones · Ajouter"
+                  : `📍 ${zones.zones.length} zone${zones.zones.length > 1 ? "s" : ""}`}
+              </button>
+            </div>
+          )}
+          {isAuthenticated && zonesOpen && (
+            <div className="jardin-section">
+              <button type="button" className="jardin-section-collapse-btn" onClick={() => setZonesOpen(false)}>
+                Masquer les zones
+              </button>
+              <GardenZonesPanel
+                zones={zones.zones}
+                loading={zones.loading}
+                error={zones.error}
+                createZone={zones.createZone}
+                updateZone={zones.updateZone}
+                deleteZone={zones.deleteZone}
+              />
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div className="jardin-summary">
