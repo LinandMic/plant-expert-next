@@ -1,13 +1,18 @@
 import { formatHeightRange, sunLabels, entryTypeLabel, plantTypeLabel } from "@/lib/plantFinderFormat";
 
-export default function PlantFinderCard({ plant }) {
+// returnTo: an optional already-serialized query string (q=...&type=...)
+// carrying the list page's current search/filter state, so the detail
+// page's "Retour à la recherche" link can round-trip back to it. Purely
+// additive to the URL — never required for the card link to work.
+export default function PlantFinderCard({ plant, returnTo }) {
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
   const sun = sunLabels(plant.sun);
   const badgeLabel = entryTypeLabel(plant.entryType);
   const plantType = plantTypeLabel(plant.plantType);
+  const href = `/plant-finder/${encodeURIComponent(plant.slug)}${returnTo ? `?from=${encodeURIComponent(returnTo)}` : ""}`;
 
   return (
-    <a href={`/plant-finder/${encodeURIComponent(plant.slug)}`} className="pf-card">
+    <a href={href} className="pf-card">
       <div className="pf-card-top">
         <div className="pf-card-name">{plant.displayName}</div>
         {badgeLabel && (

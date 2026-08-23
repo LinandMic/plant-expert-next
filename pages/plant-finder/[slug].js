@@ -1,3 +1,4 @@
+import { useRouter } from "next/router";
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
 import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths, plantTypeLabel } from "@/lib/plantFinderFormat";
 
@@ -56,6 +57,12 @@ function CoreField({ label, value }) {
 }
 
 export default function PlantFinderDetailPage({ plant }) {
+  const router = useRouter();
+  // `from` is the list page's own serialized filter/search query string,
+  // passed through by PlantFinderCard so this link returns the visitor to
+  // their exact prior search state rather than always resetting it.
+  const from = typeof router.query.from === "string" ? router.query.from : "";
+  const backHref = from ? `/plant-finder?${from}` : "/plant-finder";
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
   const spread = formatHeightRange(null, plant.spreadMaxCm);
   const sun = sunLabels(plant.sun);
@@ -131,7 +138,7 @@ export default function PlantFinderDetailPage({ plant }) {
           <Field label="Floraison" value={flowering} />
         </div>
 
-        <a href="/plant-finder" className="back-btn">← Retour à la recherche</a>
+        <a href={backHref} className="back-btn">← Retour à la recherche</a>
       </div>
     </div>
   );
