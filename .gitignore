@@ -46,3 +46,8 @@ next-env.d.ts
 /scripts/plant-benchmark/raw/
 /scripts/plant-benchmark/output/
 !/scripts/plant-benchmark/.env.benchmark.example
+
+# plant ingestion dry-run tool (scripts/plant-ingestion): dry-run JSON
+# bundles and raw provider dumps are local audit artifacts only, never
+# committed.
+/scripts/plant-ingestion/output/
