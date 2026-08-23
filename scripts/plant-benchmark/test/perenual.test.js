@@ -433,3 +433,93 @@ test("queryPerenual: skipping the detail call never fabricates an errors.json-wo
     assert.equal(result.error, null);
   });
 });
+
+// --- PERENUAL_ACCESS_TIER=personal + non-confident match -> unresolved_under_plan
+// (spec correction — real case: querying "Viburnum tinus" only ever
+// matches "Viburnum tinus 'Lisarose'", a parent_taxon_match; under the
+// Personal tier this must never surface as an exploitable
+// parent_taxon_match record.)
+
+test("queryPerenual #1: Personal tier + exact match -> unaffected, detail called normally", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Acer palmatum" }]);
+    const result = await queryPerenual({ inputName: "Acer palmatum", rawRoot, apiKey: "test-key", accessTier: "personal", fetchImpl });
+    assert.equal(result.selection_reason, "exact_scientific_match");
+    assert.equal(getDetailCallCount(), 1);
+    assert.equal(result.status, "ok");
+  });
+});
+
+test("queryPerenual #2: Personal tier + parent_taxon_match (real case: Viburnum tinus -> 'Lisarose') -> unresolved_under_plan, never a raw parent_taxon_match", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Viburnum tinus 'Lisarose'" }]);
+    const result = await queryPerenual({ inputName: "Viburnum tinus", rawRoot, apiKey: "test-key", accessTier: "personal", fetchImpl });
+    assert.equal(getDetailCallCount(), 0);
+    assert.equal(result.status, "unresolved_under_plan");
+    assert.equal(result.selection_reason, "unresolved_under_plan");
+    assert.notEqual(result.selection_reason, "parent_taxon_match");
+    assert.deepEqual(result.traits, {});
+    assert.equal(result.error, null);
+    // never presented as a validated fiche of the target
+    assert.equal(result.record, null);
+  });
+});
+
+test("queryPerenual #3: Personal tier + ambiguous/non-confident -> unresolved_under_plan, detail 0 calls", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Quercus rubra" }]);
+    const result = await queryPerenual({ inputName: "Quercus alba", rawRoot, apiKey: "test-key", accessTier: "personal", fetchImpl });
+    assert.equal(getDetailCallCount(), 0);
+    assert.equal(result.status, "unresolved_under_plan");
+    assert.equal(result.selection_reason, "unresolved_under_plan");
+    assert.deepEqual(result.traits, {});
+    assert.equal(result.error, null);
+  });
+});
+
+test("queryPerenual #4: the related candidate stays available in `candidates` (and `search_candidate`) for audit even when reclassified", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl } = makeFetchMock([{ id: 42, scientific_name: "Viburnum tinus 'Lisarose'" }]);
+    const result = await queryPerenual({ inputName: "Viburnum tinus", rawRoot, apiKey: "test-key", accessTier: "personal", fetchImpl });
+    assert.equal(result.candidates.length, 1);
+    assert.equal(result.candidates[0].id, 42);
+    assert.equal(result.candidates[0].name, "Viburnum tinus 'Lisarose'");
+    assert.equal(result.candidate_count, 1);
+    // metadata preserved in an explicitly non-validated field, never `record`.
+    assert.equal(result.search_candidate.id, 42);
+    assert.equal(result.search_candidate.scientific_name, "Viburnum tinus 'Lisarose'");
+  });
+});
+
+test("queryPerenual #5: unresolved_under_plan (from a related candidate under Personal tier) does not count as an exploitable record in coverage", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl } = makeFetchMock([{ id: 1, scientific_name: "Hosta 'Abby'" }]);
+    const result = await queryPerenual({ inputName: "Hosta", rawRoot, apiKey: "test-key", accessTier: "personal", fetchImpl });
+    // eligibleCount()/record coverage in coverage.js only recognizes
+    // exact_scientific_match/exact_cultivar_match/parent_taxon_match/
+    // parent_only as eligible — unresolved_under_plan is deliberately not
+    // in that set (see coverage.test.js for the denominator-level proof).
+    const ELIGIBLE_REASONS = new Set(["exact_scientific_match", "exact_cultivar_match", "parent_taxon_match", "parent_only"]);
+    assert.equal(ELIGIBLE_REASONS.has(result.selection_reason), false);
+    assert.equal(result.selection_reason, "unresolved_under_plan");
+  });
+});
+
+test("queryPerenual: outside a limited-catalog tier, parent_taxon_match is NOT reclassified (existing behavior preserved)", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Viburnum tinus 'Lisarose'" }]);
+    const result = await queryPerenual({ inputName: "Viburnum tinus", rawRoot, apiKey: "test-key", accessTier: "premium", fetchImpl });
+    assert.equal(getDetailCallCount(), 0);
+    assert.equal(result.selection_reason, "parent_taxon_match");
+    assert.notEqual(result.selection_reason, "unresolved_under_plan");
+    assert.equal(result.record.scientific_name, "Viburnum tinus 'Lisarose'");
+  });
+});
+
+test("queryPerenual: no accessTier configured, parent_taxon_match is NOT reclassified either (existing behavior preserved)", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl } = makeFetchMock([{ id: 1, scientific_name: "Viburnum tinus 'Lisarose'" }]);
+    const result = await queryPerenual({ inputName: "Viburnum tinus", rawRoot, apiKey: "test-key", fetchImpl });
+    assert.equal(result.selection_reason, "parent_taxon_match");
+  });
+});

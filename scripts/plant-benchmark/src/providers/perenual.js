@@ -383,11 +383,44 @@ export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = n
 
   if (!CONFIDENT_MATCH_REASONS.has(selection_reason)) {
     // Spec correction: never fetch /species/details for a candidate that
-    // wasn't confidently proven to be the queried target. `record` stays
-    // exactly what the search itself returned — never presented as a
-    // validated detail fiche — and `traits` stays empty since detail data
-    // was never fetched. No detail request means no possible spurious
-    // errors.json entry from this candidate either.
+    // wasn't confidently proven to be the queried target (validated,
+    // unchanged from the prior correction) — `traits` stays empty since
+    // detail data was never fetched, and no detail request means no
+    // possible spurious errors.json entry from this candidate either.
+    //
+    // FURTHER corrected: under an explicitly limited-catalog access tier
+    // (PERENUAL_ACCESS_TIER=personal), a non-confident match
+    // (parent_taxon_match/ambiguous/parent_only/fuzzy_candidate) is not
+    // proof the exact target is absent OR present in Perenual's catalog —
+    // we only know a RELATED record is visible (real case: querying
+    // "Viburnum tinus" only ever matches "Viburnum tinus 'Lisarose'"). The
+    // result must not present this as an exploitable record: it becomes
+    // `unresolved_under_plan` (same meaning as the empty-search case in
+    // classifySearchResult above), never the raw `parent_taxon_match`
+    // (which would silently count toward record coverage as if the target
+    // itself had been resolved). `record` stays null — never presented as
+    // a validated fiche of the target — the related candidate's
+    // search-only metadata moves to `search_candidate` for audit,
+    // alongside the full `candidates` list (unchanged).
+    //
+    // Outside a limited-catalog tier this reclassification does NOT
+    // apply — unchanged, already-validated behavior: the search-time
+    // selection_reason is returned as-is, `record` carries the
+    // search-only candidate data.
+    if (isLimitedCatalogAccessTier(accessTier)) {
+      return {
+        input_name: inputName,
+        status: "unresolved_under_plan",
+        selection_reason: "unresolved_under_plan",
+        candidate_count: rawCandidates.length,
+        error: null,
+        candidates: auditedCandidates,
+        record: null,
+        search_candidate: baseRecord,
+        traits: {},
+      };
+    }
+
     return {
       input_name: inputName,
       status: selection_reason,
