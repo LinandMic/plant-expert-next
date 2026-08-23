@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useRouter } from "next/router";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
@@ -14,6 +15,9 @@ import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
 import AccueilDashboard from "@/components/AccueilDashboard";
 import AppShell from "@/components/ui/AppShell";
+import HomeDebugPanel from "@/components/HomeDebugPanel";
+import HomeDashboardErrorBoundary from "@/components/HomeDashboardErrorBoundary";
+import { buildHomeDebugSnapshot } from "@/lib/homeDebugSnapshot";
 import { IconHome, IconCamera, IconSprout, IconSearch, IconUser, IconInfo } from "@/components/ui/icons";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
@@ -995,7 +999,17 @@ function AccountBar({ auth, onLogin }) {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [activeNav, setActiveNav] = useState("accueil");
+  // Temporary production diagnostic (spec: "Add production home render
+  // diagnostics") — activated only by ?homeDebug=1, normal visitors never
+  // see or pay for this. `mounted` distinguishes the pre-hydration render
+  // from a real client-side render in the debug panel.
+  const homeDebug = router.query.homeDebug === "1";
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const auth = useAuth();
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
@@ -1407,23 +1421,46 @@ export default function Home() {
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
+      {homeDebug && (
+        <HomeDebugPanel
+          snapshot={buildHomeDebugSnapshot({
+            mounted,
+            authLoading: auth.loading,
+            user: auth.user,
+            profile,
+            jardin: garden.jardin,
+            reminders: reminders.reminders,
+            weather,
+            activeNav,
+            pathname: router.pathname,
+          })}
+        />
+      )}
+
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} initialMode={authModalMode} />}
 
       {activeNav === "accueil" && (
-        <AccueilDashboard
-          firstName={profile && profile.first_name ? profile.first_name : null}
-          jardin={garden.jardin}
-          gardenLoading={garden.loading}
-          reminders={reminders.reminders}
-          remindersLoading={reminders.loading}
-          weather={weather}
-          weatherLoading={weatherLoading}
-          isAuthenticated={!!auth.user}
-          onGoIdentifier={() => setActiveNav("identifier")}
-          onGoJardin={() => setActiveNav("jardin")}
-          onLogin={() => openAuthModal("login")}
-          onSignup={() => openAuthModal("signup")}
-        />
+        <>
+          {homeDebug && <div className="home-debug-marker">BEFORE ACCUEIL DASHBOARD</div>}
+          <HomeDashboardErrorBoundary homeDebug={homeDebug}>
+            <AccueilDashboard
+              firstName={profile && profile.first_name ? profile.first_name : null}
+              jardin={garden.jardin}
+              gardenLoading={garden.loading}
+              reminders={reminders.reminders}
+              remindersLoading={reminders.loading}
+              weather={weather}
+              weatherLoading={weatherLoading}
+              isAuthenticated={!!auth.user}
+              onGoIdentifier={() => setActiveNav("identifier")}
+              onGoJardin={() => setActiveNav("jardin")}
+              onLogin={() => openAuthModal("login")}
+              onSignup={() => openAuthModal("signup")}
+              homeDebug={homeDebug}
+            />
+          </HomeDashboardErrorBoundary>
+          {homeDebug && <div className="home-debug-marker">AFTER ACCUEIL DASHBOARD</div>}
+        </>
       )}
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
       {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} />}

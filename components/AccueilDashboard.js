@@ -69,9 +69,10 @@ function CompactSummaryCard({ icon: Icon, label, value, hint }) {
   );
 }
 
-function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants }) {
+function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants, homeDebug }) {
   return (
     <>
+      {homeDebug && <div className="home-debug-marker">DISCONNECTED HOME REACHED</div>}
       <section className="ad-section">
         <Card className="ad-promo-card">
           <div className="ad-promo-content">
@@ -146,6 +147,7 @@ function ConnectedHome({
   model,
   onGoIdentifier,
   onGoJardin,
+  homeDebug,
 }) {
   const { plants, dueCount, overdueCount, todayWeather, weatherCity } = model;
 
@@ -153,6 +155,7 @@ function ConnectedHome({
 
   return (
     <>
+      {homeDebug && <div className="home-debug-marker">CONNECTED HOME REACHED</div>}
       <section className="ad-section">
         <SectionHeader title="Résumé du jour" />
         <div className="ad-summary-grid">
@@ -323,6 +326,7 @@ export default function AccueilDashboard({
   onGoJardin,
   onLogin,
   onSignup,
+  homeDebug,
 }) {
   const today = todayLocalDateString();
   const greetingName = resolveGreetingName(firstName);
@@ -357,6 +361,7 @@ export default function AccueilDashboard({
           model={model}
           onGoIdentifier={onGoIdentifier}
           onGoJardin={onGoJardin}
+          homeDebug={homeDebug}
         />
       ) : (
         <DisconnectedHome
@@ -364,6 +369,7 @@ export default function AccueilDashboard({
           onSignup={onSignup}
           onGoIdentifier={onGoIdentifier}
           previewPlants={normalizeList(jardin)}
+          homeDebug={homeDebug}
         />
       )}
     </div>
