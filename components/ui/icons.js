@@ -123,6 +123,28 @@ export function IconChevronRight(props) {
   );
 }
 
+export function IconInfo(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5" />
+      <path d="M12 7.9v.1" />
+    </Svg>
+  );
+}
+
+// A small decorative sprig — used for botanical photo placeholders and the
+// hero mark, never a stand-in for a real plant photo or invented data.
+export function IconSprig(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 20V9" />
+      <path d="M12 9c-3.6 0-6.2-2-6.2-6.2C9.6 2.8 12.3 4.7 12 9Z" />
+      <path d="M12 13.2c3.3 0 5.7-1.8 5.7-5.6-3.5 0-5.9 1.6-5.7 5.6Z" />
+    </Svg>
+  );
+}
+
 export function IconMapPin(props) {
   return (
     <Svg {...props}>

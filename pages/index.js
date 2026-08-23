@@ -14,7 +14,7 @@ import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
 import AccueilDashboard from "@/components/AccueilDashboard";
 import AppShell from "@/components/ui/AppShell";
-import { IconHome, IconCamera, IconSprout, IconSearch, IconUser } from "@/components/ui/icons";
+import { IconHome, IconCamera, IconSprout, IconSearch, IconUser, IconInfo } from "@/components/ui/icons";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -1001,6 +1001,11 @@ export default function Home() {
   const reminders = useReminders(auth.user, auth.loading);
   const gardenZones = useGardenZones(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState("login");
+  const openAuthModal = (mode) => {
+    setAuthModalMode(mode);
+    setShowAuthModal(true);
+  };
 
   // The DB's own ON DELETE SET NULL (zone_id) already guarantees every
   // plant that pointed at this zone now has zone_id = NULL server-side once
@@ -1182,7 +1187,7 @@ export default function Home() {
   ];
 
   return (
-    <AppShell navItems={navItems} activeKey={activeNav} topBar={<AccountBar auth={auth} onLogin={() => setShowAuthModal(true)} />}>
+    <AppShell navItems={navItems} activeKey={activeNav} topBar={<AccountBar auth={auth} onLogin={() => openAuthModal("login")} />}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1402,9 +1407,7 @@ export default function Home() {
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
-      <p className="pe-ai-disclaimer">⚠️ Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</p>
-
-      {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
+      {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} initialMode={authModalMode} />}
 
       {activeNav === "accueil" && (
         <AccueilDashboard
@@ -1418,10 +1421,17 @@ export default function Home() {
           isAuthenticated={!!auth.user}
           onGoIdentifier={() => setActiveNav("identifier")}
           onGoJardin={() => setActiveNav("jardin")}
+          onLogin={() => openAuthModal("login")}
+          onSignup={() => openAuthModal("signup")}
         />
       )}
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
       {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} />}
+
+      <p className="pe-ai-disclaimer">
+        <IconInfo size={13} />
+        <span>Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</span>
+      </p>
     </AppShell>
   );
 }
