@@ -12,6 +12,9 @@ import PlantContextEditor from "@/components/PlantContextEditor";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
+import AccueilDashboard from "@/components/AccueilDashboard";
+import AppShell from "@/components/ui/AppShell";
+import { IconHome, IconCamera, IconSprout, IconSearch, IconUser } from "@/components/ui/icons";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -974,8 +977,25 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function AccountBar({ auth, onLogin }) {
+  if (auth.loading) return null;
+  return (
+    <div className="pe-account-bar">
+      {auth.user ? (
+        <>
+          <span className="pe-account-email">{auth.user.email}</span>
+          <a className="pe-account-action" href="/profile">Mon profil</a>
+          <button className="pe-account-action" onClick={() => auth.signOut()}>Se déconnecter</button>
+        </>
+      ) : (
+        <button className="pe-account-action" onClick={onLogin}>Se connecter</button>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
-  const [activeNav, setActiveNav] = useState("identifier");
+  const [activeNav, setActiveNav] = useState("accueil");
   const auth = useAuth();
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
@@ -1153,23 +1173,21 @@ export default function Home() {
     };
   }, [auth.loading, profileLoading, weatherRequestKey]);
 
+  const navItems = [
+    { key: "accueil", label: "Accueil", icon: IconHome, kind: "tab", placement: "main", onClick: () => setActiveNav("accueil") },
+    { key: "identifier", label: "Identifier", icon: IconCamera, kind: "tab", placement: "main", emphasis: true, onClick: () => setActiveNav("identifier") },
+    { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "tab", placement: "main", onClick: () => setActiveNav("jardin"), badge: garden.jardin.length > 0 ? garden.jardin.length : null },
+    { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
+    { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
+  ];
+
   return (
-    <div className="app">
+    <AppShell navItems={navItems} activeKey={activeNav} topBar={<AccountBar auth={auth} onLogin={() => setShowAuthModal(true)} />}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root { --ink:#0f1f0f;--forest:#1e3a1e;--moss:#3a6b3a;--sage:#7aad7a;--mist:#e8f0e8;--paper:#f4f2ed;--cream:#faf8f3;--gold:#c4962a;--rust:#8b3a1e;--r:14px;--shadow:0 4px 20px rgba(15,31,15,0.1); }
         body { font-family:'Outfit',sans-serif;background:var(--paper);color:var(--ink); }
-        .app { min-height:100vh;padding-bottom:80px; }
-        .header { background:var(--forest);padding:24px 20px 16px; }
-        .header h1 { font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:700;color:white; }
-        .header h1 em { color:var(--sage);font-style:normal; }
-        .header p { color:rgba(255,255,255,0.45);font-size:12px;margin-top:3px; } .disclaimer { color:rgba(255,255,255,0.35);font-size:11px;margin-top:6px;line-height:1.4;background:rgba(255,255,255,0.08);border-radius:6px;padding:6px 10px; }
-        .bottom-nav { position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid rgba(0,0,0,0.1);display:flex;z-index:100;box-shadow:0 -4px 20px rgba(0,0,0,0.08); }
-        .nav-item { flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px 12px;cursor:pointer;border:none;background:none;font-family:'Outfit',sans-serif;color:#bbb;font-size:11px;transition:color 0.2s;gap:3px;position:relative;text-decoration:none; }
-        .nav-item.active { color:var(--moss); }
-        .nav-icon { font-size:22px; }
-        .nav-badge { background:var(--moss);color:white;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:600;position:absolute;top:6px;right:calc(50% - 22px); }
         .tab-page { padding:16px 16px 20px;max-width:680px;margin:0 auto; }
         .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;display:flex;align-items:flex-end; }
         .modal { background:white;border-radius:20px 20px 0 0;padding:28px 20px 36px;width:100%;max-height:85vh;overflow-y:auto; }
@@ -1307,9 +1325,6 @@ export default function Home() {
         .jardin-count { text-align:center;color:#bbb;font-size:12px;margin-top:14px; }
         .back-btn { display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-bottom:16px;font-weight:500; }
         .btn-danger { background:#ffebee;color:var(--rust);border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:9px 16px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer; }
-        .auth-bar { display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px; }
-        .auth-email { color:rgba(255,255,255,0.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px; }
-        .auth-link { background:none;border:none;color:var(--sage);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:0; }
         .auth-tabs { display:flex;gap:6px;margin-bottom:18px; }
         .auth-tab { flex:1;padding:9px;text-align:center;border-radius:10px;border:1.5px solid rgba(0,0,0,0.1);background:var(--cream);font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:#888;cursor:pointer; }
         .auth-tab.active { border-color:var(--moss);background:var(--mist);color:var(--forest); }
@@ -1387,41 +1402,26 @@ export default function Home() {
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
-      <div className="header">
-        <h1>Plante <em>Expert</em></h1>
-        <p>Botaniste IA · Identification & Mon Jardin</p><p className="disclaimer">⚠️ Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</p>
-        {!auth.loading && (
-          <div className="auth-bar">
-            {auth.user ? (
-              <>
-                <span className="auth-email">{auth.user.email}</span>
-                <a className="auth-link" href="/profile" style={{textDecoration:"none"}}>Mon profil</a>
-                <button className="auth-link" onClick={() => auth.signOut()}>Se déconnecter</button>
-              </>
-            ) : (
-              <button className="auth-link" onClick={() => setShowAuthModal(true)}>Se connecter</button>
-            )}
-          </div>
-        )}
-      </div>
+      <p className="pe-ai-disclaimer">⚠️ Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</p>
 
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
 
+      {activeNav === "accueil" && (
+        <AccueilDashboard
+          firstName={profile && profile.first_name ? profile.first_name : null}
+          jardin={garden.jardin}
+          gardenLoading={garden.loading}
+          reminders={reminders.reminders}
+          remindersLoading={reminders.loading}
+          weather={weather}
+          weatherLoading={weatherLoading}
+          isAuthenticated={!!auth.user}
+          onGoIdentifier={() => setActiveNav("identifier")}
+          onGoJardin={() => setActiveNav("jardin")}
+        />
+      )}
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
       {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} />}
-
-      <nav className="bottom-nav">
-        <button className={"nav-item" + (activeNav === "identifier" ? " active" : "")} onClick={() => setActiveNav("identifier")}>
-          <span className="nav-icon">🔍</span>Identifier
-        </button>
-        <button className={"nav-item" + (activeNav === "jardin" ? " active" : "")} onClick={() => setActiveNav("jardin")}>
-          <span className="nav-icon">🌳</span>Mon Jardin
-          {garden.jardin.length > 0 && <span className="nav-badge">{garden.jardin.length}</span>}
-        </button>
-        <a href="/plant-finder" className="nav-item">
-          <span className="nav-icon">🔎</span>Trouver une plante
-        </a>
-      </nav>
-    </div>
+    </AppShell>
   );
 }

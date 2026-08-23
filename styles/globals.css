@@ -1,13 +1,8 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "./design-tokens.css";
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: var(--pe-ivory);
+  --foreground: var(--pe-ink);
 }
 
 html,
@@ -19,7 +14,7 @@ body {
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--pe-font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -35,8 +30,7 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+:focus-visible {
+  outline: 2px solid var(--pe-forest-800);
+  outline-offset: 2px;
 }
