@@ -9,7 +9,8 @@
     "plant:benchmark": "node scripts/plant-benchmark/src/index.js",
     "plant:benchmark:test": "node --test scripts/plant-benchmark/test/*.test.js",
     "plant:ingestion:dry-run": "node scripts/plant-ingestion/src/index.js",
-    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js"
+    "plant:ingestion:plan": "node scripts/plant-ingestion/src/planCli.js",
+    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js scripts/plant-ingestion/test/plan/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
