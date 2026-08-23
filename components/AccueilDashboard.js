@@ -34,7 +34,7 @@ function todayLocalDateString() {
 
 function WeatherCard({ todayWeather, weatherLoading, hint, city }) {
   return (
-    <Card className="ad-summary-card ad-summary-weather" data-home-node="weather">
+    <Card className="ad-summary-card ad-summary-weather">
       <div className="ad-summary-card-head">
         <span className="ad-summary-icon"><IconSun size={20} /></span>
         <span className="ad-summary-label">Météo</span>
@@ -69,10 +69,9 @@ function CompactSummaryCard({ icon: Icon, label, value, hint }) {
   );
 }
 
-function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants, homeDebug }) {
+function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants }) {
   return (
     <>
-      {homeDebug && <div className="home-debug-marker">DISCONNECTED HOME REACHED</div>}
       <section className="ad-section">
         <Card className="ad-promo-card">
           <div className="ad-promo-content">
@@ -129,7 +128,7 @@ function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants, ho
         )}
       </section>
 
-      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onLogin} homeDebug={homeDebug} />
+      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onLogin} />
     </>
   );
 }
@@ -147,7 +146,6 @@ function ConnectedHome({
   model,
   onGoIdentifier,
   onGoJardin,
-  homeDebug,
 }) {
   const { plants, dueCount, overdueCount, todayWeather, weatherCity } = model;
 
@@ -155,8 +153,7 @@ function ConnectedHome({
 
   return (
     <>
-      {homeDebug && <div className="home-debug-marker">CONNECTED HOME REACHED</div>}
-      <section className="ad-section" data-home-node="summary">
+      <section className="ad-section">
         <SectionHeader title="Résumé du jour" />
         <div className="ad-summary-grid">
           <WeatherCard todayWeather={todayWeather} weatherLoading={weatherLoading} hint={weatherHint} city={weatherCity} />
@@ -177,7 +174,7 @@ function ConnectedHome({
         </div>
       </section>
 
-      <section className="ad-section" data-home-node="garden">
+      <section className="ad-section">
         <SectionHeader title="Dans votre jardin" actionLabel={plants.length > 0 ? "Voir tout" : null} onAction={onGoJardin} />
         {gardenLoading ? (
           <Card className="ad-empty-card">
@@ -206,17 +203,14 @@ function ConnectedHome({
         )}
       </section>
 
-      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onGoJardin} homeDebug={homeDebug} />
+      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onGoJardin} />
     </>
   );
 }
 
-function QuickActionsSection({ onGoIdentifier, onGoJardin, homeDebug }) {
+function QuickActionsSection({ onGoIdentifier, onGoJardin }) {
   return (
-    <section
-      className={"ad-section" + (homeDebug ? " home-debug-outline-actions" : "")}
-      data-home-node="quick-actions"
-    >
+    <section className="ad-section">
       <SectionHeader title="Actions rapides" />
       <div className="ad-actions-grid">
         <Card onClick={onGoIdentifier} className="ad-action-card">
@@ -307,21 +301,14 @@ const DASHBOARD_STYLES = `
   .ad-action-card:first-child svg { color:var(--pe-sage-400); }
   .ad-action-card:first-child .ad-action-desc { color:rgba(255,255,255,0.72); }
   @media (max-width:480px) { .ad-action-card { padding:14px; gap:10px; } }
-
-  /* Debug-only outlines (?homeDebug=1) — outline never affects layout,
-     never forces display/visibility/opacity/height/position/z-index. */
-  .home-debug-outline-root { outline: 3px solid magenta !important; }
-  .home-debug-outline-hero { outline: 3px solid cyan !important; }
-  .home-debug-outline-actions { outline: 3px solid yellow !important; }
 `;
 
-// The new Accueil dashboard (spec §11-12 of the redesign, hardened in
-// Phase 1.1's connected-state fix). Every prop coming from the real garden/
-// reminders/weather/profile data sources is run through
-// buildConnectedHomeModel()/resolveGreetingName() before use — a missing,
-// still-loading, or malformed data source degrades to an empty state for
-// its own section, and NEVER prevents the rest of the dashboard (hero,
-// "Dans votre jardin", "Actions rapides") from rendering.
+// The Accueil dashboard (spec §11-12 of the redesign). Every prop coming
+// from the real garden/reminders/weather/profile data sources is run
+// through buildConnectedHomeModel()/resolveGreetingName() before use — a
+// missing, still-loading, or malformed data source degrades to an empty
+// state for its own section, and NEVER prevents the rest of the dashboard
+// (hero, "Dans votre jardin", "Actions rapides") from rendering.
 export default function AccueilDashboard({
   firstName,
   jardin,
@@ -335,20 +322,16 @@ export default function AccueilDashboard({
   onGoJardin,
   onLogin,
   onSignup,
-  homeDebug,
 }) {
   const today = todayLocalDateString();
   const greetingName = resolveGreetingName(firstName);
   const model = buildConnectedHomeModel({ plants: jardin, reminders, weather, today });
 
   return (
-    <div
-      className={"ad-page" + (homeDebug ? " home-debug-outline-root" : "")}
-      data-home-node={isAuthenticated ? "connected-root" : "disconnected-root"}
-    >
+    <div className="ad-page">
       <style>{DASHBOARD_STYLES}</style>
 
-      <section className={"ad-hero" + (homeDebug ? " home-debug-outline-hero" : "")} data-home-node="hero">
+      <section className="ad-hero">
         <div>
           <h1 className="ad-hero-title">
             {isAuthenticated ? (greetingName ? `Bonjour ${greetingName}` : "Bonjour") : "Bienvenue dans Plant Expert"}
@@ -373,7 +356,6 @@ export default function AccueilDashboard({
           model={model}
           onGoIdentifier={onGoIdentifier}
           onGoJardin={onGoJardin}
-          homeDebug={homeDebug}
         />
       ) : (
         <DisconnectedHome
@@ -381,7 +363,6 @@ export default function AccueilDashboard({
           onSignup={onSignup}
           onGoIdentifier={onGoIdentifier}
           previewPlants={normalizeList(jardin)}
-          homeDebug={homeDebug}
         />
       )}
     </div>

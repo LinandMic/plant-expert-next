@@ -1,5 +1,4 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { useRouter } from "next/router";
 import { useAuth } from "@/lib/useAuth";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
@@ -15,17 +14,7 @@ import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
 import AccueilDashboard from "@/components/AccueilDashboard";
 import AppShell from "@/components/ui/AppShell";
-import HomeDebugPanel from "@/components/HomeDebugPanel";
-import HomeDashboardErrorBoundary from "@/components/HomeDashboardErrorBoundary";
-import { buildHomeDebugSnapshot } from "@/lib/homeDebugSnapshot";
-import { collectHomeRuntimeDiagnostics } from "@/lib/homeDomDiagnostics";
 import { IconHome, IconCamera, IconSprout, IconSearch, IconUser, IconInfo } from "@/components/ui/icons";
-
-// The data-home-node markers AccueilDashboard tags its real DOM elements
-// with (spec: "Add runtime home DOM diagnostics") — kept in one place so
-// the query list here can never silently drift from what's actually
-// rendered.
-const HOME_DEBUG_NODE_NAMES = ["connected-root", "disconnected-root", "hero", "weather", "summary", "garden", "quick-actions"];
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -1006,17 +995,7 @@ function AccountBar({ auth, onLogin }) {
 }
 
 export default function Home() {
-  const router = useRouter();
   const [activeNav, setActiveNav] = useState("accueil");
-  // Temporary production diagnostic (spec: "Add production home render
-  // diagnostics") — activated only by ?homeDebug=1, normal visitors never
-  // see or pay for this. `mounted` distinguishes the pre-hydration render
-  // from a real client-side render in the debug panel.
-  const homeDebug = router.query.homeDebug === "1";
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
   const auth = useAuth();
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
@@ -1198,27 +1177,6 @@ export default function Home() {
       cancelled = true;
     };
   }, [auth.loading, profileLoading, weatherRequestKey]);
-
-  // Temporary runtime DOM diagnostic (spec: "Add runtime home DOM
-  // diagnostics") — only ever runs client-side, only when ?homeDebug=1,
-  // and only reads geometry/computed-style facts (see
-  // lib/homeDomDiagnostics.js). Re-scans whenever the tab, auth state, or
-  // any of the Accueil dashboard's loading states change, so the panel
-  // always reflects the final settled DOM rather than a stale first pass.
-  const [domDiagnostics, setDomDiagnostics] = useState(null);
-  useEffect(() => {
-    if (!homeDebug || typeof document === "undefined") {
-      setDomDiagnostics(null);
-      return;
-    }
-    setDomDiagnostics(
-      collectHomeRuntimeDiagnostics(HOME_DEBUG_NODE_NAMES, {
-        documentRef: document,
-        getComputedStyleFn: (el) => window.getComputedStyle(el),
-        styleSheetsRef: document.styleSheets,
-      })
-    );
-  }, [homeDebug, activeNav, mounted, auth.loading, !!auth.user, garden.loading, reminders.loading, weatherLoading]);
 
   const navItems = [
     { key: "accueil", label: "Accueil", icon: IconHome, kind: "tab", placement: "main", onClick: () => setActiveNav("accueil") },
@@ -1449,47 +1407,23 @@ export default function Home() {
         @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
       `}</style>
 
-      {homeDebug && (
-        <HomeDebugPanel
-          snapshot={buildHomeDebugSnapshot({
-            mounted,
-            authLoading: auth.loading,
-            user: auth.user,
-            profile,
-            jardin: garden.jardin,
-            reminders: reminders.reminders,
-            weather,
-            activeNav,
-            pathname: router.pathname,
-          })}
-          domDiagnostics={domDiagnostics}
-        />
-      )}
-
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} initialMode={authModalMode} />}
 
       {activeNav === "accueil" && (
-        <>
-          {homeDebug && <div className="home-debug-marker">BEFORE ACCUEIL DASHBOARD</div>}
-          <HomeDashboardErrorBoundary homeDebug={homeDebug}>
-            <AccueilDashboard
-              firstName={profile && profile.first_name ? profile.first_name : null}
-              jardin={garden.jardin}
-              gardenLoading={garden.loading}
-              reminders={reminders.reminders}
-              remindersLoading={reminders.loading}
-              weather={weather}
-              weatherLoading={weatherLoading}
-              isAuthenticated={!!auth.user}
-              onGoIdentifier={() => setActiveNav("identifier")}
-              onGoJardin={() => setActiveNav("jardin")}
-              onLogin={() => openAuthModal("login")}
-              onSignup={() => openAuthModal("signup")}
-              homeDebug={homeDebug}
-            />
-          </HomeDashboardErrorBoundary>
-          {homeDebug && <div className="home-debug-marker">AFTER ACCUEIL DASHBOARD</div>}
-        </>
+        <AccueilDashboard
+          firstName={profile && profile.first_name ? profile.first_name : null}
+          jardin={garden.jardin}
+          gardenLoading={garden.loading}
+          reminders={reminders.reminders}
+          remindersLoading={reminders.loading}
+          weather={weather}
+          weatherLoading={weatherLoading}
+          isAuthenticated={!!auth.user}
+          onGoIdentifier={() => setActiveNav("identifier")}
+          onGoJardin={() => setActiveNav("jardin")}
+          onLogin={() => openAuthModal("login")}
+          onSignup={() => openAuthModal("signup")}
+        />
       )}
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
       {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} />}
