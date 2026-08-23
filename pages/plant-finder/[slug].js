@@ -1,5 +1,5 @@
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
-import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths } from "@/lib/plantFinderFormat";
+import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths, plantTypeLabel } from "@/lib/plantFinderFormat";
 
 // Server-rendered on purpose: returning `notFound: true` is what gives a
 // missing slug (or a draft row RLS already hides) Next.js's real 404
@@ -36,10 +36,30 @@ function Field({ label, value }) {
   );
 }
 
+// CoreField — for the grid's main physical/environmental characteristics
+// only (Type, Hauteur, Largeur, Exposition). Unlike Field, a genuinely
+// unknown value is still shown as its own row, labeled "Non renseigné" —
+// this is presentation only: the underlying value stays null, nothing is
+// inferred, borrowed from a parent taxon, or read from a raw provider
+// value. Keeping this to the core set (not every optional attribute) is
+// what keeps the sheet compact (spec: "garde une fiche compacte").
+function CoreField({ label, value }) {
+  const display = value === null || value === undefined || value === "" ? "Non renseigné" : value;
+  return (
+    <div className="info-card">
+      <div>
+        <div className="info-label">{label}</div>
+        <div className="info-value">{display}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function PlantFinderDetailPage({ plant }) {
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
   const spread = formatHeightRange(null, plant.spreadMaxCm);
   const sun = sunLabels(plant.sun);
+  const plantType = plantTypeLabel(plant.plantType);
   const badgeLabel = entryTypeLabel(plant.entryType);
   const evergreenLabel = formatBoolean(plant.evergreen);
   const containerLabel = formatBoolean(plant.containerSuitable);
@@ -99,11 +119,11 @@ export default function PlantFinderDetailPage({ plant }) {
 
         <h2 className="section-title">Caractéristiques</h2>
         <div className="info-grid">
-          <Field label="Type" value={plant.plantType} />
+          <CoreField label="Type" value={plantType} />
           <Field label="Genre botanique" value={plant.taxon?.genus} />
-          <Field label="Hauteur" value={height} />
-          <Field label="Largeur" value={spread} />
-          <Field label="Exposition" value={sun ? sun.join(", ") : null} />
+          <CoreField label="Hauteur" value={height} />
+          <CoreField label="Largeur" value={spread} />
+          <CoreField label="Exposition" value={sun ? sun.join(", ") : null} />
           <Field label="Feuillage persistant" value={evergreenLabel} />
           <Field label="Besoin en eau" value={plant.waterNeed} />
           <Field label="Culture en pot" value={containerLabel} />

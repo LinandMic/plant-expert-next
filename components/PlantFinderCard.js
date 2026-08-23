@@ -1,9 +1,10 @@
-import { formatHeightRange, sunLabels, entryTypeLabel } from "@/lib/plantFinderFormat";
+import { formatHeightRange, sunLabels, entryTypeLabel, plantTypeLabel } from "@/lib/plantFinderFormat";
 
 export default function PlantFinderCard({ plant }) {
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
   const sun = sunLabels(plant.sun);
   const badgeLabel = entryTypeLabel(plant.entryType);
+  const plantType = plantTypeLabel(plant.plantType);
 
   return (
     <a href={`/plant-finder/${encodeURIComponent(plant.slug)}`} className="pf-card">
@@ -17,7 +18,7 @@ export default function PlantFinderCard({ plant }) {
       </div>
       {plant.commonName && <div className="pf-card-common">{plant.commonName}</div>}
       <div className="pf-card-meta">
-        {plant.plantType && <span className="pf-card-tag">{plant.plantType}</span>}
+        {plantType && <span className="pf-card-tag">{plantType}</span>}
         {height && <span className="pf-card-tag">📏 {height}</span>}
         {sun && <span className="pf-card-tag">☀️ {sun.join(", ")}</span>}
       </div>
