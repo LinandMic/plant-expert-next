@@ -18,6 +18,8 @@ export function HomeDebugStyles() {
       .home-debug-error { background:#3a0d0d;color:#ffb4b4;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;padding:14px 16px;border-radius:8px;margin:8px 0; }
       .home-debug-stack { white-space:pre-wrap;font-size:11px;margin-top:8px;opacity:0.85; }
       .home-debug-fallback { background:#faf5e9;color:#6b4f1e;font-family:sans-serif;font-size:13px;padding:14px 16px;border-radius:8px;margin:8px 0; }
+      .home-debug-unresolved { color:#ff0;font-weight:700; }
+      .home-debug-rule { padding-left:16px; }
     `}</style>
   );
 }
@@ -31,6 +33,9 @@ function NodeDiagnostic({ name, diag }) {
     );
   }
   const c = diag.computed || {};
+  const a = diag.attributes || {};
+  const rules = diag.matchedDisplayRules || [];
+  const errors = diag.styleSheetAccessErrors || [];
   return (
     <li>
       node[{name}]: exists=true tag={diag.tagName} children={diag.childElementCount} textLength={diag.textLength}{" "}
@@ -39,16 +44,51 @@ function NodeDiagnostic({ name, diag }) {
       &nbsp;&nbsp;rect: x={Math.round(diag.rect.x)} y={Math.round(diag.rect.y)} w={Math.round(diag.rect.width)} h=
       {Math.round(diag.rect.height)}
       <br />
-      &nbsp;&nbsp;offset: {diag.offsetWidth}x{diag.offsetHeight} client: {diag.clientWidth}x{diag.clientHeight}
+      &nbsp;&nbsp;offset: {diag.offsetWidth}x{diag.offsetHeight} client: {diag.clientWidth}x{diag.clientHeight}{" "}
+      offsetParentPresent={String(diag.offsetParentPresent)}
       <br />
-      &nbsp;&nbsp;computed: display={c.display} visibility={c.visibility} opacity={c.opacity} position={c.position}{" "}
-      zIndex={c.zIndex}
+      &nbsp;&nbsp;computed: display={c.display} content={c.content} visibility={c.visibility} opacity={c.opacity}{" "}
+      position={c.position} zIndex={c.zIndex}
       <br />
       &nbsp;&nbsp;computed: overflow={c.overflow}/{c.overflowX}/{c.overflowY} height={c.height} minHeight={c.minHeight}{" "}
       maxHeight={c.maxHeight} width={c.width}
       <br />
       &nbsp;&nbsp;computed: color={c.color} bg={c.backgroundColor} transform={c.transform} clip={c.clip} clipPath=
       {c.clipPath}
+      <br />
+      &nbsp;&nbsp;attrs: hiddenProperty={String(a.hiddenProperty)} hasHiddenAttribute={String(a.hasHiddenAttribute)}{" "}
+      hiddenAttributeValue={String(a.hiddenAttributeValue)} ariaHidden={String(a.ariaHidden)} inert=
+      {String(a.inertProperty)}
+      <br />
+      &nbsp;&nbsp;attrs: className="{a.className}" id="{a.id}" inlineStyle="{a.inlineStyle || ""}"
+      <br />
+      &nbsp;&nbsp;attrs: attributeNames=[{(a.attributeNames || []).join(", ")}]
+      <br />
+      &nbsp;&nbsp;
+      {diag.displayNoneSourceUnresolvedByAuthorCSS ? (
+        <span className="home-debug-unresolved">displayNoneSourceUnresolvedByAuthorCSS: true</span>
+      ) : (
+        <span>displayNoneSourceUnresolvedByAuthorCSS: false</span>
+      )}
+      <br />
+      &nbsp;&nbsp;matchedDisplayRules ({rules.length}):
+      {rules.map((r, i) => (
+        <div className="home-debug-rule" key={i}>
+          [{i}] {r.selectorText} {"->"} display:{r.display}{r.priority ? ` !${r.priority}` : ""} media=
+          {r.media || "(none)"} sheet={r.sheetHref}
+        </div>
+      ))}
+      {errors.length > 0 && (
+        <>
+          <br />
+          &nbsp;&nbsp;styleSheetAccessErrors ({errors.length}):
+          {errors.map((e, i) => (
+            <div className="home-debug-rule" key={i}>
+              [{i}] {e.sheetHref}: {e.message}
+            </div>
+          ))}
+        </>
+      )}
     </li>
   );
 }

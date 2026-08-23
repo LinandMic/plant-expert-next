@@ -1215,6 +1215,7 @@ export default function Home() {
       collectHomeRuntimeDiagnostics(HOME_DEBUG_NODE_NAMES, {
         documentRef: document,
         getComputedStyleFn: (el) => window.getComputedStyle(el),
+        styleSheetsRef: document.styleSheets,
       })
     );
   }, [homeDebug, activeNav, mounted, auth.loading, !!auth.user, garden.loading, reminders.loading, weatherLoading]);
