@@ -34,7 +34,7 @@ function todayLocalDateString() {
 
 function WeatherCard({ todayWeather, weatherLoading, hint, city }) {
   return (
-    <Card className="ad-summary-card ad-summary-weather">
+    <Card className="ad-summary-card ad-summary-weather" data-home-node="weather">
       <div className="ad-summary-card-head">
         <span className="ad-summary-icon"><IconSun size={20} /></span>
         <span className="ad-summary-label">Météo</span>
@@ -129,7 +129,7 @@ function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants, ho
         )}
       </section>
 
-      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onLogin} />
+      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onLogin} homeDebug={homeDebug} />
     </>
   );
 }
@@ -156,7 +156,7 @@ function ConnectedHome({
   return (
     <>
       {homeDebug && <div className="home-debug-marker">CONNECTED HOME REACHED</div>}
-      <section className="ad-section">
+      <section className="ad-section" data-home-node="summary">
         <SectionHeader title="Résumé du jour" />
         <div className="ad-summary-grid">
           <WeatherCard todayWeather={todayWeather} weatherLoading={weatherLoading} hint={weatherHint} city={weatherCity} />
@@ -177,7 +177,7 @@ function ConnectedHome({
         </div>
       </section>
 
-      <section className="ad-section">
+      <section className="ad-section" data-home-node="garden">
         <SectionHeader title="Dans votre jardin" actionLabel={plants.length > 0 ? "Voir tout" : null} onAction={onGoJardin} />
         {gardenLoading ? (
           <Card className="ad-empty-card">
@@ -206,14 +206,17 @@ function ConnectedHome({
         )}
       </section>
 
-      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onGoJardin} />
+      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onGoJardin} homeDebug={homeDebug} />
     </>
   );
 }
 
-function QuickActionsSection({ onGoIdentifier, onGoJardin }) {
+function QuickActionsSection({ onGoIdentifier, onGoJardin, homeDebug }) {
   return (
-    <section className="ad-section">
+    <section
+      className={"ad-section" + (homeDebug ? " home-debug-outline-actions" : "")}
+      data-home-node="quick-actions"
+    >
       <SectionHeader title="Actions rapides" />
       <div className="ad-actions-grid">
         <Card onClick={onGoIdentifier} className="ad-action-card">
@@ -304,6 +307,12 @@ const DASHBOARD_STYLES = `
   .ad-action-card:first-child svg { color:var(--pe-sage-400); }
   .ad-action-card:first-child .ad-action-desc { color:rgba(255,255,255,0.72); }
   @media (max-width:480px) { .ad-action-card { padding:14px; gap:10px; } }
+
+  /* Debug-only outlines (?homeDebug=1) — outline never affects layout,
+     never forces display/visibility/opacity/height/position/z-index. */
+  .home-debug-outline-root { outline: 3px solid magenta !important; }
+  .home-debug-outline-hero { outline: 3px solid cyan !important; }
+  .home-debug-outline-actions { outline: 3px solid yellow !important; }
 `;
 
 // The new Accueil dashboard (spec §11-12 of the redesign, hardened in
@@ -333,10 +342,13 @@ export default function AccueilDashboard({
   const model = buildConnectedHomeModel({ plants: jardin, reminders, weather, today });
 
   return (
-    <div className="ad-page">
+    <div
+      className={"ad-page" + (homeDebug ? " home-debug-outline-root" : "")}
+      data-home-node={isAuthenticated ? "connected-root" : "disconnected-root"}
+    >
       <style>{DASHBOARD_STYLES}</style>
 
-      <section className="ad-hero">
+      <section className={"ad-hero" + (homeDebug ? " home-debug-outline-hero" : "")} data-home-node="hero">
         <div>
           <h1 className="ad-hero-title">
             {isAuthenticated ? (greetingName ? `Bonjour ${greetingName}` : "Bonjour") : "Bienvenue dans Plant Expert"}

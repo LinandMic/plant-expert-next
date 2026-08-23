@@ -18,7 +18,14 @@ import AppShell from "@/components/ui/AppShell";
 import HomeDebugPanel from "@/components/HomeDebugPanel";
 import HomeDashboardErrorBoundary from "@/components/HomeDashboardErrorBoundary";
 import { buildHomeDebugSnapshot } from "@/lib/homeDebugSnapshot";
+import { collectHomeRuntimeDiagnostics } from "@/lib/homeDomDiagnostics";
 import { IconHome, IconCamera, IconSprout, IconSearch, IconUser, IconInfo } from "@/components/ui/icons";
+
+// The data-home-node markers AccueilDashboard tags its real DOM elements
+// with (spec: "Add runtime home DOM diagnostics") — kept in one place so
+// the query list here can never silently drift from what's actually
+// rendered.
+const HOME_DEBUG_NODE_NAMES = ["connected-root", "disconnected-root", "hero", "weather", "summary", "garden", "quick-actions"];
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -1192,6 +1199,26 @@ export default function Home() {
     };
   }, [auth.loading, profileLoading, weatherRequestKey]);
 
+  // Temporary runtime DOM diagnostic (spec: "Add runtime home DOM
+  // diagnostics") — only ever runs client-side, only when ?homeDebug=1,
+  // and only reads geometry/computed-style facts (see
+  // lib/homeDomDiagnostics.js). Re-scans whenever the tab, auth state, or
+  // any of the Accueil dashboard's loading states change, so the panel
+  // always reflects the final settled DOM rather than a stale first pass.
+  const [domDiagnostics, setDomDiagnostics] = useState(null);
+  useEffect(() => {
+    if (!homeDebug || typeof document === "undefined") {
+      setDomDiagnostics(null);
+      return;
+    }
+    setDomDiagnostics(
+      collectHomeRuntimeDiagnostics(HOME_DEBUG_NODE_NAMES, {
+        documentRef: document,
+        getComputedStyleFn: (el) => window.getComputedStyle(el),
+      })
+    );
+  }, [homeDebug, activeNav, mounted, auth.loading, !!auth.user, garden.loading, reminders.loading, weatherLoading]);
+
   const navItems = [
     { key: "accueil", label: "Accueil", icon: IconHome, kind: "tab", placement: "main", onClick: () => setActiveNav("accueil") },
     { key: "identifier", label: "Identifier", icon: IconCamera, kind: "tab", placement: "main", emphasis: true, onClick: () => setActiveNav("identifier") },
@@ -1434,6 +1461,7 @@ export default function Home() {
             activeNav,
             pathname: router.pathname,
           })}
+          domDiagnostics={domDiagnostics}
         />
       )}
 
