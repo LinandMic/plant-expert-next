@@ -90,6 +90,7 @@ async function processPlant(plant, config) {
         accepted_usage: wcvpResult.accepted_usage,
         candidates: wcvpResult.candidates,
         lookup_strategy: wcvpResult.lookup_strategy || null,
+        requires_manual_resolution: Boolean(wcvpResult.requires_manual_resolution),
         error: wcvpResult.error,
       },
       perenual: {
@@ -156,7 +157,7 @@ async function run() {
         horticultural_identity: { cultivar: null, variety: null, hybrid: null },
         traits_scope: "full",
         providers: {
-          wcvp: { taxonomic_parent: null, not_found: false, selection_reason: "provider_error", queried_usage: null, accepted_usage: null, candidates: [], lookup_strategy: null, error: { provider: "orchestrator", message: "unexpected_failure" } },
+          wcvp: { taxonomic_parent: null, not_found: false, selection_reason: "provider_error", queried_usage: null, accepted_usage: null, candidates: [], lookup_strategy: null, requires_manual_resolution: false, error: { provider: "orchestrator", message: "unexpected_failure" } },
           perenual: { status: "provider_error", selection_reason: "provider_error", candidate_count: null, candidates: [], record: null, wcvp_match_type: "not_found", error: { provider: "orchestrator", message: "unexpected_failure" } },
           trefle: { status: "provider_error", selection_reason: "provider_error", candidate_count: null, candidates: [], record: null, provenance: null, wcvp_match_type: "not_found", error: { provider: "orchestrator", message: "unexpected_failure" } },
         },

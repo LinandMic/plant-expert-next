@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractDimensionCm, extractDimensionEntriesCm, mapPerenualDetailToTraits, isLimitedCatalogAccessTier, classifySearchResult, classifyDetailFailure } from "../src/providers/perenual.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { extractDimensionCm, extractDimensionEntriesCm, mapPerenualDetailToTraits, isLimitedCatalogAccessTier, classifySearchResult, classifyDetailFailure, queryPerenual } from "../src/providers/perenual.js";
 import { selectCandidate } from "../src/candidateSelection.js";
 
 const RETRIEVED_AT = "2026-01-01T00:00:00.000Z";
@@ -350,4 +353,83 @@ test("classifyDetailFailure: ambiguous/fuzzy candidate + 429 -> unresolved_under
 test("classifyDetailFailure: a non-plan-restricted detail error is untouched (null -> caller keeps provider_error/original selection_reason)", () => {
   assert.equal(classifyDetailFailure({ selectionReason: "exact_scientific_match", detailError: "timeout" }), null);
   assert.equal(classifyDetailFailure({ selectionReason: "parent_taxon_match", detailError: "http_error" }), null);
+});
+
+// --- queryPerenual: /species/details is only ever called for a confident
+// match (spec correction) — verified with a mocked HTTP client, zero real
+// network. Real cases this fixes: querying "Viburnum tinus" only ever
+// matched "Viburnum tinus 'Lisarose'" (parent_taxon_match); "Hosta" only
+// matched "Hosta 'Abby'"; querying a species that only matched an
+// unrelated cultivar (Goldrush/Autumn Light) — in all of these the old
+// code still fetched /species/details for that unrelated candidate.
+
+function makeFetchMock(searchData) {
+  let detailCallCount = 0;
+  const fetchImpl = async (url) => {
+    if (url.includes("/species-list")) {
+      return { ok: true, status: 200, data: { data: searchData }, url };
+    }
+    if (url.includes("/species/details/")) {
+      detailCallCount++;
+      return { ok: true, status: 200, data: { type: "tree" }, url };
+    }
+    throw new Error(`unexpected URL in test fetch mock: ${url}`);
+  };
+  return { fetchImpl, getDetailCallCount: () => detailCallCount };
+}
+
+function withTempRawRoot(fn) {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "plant-benchmark-perenual-test-"));
+  return fn(dir).finally(() => rmSync(dir, { recursive: true, force: true }));
+}
+
+test("queryPerenual: exact_scientific_match -> detail endpoint called exactly once", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Acer palmatum" }]);
+    const result = await queryPerenual({ inputName: "Acer palmatum", rawRoot, apiKey: "test-key", fetchImpl });
+    assert.equal(result.selection_reason, "exact_scientific_match");
+    assert.equal(getDetailCallCount(), 1);
+  });
+});
+
+test("queryPerenual: exact_cultivar_match -> detail endpoint called exactly once", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Hydrangea paniculata 'Bobo'" }]);
+    const result = await queryPerenual({ inputName: "Hydrangea paniculata 'Bobo'", rawRoot, apiKey: "test-key", fetchImpl });
+    assert.equal(result.selection_reason, "exact_cultivar_match");
+    assert.equal(getDetailCallCount(), 1);
+  });
+});
+
+test("queryPerenual: parent_taxon_match (real case: Viburnum tinus -> 'Lisarose') -> detail endpoint called 0 times", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Viburnum tinus 'Lisarose'" }]);
+    const result = await queryPerenual({ inputName: "Viburnum tinus", rawRoot, apiKey: "test-key", fetchImpl });
+    assert.equal(result.selection_reason, "parent_taxon_match");
+    assert.equal(getDetailCallCount(), 0);
+    assert.equal(result.error, null);
+    assert.deepEqual(result.traits, {});
+    // record reflects only search-level data, never a fabricated detail fiche.
+    assert.equal(result.record.scientific_name, "Viburnum tinus 'Lisarose'");
+  });
+});
+
+test("queryPerenual: ambiguous candidate -> detail endpoint called 0 times", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl, getDetailCallCount } = makeFetchMock([{ id: 1, scientific_name: "Quercus rubra" }]);
+    const result = await queryPerenual({ inputName: "Quercus alba", rawRoot, apiKey: "test-key", fetchImpl });
+    assert.equal(result.selection_reason, "ambiguous");
+    assert.equal(getDetailCallCount(), 0);
+    assert.equal(result.error, null);
+    assert.deepEqual(result.traits, {});
+  });
+});
+
+test("queryPerenual: skipping the detail call never fabricates an errors.json-worthy error", async () => {
+  await withTempRawRoot(async (rawRoot) => {
+    const { fetchImpl } = makeFetchMock([{ id: 1, scientific_name: "Hosta 'Abby'" }]);
+    const result = await queryPerenual({ inputName: "Hosta", rawRoot, apiKey: "test-key", fetchImpl });
+    assert.equal(result.selection_reason, "parent_taxon_match");
+    assert.equal(result.error, null);
+  });
 });

@@ -62,6 +62,35 @@ test("report #6: unresolved_under_plan is shown separately from plan_restricted 
   }
 });
 
+test("report: API quality uses neutral 'provider HTTP/error event(s)' wording and splits plan restrictions from provider/network errors", () => {
+  const normalized = [
+    mkPlant("Acer palmatum", "species", "plan_restricted"),
+    mkPlant("Betula pendula", "species", "provider_error"),
+  ];
+  const errors = [
+    { provider: "perenual", status: "error", http_status: 429, message: "plan_restricted", retrieved_at: "2026-01-01T00:00:00.000Z" },
+    { provider: "perenual", status: "error", http_status: 500, message: "http_error", retrieved_at: "2026-01-01T00:00:00.000Z" },
+  ];
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), "plant-benchmark-report-test-"));
+  const outPath = path.join(dir, "report.md");
+  try {
+    writeReportMd(normalized, errors, { hasPerenualKey: true, hasTrefleKey: true, perenualAccessTier: null }, outPath);
+    const md = readFileSync(outPath, "utf8");
+
+    // Neutral wording used; the old misleading "erreur(s) réseau/HTTP"
+    // label for the raw total is never used again.
+    assert.ok(md.includes("provider HTTP/error event(s)"));
+    assert.ok(!md.includes("erreur(s) réseau/HTTP enregistrée"));
+
+    // The 2 Perenual events are split: 1 plan restriction, 1 real error —
+    // never merged into one undifferentiated "network error" bucket.
+    assert.ok(md.includes("2 provider HTTP/error event(s) (1 erreur(s) fournisseur/réseau, 1 restriction(s) de plan)"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("report: configured access tier is surfaced verbatim in the executive summary", () => {
   const normalized = [mkPlant("Acer palmatum", "species", "exact_scientific_match")];
   const dir = mkdtempSync(path.join(os.tmpdir(), "plant-benchmark-report-test-"));

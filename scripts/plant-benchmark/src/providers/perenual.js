@@ -294,7 +294,19 @@ export function mapPerenualDetailToTraits({ candidateId, sourceUrl, detailData, 
   };
 }
 
-export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = null }) {
+// Only these selection reasons mean the search CONFIDENTLY matched the
+// actual queried target — only for these is it worth spending a detail
+// request (spec correction). A parent_taxon_match/parent_only/ambiguous/
+// fuzzy_candidate result was never proven to BE the target (real cases:
+// "Viburnum tinus" only ever matched "Viburnum tinus 'Lisarose'", "Hosta"
+// only matched "Hosta 'Abby'", "Miscanthus sinensis" only matched
+// "Miscanthus sinensis 'Autumn Light'", "Malus domestica" only matched a
+// Goldrush cultivar) — fetching ITS details answers a question that was
+// never asked, wastes a rate-limited/plan-gated request, and can spuriously
+// populate errors.json with a failure unrelated to the actual target.
+const CONFIDENT_MATCH_REASONS = new Set(["exact_scientific_match", "exact_cultivar_match"]);
+
+export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = null, fetchImpl = fetchJson }) {
   const slug = slugify(inputName);
   const retrievedAt = new Date().toISOString();
 
@@ -303,7 +315,7 @@ export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = n
   }
 
   const searchUrl = `${BASE}/species-list?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(inputName)}`;
-  const searchResult = await fetchJson(searchUrl, { providerName: "perenual" });
+  const searchResult = await fetchImpl(searchUrl, { providerName: "perenual" });
   writeRaw(rawRoot, "perenual", `${slug}.search`, { input_name: inputName, result: searchResult });
 
   if (!searchResult.ok) {
@@ -369,8 +381,27 @@ export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = n
     other_name: candidate.other_name ?? null,
   };
 
+  if (!CONFIDENT_MATCH_REASONS.has(selection_reason)) {
+    // Spec correction: never fetch /species/details for a candidate that
+    // wasn't confidently proven to be the queried target. `record` stays
+    // exactly what the search itself returned — never presented as a
+    // validated detail fiche — and `traits` stays empty since detail data
+    // was never fetched. No detail request means no possible spurious
+    // errors.json entry from this candidate either.
+    return {
+      input_name: inputName,
+      status: selection_reason,
+      selection_reason,
+      candidate_count: rawCandidates.length,
+      error: null,
+      candidates: auditedCandidates,
+      record: baseRecord,
+      traits: {},
+    };
+  }
+
   const detailUrl = `${BASE}/species/details/${candidate.id}?key=${encodeURIComponent(apiKey)}`;
-  const detailResult = await fetchJson(detailUrl, { providerName: "perenual" });
+  const detailResult = await fetchImpl(detailUrl, { providerName: "perenual" });
   writeRaw(rawRoot, "perenual", `${slug}.detail`, { input_name: inputName, result: detailResult });
 
   if (!detailResult.ok) {

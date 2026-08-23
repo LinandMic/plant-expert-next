@@ -8,6 +8,19 @@ function countBy(list) {
   return counts;
 }
 
+// Corrected wording: the recorded events in `errors[]` are not all
+// "network/HTTP errors" — a `plan_restricted` event is a legitimate,
+// deterministically-detected HTTP response (429 + upgrade-plan message),
+// never a network failure. Calling the total "erreur(s) réseau/HTTP" is
+// misleading when some of it is plan restrictions. This never changes
+// which events land in `errors[]` (unchanged, already-validated data
+// layer) — only how the report LABELS and breaks down the same total.
+function splitPlanRestrictionEvents(providerErrors) {
+  const planRestrictionEvents = providerErrors.filter((e) => e.message === "plan_restricted");
+  const providerOrNetworkEvents = providerErrors.filter((e) => e.message !== "plan_restricted");
+  return { planRestrictionEvents, providerOrNetworkEvents };
+}
+
 const MATCHED_REASONS = new Set(["exact_scientific_match", "exact_cultivar_match"]);
 
 export function writeReportMd(normalized, errors, config, outPath) {
@@ -40,6 +53,9 @@ export function writeReportMd(normalized, errors, config, outPath) {
   const perenualErrors = errors.filter((e) => e.provider === "perenual");
   const trefleErrors = errors.filter((e) => e.provider === "trefle");
   const wcvpErrors = errors.filter((e) => e.provider === "wcvp");
+  const perenualEventSplit = splitPlanRestrictionEvents(perenualErrors);
+  const trefleEventSplit = splitPlanRestrictionEvents(trefleErrors);
+  const wcvpEventSplit = splitPlanRestrictionEvents(wcvpErrors);
 
   const cultivarLines = cultivarInputs.length
     ? cultivarInputs
@@ -180,11 +196,13 @@ Aucune conclusion juridique sur l'usage commercial n'est faite ici — seules le
 
 ## API quality
 
-- **WCVP/GBIF** : ${wcvpFound}/${total} trouvées, ${wcvpErrors.length} erreur(s) réseau/HTTP enregistrée(s).
-- **Perenual** : ${config.hasPerenualKey ? `${perenualMatched}/${total} correspondance(s) confiante(s), ${perenualErrors.length} erreur(s) réseau/HTTP.` : "non testé dans cette exécution (aucune clé API fournie)."}
-- **Trefle** : ${config.hasTrefleKey ? `${trefleMatched}/${total} correspondance(s) confiante(s), ${trefleErrors.length} erreur(s) réseau/HTTP.` : "non testé dans cette exécution (aucune clé API fournie)."}
+Terminologie neutre : les événements ci-dessous (\`output/errors.json\`) sont des **provider HTTP/error events** — pas systématiquement des "erreurs réseau", puisqu'un événement \`plan_restricted\` est une réponse HTTP légitime et déterministe (429 + message d'upgrade), jamais une panne réseau. Chaque total est donc décomposé en restrictions de plan vs erreurs fournisseur/réseau proprement dites — jamais mélangées.
 
-Détail structuré de chaque échec (fournisseur, statut HTTP, message, horodatage) dans \`output/errors.json\`. Détail du choix de candidat (scores, raisons) pour chaque plante dans \`providers.*.candidates\` de \`normalized.json\`.
+- **WCVP/GBIF** : ${wcvpFound}/${total} trouvées, ${wcvpErrors.length} provider HTTP/error event(s) (${wcvpEventSplit.providerOrNetworkEvents.length} erreur(s) fournisseur/réseau${wcvpEventSplit.planRestrictionEvents.length ? `, ${wcvpEventSplit.planRestrictionEvents.length} restriction(s) de plan` : ""}).
+- **Perenual** : ${config.hasPerenualKey ? `${perenualMatched}/${total} correspondance(s) confiante(s), ${perenualErrors.length} provider HTTP/error event(s) (${perenualEventSplit.providerOrNetworkEvents.length} erreur(s) fournisseur/réseau, ${perenualEventSplit.planRestrictionEvents.length} restriction(s) de plan).` : "non testé dans cette exécution (aucune clé API fournie)."}
+- **Trefle** : ${config.hasTrefleKey ? `${trefleMatched}/${total} correspondance(s) confiante(s), ${trefleErrors.length} provider HTTP/error event(s) (${trefleEventSplit.providerOrNetworkEvents.length} erreur(s) fournisseur/réseau, ${trefleEventSplit.planRestrictionEvents.length} restriction(s) de plan).` : "non testé dans cette exécution (aucune clé API fournie)."}
+
+Détail structuré de chaque événement (fournisseur, statut HTTP, message, horodatage) dans \`output/errors.json\`. Détail du choix de candidat (scores, raisons) pour chaque plante dans \`providers.*.candidates\` de \`normalized.json\`.
 
 ## Recommendation
 

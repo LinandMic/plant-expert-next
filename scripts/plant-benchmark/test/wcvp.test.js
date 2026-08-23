@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { usageFromRaw, buildTaxonomyView, scoreWcvpResults, shouldFallbackToFullTextSearch } from "../src/providers/wcvp.js";
+import { usageFromRaw, buildTaxonomyView, scoreWcvpResults, shouldFallbackToFullTextSearch, canResolveTaxonomyFromSelection } from "../src/providers/wcvp.js";
 import { selectCandidate } from "../src/candidateSelection.js";
 import { classifyMatch, parseCultivarName } from "../src/taxonomyMatch.js";
 
@@ -170,15 +170,11 @@ test("wcvp: shouldFallbackToFullTextSearch -> true when exact lookup returns zer
   assert.equal(shouldFallbackToFullTextSearch([], { selection_reason: "not_found" }), true);
 });
 
-test("wcvp: shouldFallbackToFullTextSearch -> true when exact lookup itself is ambiguous", () => {
-  const selection = scoreWcvpResults(
-    [
-      { key: 1, canonicalName: "Foo bar", taxonomicStatus: "ACCEPTED" },
-      { key: 2, canonicalName: "Foo baz", taxonomicStatus: "ACCEPTED" },
-    ],
-    "Foo something"
-  );
-  assert.equal(shouldFallbackToFullTextSearch([{}, {}], selection), true);
+test("wcvp: shouldFallbackToFullTextSearch -> false when the exact lookup itself is ambiguous (spec correction — never launder a real ambiguity through full-text)", () => {
+  // Every candidate the exact-lookup endpoint returns is already an exact
+  // canonicalName match, so a non-empty result set is never a "nothing
+  // found" case — even when scoring calls it ambiguous.
+  assert.equal(shouldFallbackToFullTextSearch([{ key: 1, canonicalName: "Foo bar" }, { key: 2, canonicalName: "Foo bar" }]), false);
 });
 
 test("wcvp: shouldFallbackToFullTextSearch -> false when the exact lookup already produced a confident match (no redundant full-text call)", () => {
@@ -234,4 +230,43 @@ test("wcvp homonyms: a single exact match (no tie) is unaffected by the homonym 
   const selection = scoreWcvpResults([CLEMATIS_ACCEPTED], "Clematis montana");
   assert.equal(selection.selected.id, 333);
   assert.equal(selection.selection_reason, "exact_scientific_match");
+});
+
+// --- Lettered spec scenarios (ambiguous must never yield a canonical taxonomy)
+
+test("wcvp scenario A: 2 exact SYNONYM with different acceptedKey -> ambiguous, never a canonical taxonomy", () => {
+  const synonymOne = { key: 111, canonicalName: "Pennisetum alopecuroides", taxonomicStatus: "SYNONYM", acceptedKey: 222, rank: "SPECIES" };
+  const synonymTwo = { key: 999, canonicalName: "Pennisetum alopecuroides", taxonomicStatus: "SYNONYM", acceptedKey: 888, rank: "SPECIES" };
+  const selection = scoreWcvpResults([synonymOne, synonymTwo], "Pennisetum alopecuroides");
+  assert.equal(selection.selection_reason, "ambiguous");
+  assert.equal(canResolveTaxonomyFromSelection(selection.selection_reason), false);
+});
+
+test("wcvp scenario B: 1 exact SYNONYM -> selected, and eligible to resolve via acceptedKey", () => {
+  const selection = scoreWcvpResults([CLEMATIS_SYNONYM], "Clematis montana");
+  assert.equal(selection.selected.id, 111);
+  assert.equal(selection.selection_reason, "exact_scientific_match");
+  assert.equal(canResolveTaxonomyFromSelection(selection.selection_reason), true);
+});
+
+test("wcvp scenario C: 1 exact ACCEPTED + 1 exact SYNONYM -> ACCEPTED selected", () => {
+  const selection = scoreWcvpResults([CLEMATIS_SYNONYM, CLEMATIS_ACCEPTED], "Clematis montana");
+  assert.equal(selection.selected.id, 333);
+  assert.equal(selection.selected.raw.taxonomicStatus, "ACCEPTED");
+  assert.equal(selection.selection_reason, "exact_scientific_match");
+  assert.equal(canResolveTaxonomyFromSelection(selection.selection_reason), true);
+});
+
+test("wcvp scenario D: multiple exact ACCEPTED -> ambiguous, no accepted_usage ever chosen", () => {
+  const acceptedOne = { key: 333, canonicalName: "Clematis montana", taxonomicStatus: "ACCEPTED", rank: "SPECIES" };
+  const acceptedTwo = { key: 444, canonicalName: "Clematis montana", taxonomicStatus: "ACCEPTED", rank: "SPECIES" };
+  const selection = scoreWcvpResults([acceptedOne, acceptedTwo], "Clematis montana");
+  assert.equal(selection.selection_reason, "ambiguous");
+  assert.equal(canResolveTaxonomyFromSelection(selection.selection_reason), false);
+});
+
+test("canResolveTaxonomyFromSelection: every non-ambiguous reason is resolvable, ambiguous never is", () => {
+  assert.equal(canResolveTaxonomyFromSelection("exact_scientific_match"), true);
+  assert.equal(canResolveTaxonomyFromSelection("not_found"), true);
+  assert.equal(canResolveTaxonomyFromSelection("ambiguous"), false);
 });

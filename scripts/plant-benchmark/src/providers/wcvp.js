@@ -114,14 +114,31 @@ export function scoreWcvpResults(rawResults, queryName) {
   return { selected: exactTies[0], selection_reason: "ambiguous", candidates: generic.candidates };
 }
 
-// Pure — the exact lookup is only "reliable enough" when it actually
-// returned something AND that something resolved to a confident (non
-// -ambiguous) candidate. Zero results, or several equally-plausible exact
-// -name matches, both count as "not reliable" -> fall back to full-text
-// search (spec: "utiliser /species/search uniquement si l'exact lookup ne
-// permet pas une résolution fiable").
-export function shouldFallbackToFullTextSearch(exactRawResults, exactSelection) {
-  return (exactRawResults || []).length === 0 || exactSelection.selection_reason === "ambiguous";
+// Pure — the exact lookup is only worth falling back from when it found
+// NOTHING at all. Corrected: it previously also fell back whenever the
+// exact lookup itself was `ambiguous` (multiple tied exact usages) — but
+// letting full-text search pick a winner in that case turned a REAL
+// ambiguity into a run-to-run arbitrary choice (real case: querying
+// "Pennisetum alopecuroides" resolved to a different exact SYNONYM across
+// two separate runs, because each run's full-text ranking differed).
+// Every candidate the exact-lookup endpoint returns is by definition an
+// exact canonicalName match, so an `ambiguous` result from it always means
+// "multiple tied exact usages, status alone doesn't resolve them" — never
+// "no good candidates at all" — and must never be silently overridden by
+// a full-text pick. Only a truly empty exact lookup falls back (spec:
+// "ne pas passer ensuite silencieusement par le full-text fallback pour
+// choisir l'un d'eux").
+export function shouldFallbackToFullTextSearch(exactRawResults) {
+  return (exactRawResults || []).length === 0;
+}
+
+// Pure — the single gate deciding whether a selection may ever be used to
+// build a canonical taxonomy (queried_usage/accepted_usage/taxonomy). An
+// `ambiguous` selection must NEVER produce one — see queryWcvp's ambiguous
+// branch below, which returns null usages and a full audit candidate list
+// instead of guessing.
+export function canResolveTaxonomyFromSelection(selectionReason) {
+  return selectionReason !== "ambiguous";
 }
 
 // Pure — converts one raw GBIF species record into our usage shape. Never
@@ -217,11 +234,12 @@ export async function queryWcvp({ inputName, rawRoot }) {
   let selection = exactSelection;
   let lookupStrategy = "exact";
 
-  if (shouldFallbackToFullTextSearch(exactRawResults, exactSelection)) {
-    // The exact lookup found nothing, or found several equally-plausible
-    // exact-name matches — not reliable enough on its own (spec §13). Fall
-    // back to full-text search, scored through the exact same logic, never
-    // a silent `results[0]` acceptance either way.
+  if (shouldFallbackToFullTextSearch(exactRawResults)) {
+    // The exact lookup found nothing at all — worth trying full-text
+    // search, scored through the exact same logic, never a silent
+    // `results[0]` acceptance either way. (An `ambiguous` exact-lookup
+    // result, by contrast, is NEVER a fallback trigger any more — see
+    // shouldFallbackToFullTextSearch's doc comment.)
     lookupStrategy = "full_text_fallback";
     const searchUrl = buildSearchUrl(queryName);
     const searchResult = await fetchJson(searchUrl, { providerName: "wcvp" });
@@ -267,6 +285,30 @@ export async function queryWcvp({ inputName, rawRoot }) {
       taxonomy: null,
       candidates: auditedCandidates,
       lookup_strategy: lookupStrategy,
+      error: null,
+    };
+  }
+
+  if (!canResolveTaxonomyFromSelection(selection_reason)) {
+    // Spec correction: `ambiguous` must never produce a canonical
+    // taxonomy. queried_usage/accepted_usage/taxonomy all stay null —
+    // never built from `selected.raw` (which is only kept internally for
+    // audit/tie-breaking, never presented as a resolved usage). The full
+    // scored candidate list (all IDs/statuses) is preserved for audit, and
+    // `requires_manual_resolution` explicitly flags that this plant needs
+    // further intervention before its taxonomy can be trusted.
+    return {
+      input_name: inputName,
+      taxonomic_parent: parentName,
+      cultivar_name: cultivarName,
+      not_found: false,
+      selection_reason: "ambiguous",
+      queried_usage: null,
+      accepted_usage: null,
+      taxonomy: null,
+      candidates: auditedCandidates,
+      lookup_strategy: lookupStrategy,
+      requires_manual_resolution: true,
       error: null,
     };
   }
