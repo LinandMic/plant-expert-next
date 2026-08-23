@@ -1166,7 +1166,7 @@ export default function Home() {
         .header h1 em { color:var(--sage);font-style:normal; }
         .header p { color:rgba(255,255,255,0.45);font-size:12px;margin-top:3px; } .disclaimer { color:rgba(255,255,255,0.35);font-size:11px;margin-top:6px;line-height:1.4;background:rgba(255,255,255,0.08);border-radius:6px;padding:6px 10px; }
         .bottom-nav { position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid rgba(0,0,0,0.1);display:flex;z-index:100;box-shadow:0 -4px 20px rgba(0,0,0,0.08); }
-        .nav-item { flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px 12px;cursor:pointer;border:none;background:none;font-family:'Outfit',sans-serif;color:#bbb;font-size:11px;transition:color 0.2s;gap:3px;position:relative; }
+        .nav-item { flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px 12px;cursor:pointer;border:none;background:none;font-family:'Outfit',sans-serif;color:#bbb;font-size:11px;transition:color 0.2s;gap:3px;position:relative;text-decoration:none; }
         .nav-item.active { color:var(--moss); }
         .nav-icon { font-size:22px; }
         .nav-badge { background:var(--moss);color:white;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:600;position:absolute;top:6px;right:calc(50% - 22px); }
@@ -1418,6 +1418,9 @@ export default function Home() {
           <span className="nav-icon">🌳</span>Mon Jardin
           {garden.jardin.length > 0 && <span className="nav-badge">{garden.jardin.length}</span>}
         </button>
+        <a href="/plant-finder" className="nav-item">
+          <span className="nav-icon">🔎</span>Trouver une plante
+        </a>
       </nav>
     </div>
   );

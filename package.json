@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --test lib/*.test.js",
     "plant:benchmark": "node scripts/plant-benchmark/src/index.js",
     "plant:benchmark:test": "node --test scripts/plant-benchmark/test/*.test.js",
     "plant:ingestion:dry-run": "node scripts/plant-ingestion/src/index.js",
