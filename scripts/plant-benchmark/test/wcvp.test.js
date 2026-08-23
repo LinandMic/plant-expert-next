@@ -1,8 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { usageFromRaw, buildTaxonomyView } from "../src/providers/wcvp.js";
+import { usageFromRaw, buildTaxonomyView, scoreWcvpResults, shouldFallbackToFullTextSearch } from "../src/providers/wcvp.js";
 import { selectCandidate } from "../src/candidateSelection.js";
 import { classifyMatch, parseCultivarName } from "../src/taxonomyMatch.js";
+
+// Real GBIF exact-lookup fixture, verified live:
+// GET https://api.gbif.org/v1/species?datasetKey=<WCVP>&name=Rosmarinus%20officinalis
+// -> HTTP 200, 1 result, a SYNONYM with an acceptedKey. These are public
+// GBIF/WCVP taxon identifiers, not secrets.
+const REAL_ROSMARINUS_SYNONYM_FIXTURE = {
+  key: 207219419,
+  canonicalName: "Rosmarinus officinalis",
+  scientificName: "Rosmarinus officinalis L.",
+  taxonomicStatus: "SYNONYM",
+  acceptedKey: 207219357,
+  rank: "SPECIES",
+};
 
 test("wcvp #13: accepted usage resolved directly when the queried record is already ACCEPTED", () => {
   const raw = {
@@ -116,4 +129,59 @@ test("wcvp #16: a cultivar is never treated as an independent WCVP taxon — alw
   // it must never be reported as an exact match against a taxon WCVP never
   // actually resolved.
   assert.notEqual(cultivarLevelResult, "exact_accepted_match");
+});
+
+// --- Corrections after real-API testing: exact lookup is now primary ----
+
+test("wcvp: real Rosmarinus officinalis exact-lookup fixture scores as a confident (non-ambiguous) exact match", () => {
+  const selection = scoreWcvpResults([REAL_ROSMARINUS_SYNONYM_FIXTURE], "Rosmarinus officinalis");
+  assert.ok(selection.selected);
+  assert.equal(selection.selected.id, 207219419);
+  assert.equal(selection.selection_reason, "exact_scientific_match");
+  assert.notEqual(selection.selection_reason, "ambiguous");
+});
+
+test("wcvp: real Rosmarinus officinalis fixture is recognized as SYNONYM with a followable acceptedKey", () => {
+  const queriedUsage = usageFromRaw(REAL_ROSMARINUS_SYNONYM_FIXTURE);
+  assert.equal(queriedUsage.taxonomic_status, "SYNONYM");
+  assert.equal(queriedUsage.taxon_id, "207219419");
+  assert.equal(REAL_ROSMARINUS_SYNONYM_FIXTURE.acceptedKey, 207219357);
+
+  // queried_usage and accepted_usage stay distinct objects even once the
+  // accepted record is resolved (fabricated here as the accepted fixture
+  // would look, mirroring what a second GBIF call would return).
+  const acceptedUsage = usageFromRaw({
+    key: 207219357,
+    canonicalName: "Rosmarinus officinalis",
+    taxonomicStatus: "ACCEPTED",
+    rank: "SPECIES",
+    family: "Lamiaceae",
+    genus: "Rosmarinus",
+    species: "Rosmarinus officinalis",
+  });
+  assert.notEqual(queriedUsage.taxon_id, acceptedUsage.taxon_id);
+  const view = buildTaxonomyView({ queriedUsage, acceptedUsage, synonyms: [] });
+  assert.equal(view.taxonomic_status, "ACCEPTED");
+  assert.equal(view.source_taxon_id, "207219419");
+  assert.equal(view.accepted_taxon_id, "207219357");
+});
+
+test("wcvp: shouldFallbackToFullTextSearch -> true when exact lookup returns zero results", () => {
+  assert.equal(shouldFallbackToFullTextSearch([], { selection_reason: "not_found" }), true);
+});
+
+test("wcvp: shouldFallbackToFullTextSearch -> true when exact lookup itself is ambiguous", () => {
+  const selection = scoreWcvpResults(
+    [
+      { key: 1, canonicalName: "Foo bar", taxonomicStatus: "ACCEPTED" },
+      { key: 2, canonicalName: "Foo baz", taxonomicStatus: "ACCEPTED" },
+    ],
+    "Foo something"
+  );
+  assert.equal(shouldFallbackToFullTextSearch([{}, {}], selection), true);
+});
+
+test("wcvp: shouldFallbackToFullTextSearch -> false when the exact lookup already produced a confident match (no redundant full-text call)", () => {
+  const selection = scoreWcvpResults([REAL_ROSMARINUS_SYNONYM_FIXTURE], "Rosmarinus officinalis");
+  assert.equal(shouldFallbackToFullTextSearch([REAL_ROSMARINUS_SYNONYM_FIXTURE], selection), false);
 });

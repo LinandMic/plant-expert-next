@@ -17,18 +17,29 @@
 //  - candidate selection goes through the same shared, documented,
 //    non-`candidates[0]` logic as the other providers (spec §11/§12).
 //
+// FURTHER CORRECTIONS applied after testing the REAL API from a normal
+// network environment (a real `species/{id}` response for Acer palmatum):
+//  - `specifications.maximum_height`/`average_height` are objects with a
+//    `.cm` sub-field (`{ cm: null }`), never a bare number — reading the
+//    object itself as the raw value was a bug; `.cm` is now read
+//    explicitly and a `null` `.cm` is never turned into `0`.
+//    `specifications.average_height.cm` is now also mapped, to its own
+//    `height_avg_cm` trait (neither a min nor a max, so it is never forced
+//    into `height_min_cm`/`height_max_cm`).
+//  - `growth_rate` actually lives at `specifications.growth_rate`, not
+//    `growth.growth_rate` — the specifications path is now primary;
+//    `growth.growth_rate` is kept only as an explicitly documented
+//    fallback for an older/unconfirmed shape, used ONLY when
+//    `specifications.growth_rate` is itself absent, never overwriting it.
+//  - `growth.light` is a numeric 0-10 scale, not a sun-exposure category —
+//    it is kept under its own unambiguous name (`light_0_10`) and never
+//    auto-translated into "full sun"/"part shade"/"shade"; it no longer
+//    feeds the `sun` trait until a validated crosswalk exists.
+//
 // The trait-mapping logic is a pure function (`mapTrefleDetailToTraits`)
 // deliberately separated from the network call, so it can be unit tested
 // with small fixture objects — see
 // scripts/plant-benchmark/test/trefle.test.js.
-//
-// IMPORTANT CAVEAT (read before trusting results): outbound network access
-// to trefle.io is blocked by this environment's egress policy (verified
-// directly — see README "Limites connues de l'exécution"). Field paths
-// below reflect the last publicly documented Trefle response shape, NOT a
-// live response inspected during this implementation. Re-validate against
-// `raw/trefle/*.detail.json` from a real run before trusting any coverage
-// numbers.
 
 import { fetchJson } from "../httpClient.js";
 import { writeRaw, slugify } from "../cache.js";
@@ -83,12 +94,18 @@ export function mapTrefleDetailToTraits({ candidateId, sourceUrl, detailData, re
   const growthMinHeightCm = growth.minimum_height && typeof growth.minimum_height.cm === "number" ? growth.minimum_height.cm : null;
   add("height_min_cm", "growth.minimum_height", growth.minimum_height && growth.minimum_height.cm, growthMinHeightCm, "cm");
 
-  if (specifications.maximum_height !== undefined && specifications.maximum_height !== null) {
-    // specifications.maximum_height's unit is not reliably documented as
-    // always-cm — convert only if it already looks like a plain number in
-    // cm per Trefle's spec pages; otherwise keep raw with normalized=null
-    // rather than assume a unit that was never confirmed live.
-    add("height_max_cm", "specifications.maximum_height", specifications.maximum_height, null, null);
+  // Corrected: specifications.maximum_height/average_height are objects
+  // with a `.cm` sub-field (verified live: `{ cm: null }`), never a bare
+  // number — read `.cm` explicitly, and only add an observation when it is
+  // genuinely a number (a `null` `.cm` is never turned into `0`, and never
+  // silently added as a fabricated "empty" observation either).
+  if (specifications.maximum_height && typeof specifications.maximum_height.cm === "number") {
+    add("height_max_cm", "specifications.maximum_height", specifications.maximum_height.cm, specifications.maximum_height.cm, "cm");
+  }
+  if (specifications.average_height && typeof specifications.average_height.cm === "number") {
+    // Neither a min nor a max — its own trait, never forced into
+    // height_min_cm/height_max_cm.
+    add("height_avg_cm", "specifications.average_height", specifications.average_height.cm, specifications.average_height.cm, "cm");
   }
 
   if (growth.spread && typeof growth.spread.cm === "number") {
@@ -96,7 +113,13 @@ export function mapTrefleDetailToTraits({ candidateId, sourceUrl, detailData, re
   }
 
   add("growth_form", "specifications.growth_form", specifications.growth_form, specifications.growth_form);
-  add("sun", "growth.light", growth.light, growth.light);
+
+  // Corrected: growth.light is a numeric 0-10 scale (verified live:
+  // `growth.light = 7`), NOT a sun-exposure category — never auto-convert
+  // it to "full sun"/"part shade"/"shade". Kept under its own unambiguous
+  // name; it does not feed `sun` until a validated crosswalk exists (it
+  // may surface under extra_discovered_traits instead).
+  add("light_0_10", "growth.light", growth.light, growth.light);
 
   // --- Spec §6: soil_moisture <- growth.soil_humidity ONLY. Never
   // atmospheric_humidity. atmospheric_humidity kept as its own distinct
@@ -120,7 +143,17 @@ export function mapTrefleDetailToTraits({ candidateId, sourceUrl, detailData, re
   add("maximum_precipitation_mm_year", "growth.maximum_precipitation", growth.maximum_precipitation && growth.maximum_precipitation.mm, maxPrecipMm, "mm");
   // water_need intentionally never populated from Trefle data.
 
-  add("growth_rate", "growth.growth_rate", growth.growth_rate, growth.growth_rate);
+  // Corrected: growth_rate actually lives at specifications.growth_rate
+  // (verified live), not growth.growth_rate. specifications is now the
+  // primary source; growth.growth_rate is an explicitly documented
+  // fallback for an older/unconfirmed shape, used ONLY when
+  // specifications.growth_rate is itself absent — it never overwrites or
+  // duplicates the specifications-path value.
+  if (specifications.growth_rate !== undefined && specifications.growth_rate !== null) {
+    add("growth_rate", "specifications.growth_rate", specifications.growth_rate, specifications.growth_rate);
+  } else if (growth.growth_rate !== undefined && growth.growth_rate !== null) {
+    add("growth_rate", "growth.growth_rate", growth.growth_rate, growth.growth_rate);
+  }
   add("drought_tolerance", "growth.drought_tolerance", growth.drought_tolerance, growth.drought_tolerance);
   add("flowering_months", "growth.bloom_months", growth.bloom_months, null, null);
   add("evergreen", "foliage.leaf_retention", foliage.leaf_retention, foliage.leaf_retention);

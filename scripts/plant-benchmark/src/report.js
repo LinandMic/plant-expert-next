@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { computeCoverage, computeExtraDiscoveredTraitCoverage, computeRecordCoverage, computeExactCultivarCoverage, BENCHMARK_TRAITS } from "./coverage.js";
+import { computeCoverage, computeExtraDiscoveredTraitCoverage, computeRecordCoverage, computeExactCultivarCoverage, computePlanRestrictedCount, computeUnresolvedUnderPlanCount, BENCHMARK_TRAITS } from "./coverage.js";
 import { computeContradictions } from "./contradictionsCsv.js";
 
 function countBy(list) {
@@ -19,6 +19,10 @@ export function writeReportMd(normalized, errors, config, outPath) {
   const trefleParentOnly = normalized.filter((p) => p.providers.trefle.selection_reason === "parent_only").length;
   const perenualAmbiguous = normalized.filter((p) => p.providers.perenual.selection_reason === "ambiguous").length;
   const trefleAmbiguous = normalized.filter((p) => p.providers.trefle.selection_reason === "ambiguous").length;
+  const perenualPlanRestricted = computePlanRestrictedCount(normalized, "perenual");
+  const treflePlanRestricted = computePlanRestrictedCount(normalized, "trefle");
+  const perenualUnresolvedUnderPlan = computeUnresolvedUnderPlanCount(normalized, "perenual");
+  const trefleUnresolvedUnderPlan = computeUnresolvedUnderPlanCount(normalized, "trefle");
 
   const cultivarInputs = normalized.filter((p) => p.horticultural_identity.cultivar);
   const wcvpMatchTypes = normalized.flatMap((p) => [p.providers.perenual.wcvp_match_type, p.providers.trefle.wcvp_match_type].filter(Boolean));
@@ -88,13 +92,16 @@ Généré le ${new Date().toISOString()}.
 
 - Plantes testées : ${total}
 - Trouvées par WCVP : ${wcvpFound}/${total}
-- Perenual — correspondance confiante (\`exact_scientific_match\`/\`exact_cultivar_match\`) : ${perenualMatched}/${total}${config.hasPerenualKey ? "" : " (clé API absente)"} · parent seul (\`parent_only\`) : ${perenualParentOnly} · ambigu : ${perenualAmbiguous}
-- Trefle — correspondance confiante : ${trefleMatched}/${total}${config.hasTrefleKey ? "" : " (clé API absente)"} · parent seul (\`parent_only\`) : ${trefleParentOnly} · ambigu : ${trefleAmbiguous}
+- Perenual — correspondance confiante (\`exact_scientific_match\`/\`exact_cultivar_match\`) : ${perenualMatched}/${total}${config.hasPerenualKey ? "" : " (clé API absente)"} · parent seul (\`parent_only\`) : ${perenualParentOnly} · ambigu : ${perenualAmbiguous} · restriction de plan (\`plan_restricted\`) : ${perenualPlanRestricted} · non résolu sous le plan (\`unresolved_under_plan\`) : ${perenualUnresolvedUnderPlan}
+- Trefle — correspondance confiante : ${trefleMatched}/${total}${config.hasTrefleKey ? "" : " (clé API absente)"} · parent seul (\`parent_only\`) : ${trefleParentOnly} · ambigu : ${trefleAmbiguous} · restriction de plan (\`plan_restricted\`) : ${treflePlanRestricted} · non résolu sous le plan (\`unresolved_under_plan\`) : ${trefleUnresolvedUnderPlan}
+- Perenual — niveau d'accès configuré (\`PERENUAL_ACCESS_TIER\`) : ${config.perenualAccessTier || "non défini (aucune reclassification unresolved_under_plan n'est jamais appliquée dans ce cas)"}
 - Cultivars dans le panel : ${cultivarInputs.length}
 - Correspondances classées \`synonym_match\` (nom fournisseur vs WCVP) : ${synonymCount}
 - Contradictions numériques significatives détectées : ${contradictionRows.length}
 
-**Rappel important** : un \`parent_only\` n'est jamais compté comme "cultivar trouvé", un \`ambiguous\` n'est jamais compté comme donnée fiable, une erreur réseau (\`provider_error\`) n'est jamais comptée comme "trait absent chez le fournisseur" — ces trois états sont distincts partout dans ce rapport et dans \`coverage.csv\`/\`taxonomy.csv\` (spec §22/§23).
+**Rappel important** : un \`parent_only\` n'est jamais compté comme "cultivar trouvé", un \`ambiguous\` n'est jamais compté comme donnée fiable, une erreur réseau (\`provider_error\`) n'est jamais comptée comme "trait absent chez le fournisseur" — ces états sont distincts partout dans ce rapport et dans \`coverage.csv\`/\`taxonomy.csv\` (spec §22/§23). **\`plan_restricted\`** (Perenual HTTP 429 + message d'upgrade d'abonnement, détecté de façon déterministe — voir \`httpClient.js\`) n'est ni un \`not_found\`, ni un \`provider_error\`, ni un "trait manquant chez le fournisseur" : c'est une restriction du plan Personal, exclue du dénominateur de couverture (comme \`skipped_no_key\`/\`provider_error\`/\`not_found\`/\`ambiguous\`) — la couverture mesurée sous ce plan est donc potentiellement une **borne basse**, jamais une preuve d'absence de donnée botanique.
+
+**\`plan_restricted\` vs \`unresolved_under_plan\` — distinction obligatoire, jamais confondue** : \`plan_restricted\` signifie qu'une restriction d'abonnement a été explicitement démontrée par la réponse du fournisseur (HTTP 429 + message d'upgrade sur une fiche précise). \`unresolved_under_plan\` signifie qu'une recherche Perenual n'a renvoyé aucun résultat (HTTP 200, \`data: []\`) alors que le niveau d'accès configuré (\`PERENUAL_ACCESS_TIER=personal\`) est documenté par Perenual comme limité à un sous-ensemble du catalogue ("Species Data 1-3000") — l'absence réelle de la plante n'est PAS démontrable dans ce cas : elle peut être réellement absente, ou simplement invisible à ce niveau d'accès. \`unresolved_under_plan\` n'est jamais compté comme plante trouvée, jamais comme absence botanique certaine, et jamais comme trait manquant chez le fournisseur — comme \`plan_restricted\`, il est exclu du dénominateur de couverture conditionnelle des traits.
 
 ## Taxonomy
 

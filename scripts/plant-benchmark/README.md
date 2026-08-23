@@ -23,8 +23,9 @@ couvert par la règle `.env*` du `.gitignore` racine du projet).
 ## 2. Variables nécessaires
 
 ```
-PERENUAL_API_KEY=   # optionnel — obtenir une clé sur perenual.com
-TREFLE_API_KEY=     # optionnel — obtenir un token sur trefle.io
+PERENUAL_API_KEY=      # optionnel — obtenir une clé sur perenual.com
+TREFLE_API_KEY=        # optionnel — obtenir un token sur trefle.io
+PERENUAL_ACCESS_TIER=  # optionnel — voir section "Limite méthodologique du plan Personal" ci-dessous
 ```
 
 WCVP (via l'API publique GBIF) ne nécessite aucune clé.
@@ -32,6 +33,46 @@ WCVP (via l'API publique GBIF) ne nécessite aucune clé.
 Si une clé est absente, le fournisseur correspondant est explicitement
 marqué `skipped_no_key` pour chaque plante — le benchmark continue
 normalement pour WCVP et pour l'autre fournisseur horticole.
+
+## Limite méthodologique du plan Personal (Perenual)
+
+Testé en réel : sous une clé Perenual du plan **Personal**, une recherche
+peut renvoyer `HTTP 200` avec `data: []` pour une plante qui existe
+pourtant réellement dans la base Perenual — le plan Personal documente un
+accès limité à un sous-ensemble du catalogue ("Species Data 1-3000"). Sous
+ce plan, un résultat de recherche vide **ne prouve donc pas** l'absence de
+la plante : elle peut être réellement absente, ou simplement invisible au
+niveau d'accès actuel.
+
+Pour éviter de présenter cette incertitude comme un `not_found`
+scientifiquement établi, le benchmark accepte une variable de
+configuration **non secrète** :
+
+```
+PERENUAL_ACCESS_TIER=personal   # ou premium, supreme — voir .env.benchmark.example
+```
+
+- Si `PERENUAL_ACCESS_TIER=personal` : une recherche Perenual vide (`data:
+  []`) est classée `unresolved_under_plan`, jamais `not_found`.
+- Si la valeur est `premium`/`supreme`, absente, ou inconnue : le
+  comportement reste inchangé — une recherche vide reste `not_found`. Le
+  benchmark ne fabrique **jamais** `unresolved_under_plan` sans que ce
+  niveau d'accès limité soit explicitement configuré (voir
+  `isLimitedCatalogAccessTier` dans `src/providers/perenual.js`).
+
+**`unresolved_under_plan` vs `plan_restricted` — ne jamais confondre** :
+
+| État | Preuve requise | Signification |
+|---|---|---|
+| `plan_restricted` | `HTTP 429` + message d'upgrade d'abonnement explicitement présent dans la réponse | Restriction démontrée sur UNE fiche précise |
+| `unresolved_under_plan` | `HTTP 200` + `data: []` sous un plan documenté comme limité en catalogue | Absence non démontrable — la plante peut exister ou non |
+
+Les deux états sont exclus du dénominateur de couverture conditionnelle
+des traits, jamais comptés comme "plante trouvée", jamais comme "absence
+botanique certaine", et toujours rapportés séparément dans
+`report.md`/`taxonomy.csv`/`coverage.csv` — la couverture Perenual mesurée
+sous le plan Personal doit donc être lue comme une **borne basse**, pas
+comme une mesure complète.
 
 ## 3. Comment lancer
 

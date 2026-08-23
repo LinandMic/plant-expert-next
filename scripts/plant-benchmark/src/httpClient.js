@@ -12,6 +12,20 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Perenual observed live: a Personal-plan key hitting a plan-gated endpoint
+// (e.g. species/details) returns HTTP 429 with a body like "Please Upgrade
+// Plan – https://www.perenual.com/subscription-api-pricing. Sorry" — this
+// is a SUBSCRIPTION restriction, not a transient rate limit, and must never
+// be treated as either. Detection is deterministic content-matching only:
+// a generic 429 (plain "too many requests", no upgrade-plan wording) must
+// NOT be classified as plan_restricted — it stays a normal rate limit.
+const PLAN_RESTRICTED_BODY_MARKERS = [/please\s*upgrade\s*plan/i, /subscription-api-pricing/i];
+
+export function isPlanRestrictedBody(body) {
+  if (!body || typeof body !== "string") return false;
+  return PLAN_RESTRICTED_BODY_MARKERS.some((re) => re.test(body));
+}
+
 // Strips anything that looks like a credential from a URL before it is ever
 // logged or written to an output/raw file.
 function redactUrl(url) {
@@ -71,7 +85,33 @@ export async function fetchJson(url, options = {}) {
       const elapsedMs = Date.now() - startedAt;
       lastStatus = response.status;
 
-      if (response.status === 429 || response.status >= 500) {
+      if (response.status === 429) {
+        let body = null;
+        try { body = await response.text(); } catch { /* ignore */ }
+
+        if (isPlanRestrictedBody(body)) {
+          // A subscription restriction, not a transient rate limit — never
+          // retried (retrying cannot change a plan restriction), and never
+          // conflated with a generic rate-limit/provider_error below.
+          console.error(`[${providerName}] GET ${safeUrl} -> 429 plan_restricted (${elapsedMs}ms)`);
+          return { ok: false, status: 429, error: "plan_restricted", body, url: safeUrl };
+        }
+
+        console.error(`[${providerName}] GET ${safeUrl} -> 429 (${elapsedMs}ms) attempt ${attempt}/${maxAttempts}`);
+        if (attempt < maxAttempts) {
+          const retryAfterHeader = response.headers.get("retry-after");
+          const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : null;
+          const backoff = Math.min(
+            Number.isFinite(retryAfterMs) ? retryAfterMs : DEFAULT_RETRY_BASE_MS * 2 ** (attempt - 1),
+            DEFAULT_MAX_RETRY_WAIT_MS
+          );
+          await wait(backoff);
+          continue;
+        }
+        return { ok: false, status: 429, error: "rate_limited", body, url: safeUrl };
+      }
+
+      if (response.status >= 500) {
         console.error(`[${providerName}] GET ${safeUrl} -> ${response.status} (${elapsedMs}ms) attempt ${attempt}/${maxAttempts}`);
         if (attempt < maxAttempts) {
           const retryAfterHeader = response.headers.get("retry-after");

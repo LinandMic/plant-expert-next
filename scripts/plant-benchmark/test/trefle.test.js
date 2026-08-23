@@ -82,12 +82,16 @@ test("trefle #10: additional documented structured fields are mapped (ph, temper
 });
 
 test("trefle #11: height from growth.* and specifications.* kept as separate observations, never collapsed", () => {
+  // specifications.maximum_height is `{ cm: <number|null> }`, verified live
+  // — not a bare number (corrected from this benchmark's earlier
+  // assumption; see the dedicated specifications.maximum_height.cm tests
+  // below for the null-handling regression guard).
   const { traits } = mapTrefleDetailToTraits({
     candidateId: 1,
     sourceUrl: "https://example.test/1",
     detailData: {
       growth: { maximum_height: { cm: 250 } },
-      specifications: { maximum_height: 300 },
+      specifications: { maximum_height: { cm: 300 } },
     },
     retrievedAt: RETRIEVED_AT,
   });
@@ -98,9 +102,7 @@ test("trefle #11: height from growth.* and specifications.* kept as separate obs
   assert.equal(growthObs.normalized_value, 250);
   const specObs = traits.height_max_cm.observations.find((o) => o.field_path === "specifications.maximum_height");
   assert.equal(specObs.raw_value, 300);
-  // specifications.maximum_height's unit was never confirmed live — it must
-  // never be silently assumed to already be centimeters.
-  assert.equal(specObs.normalized_value, null);
+  assert.equal(specObs.normalized_value, 300);
 });
 
 test("trefle #12: provenance is record-scope only — never attributed to sources[0] per trait", () => {
@@ -120,4 +122,123 @@ test("trefle #12: provenance is record-scope only — never attributed to source
   // observation carries a license/attribution inferred from sources[0].
   assert.equal(traits.soil_moisture.observations[0].license, null);
   assert.equal(traits.soil_moisture.observations[0].attribution, null);
+});
+
+// --- Corrections after real-API testing ---------------------------------
+
+// Real `/species/{id}` fixture excerpt, verified live for Acer palmatum.
+const REAL_TREFLE_FIXTURE = {
+  specifications: { maximum_height: { cm: null }, average_height: { cm: null }, growth_rate: null },
+  growth: {
+    spread: { cm: null },
+    minimum_temperature: { deg_f: null, deg_c: null },
+    maximum_temperature: { deg_f: null, deg_c: null },
+    minimum_precipitation: { mm: null },
+    maximum_precipitation: { mm: null },
+    soil_humidity: null,
+    soil_texture: null,
+    light: 7,
+  },
+  foliage: { leaf_retention: null },
+  sources: [{ name: "s1" }, { name: "s2" }, { name: "s3" }, { name: "s4" }, { name: "s5" }],
+};
+
+test("trefle: specifications.maximum_height.cm is read explicitly, not the object itself as a raw value", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { specifications: { maximum_height: { cm: 609.6 } } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(traits.height_max_cm.observations[0].raw_value, 609.6);
+  assert.equal(traits.height_max_cm.observations[0].normalized_value, 609.6);
+  assert.equal(traits.height_max_cm.observations[0].field_path, "specifications.maximum_height");
+});
+
+test("trefle: specifications.maximum_height = {cm: null} -> never turned into 0, no fabricated observation", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { specifications: { maximum_height: { cm: null } } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(traits.height_max_cm, undefined);
+});
+
+test("trefle: specifications.average_height.cm maps to its own height_avg_cm trait (neither min nor max)", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { specifications: { average_height: { cm: 450 } } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(traits.height_avg_cm.observations[0].normalized_value, 450);
+  assert.equal(traits.height_min_cm, undefined);
+  assert.equal(traits.height_max_cm, undefined);
+});
+
+test("trefle: growth_rate reads specifications.growth_rate (real path), not growth.growth_rate", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { specifications: { growth_rate: "Moderate" }, growth: { growth_rate: "Low" } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(traits.growth_rate.observations[0].raw_value, "Moderate");
+  assert.equal(traits.growth_rate.observations[0].field_path, "specifications.growth_rate");
+  assert.equal(traits.growth_rate.observations.length, 1);
+});
+
+test("trefle: growth.growth_rate is only a fallback used when specifications.growth_rate is absent, never overwriting it", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { growth: { growth_rate: "Low" } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(traits.growth_rate.observations[0].raw_value, "Low");
+  assert.equal(traits.growth_rate.observations[0].field_path, "growth.growth_rate");
+});
+
+test("trefle: growth.light=7 is kept as light_0_10 verbatim, never converted to a sun-exposure category", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { growth: { light: 7 } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(traits.light_0_10.observations[0].raw_value, 7);
+  assert.equal(traits.light_0_10.observations[0].normalized_value, 7);
+  // Regression guard for the bug this revision fixes: light must never
+  // populate the canonical `sun` trait.
+  assert.equal(traits.sun, undefined);
+});
+
+test("trefle: real fixture (Acer palmatum species/{id} shape) — all nested nulls stay null, nothing fabricated", () => {
+  const { traits, provenance } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: REAL_TREFLE_FIXTURE,
+    retrievedAt: RETRIEVED_AT,
+  });
+
+  // Every nested {x: null} field produces no fabricated observation.
+  assert.equal(traits.height_max_cm, undefined);
+  assert.equal(traits.height_avg_cm, undefined);
+  assert.equal(traits.spread_max_cm, undefined);
+  assert.equal(traits.min_temperature_c, undefined);
+  assert.equal(traits.max_temperature_c, undefined);
+  assert.equal(traits.minimum_precipitation_mm_year, undefined);
+  assert.equal(traits.maximum_precipitation_mm_year, undefined);
+  assert.equal(traits.soil_moisture, undefined);
+  assert.equal(traits.soil_texture, undefined);
+  assert.equal(traits.growth_rate, undefined);
+  assert.equal(traits.evergreen, undefined);
+
+  // The one genuinely present value (light=7) is kept verbatim.
+  assert.equal(traits.light_0_10.observations[0].raw_value, 7);
+
+  // sources count: 5 — kept at record scope, never split per trait.
+  assert.equal(provenance.record_sources.length, 5);
+  assert.equal(provenance.source_scope, "record");
 });

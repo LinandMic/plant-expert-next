@@ -31,8 +31,11 @@ export function writeTaxonomyCsv(normalized, outPath) {
     if (wcvp.not_found) notes.push("wcvp: not found");
     if (wcvp.error) notes.push(`wcvp: ${wcvp.error.message}`);
     if (plant.providers.perenual.status === "skipped_no_key") notes.push("perenual: no API key");
+    if (plant.providers.perenual.selection_reason === "plan_restricted") notes.push("perenual: plan restricted (subscription upgrade required, not a botanical not_found)");
+    if (plant.providers.perenual.selection_reason === "unresolved_under_plan") notes.push("perenual: unresolved under configured access tier (empty search under a documented limited-catalog plan — absence not established)");
     if (plant.providers.perenual.error) notes.push(`perenual: ${plant.providers.perenual.error.message}`);
     if (plant.providers.trefle.status === "skipped_no_key") notes.push("trefle: no API key");
+    if (plant.providers.trefle.selection_reason === "plan_restricted") notes.push("trefle: plan restricted (subscription upgrade required, not a botanical not_found)");
     if (plant.providers.trefle.error) notes.push(`trefle: ${plant.providers.trefle.error.message}`);
     if (plant.traits_scope === "parent_only") notes.push("traits scoped to the parent species, not the cultivar");
 

@@ -5,6 +5,8 @@ import {
   computeExtraDiscoveredTraitCoverage,
   computeRecordCoverage,
   computeExactCultivarCoverage,
+  computePlanRestrictedCount,
+  computeUnresolvedUnderPlanCount,
   eligibleCount,
   discoverTraitNames,
   BENCHMARK_TRAITS,
@@ -126,4 +128,35 @@ test("computeExtraDiscoveredTraitCoverage: a genuinely discovered non-canonical 
 
   // BENCHMARK_TRAITS itself must be untouched by discovering an extra trait.
   assert.ok(!BENCHMARK_TRAITS.includes("atmospheric_humidity"));
+});
+
+// --- unresolved_under_plan ------------------------------------------------
+
+test("computeUnresolvedUnderPlanCount / computePlanRestrictedCount: distinct counts, never conflated", () => {
+  const normalized = [
+    plant({ inputType: "species", provider: "perenual", reason: "unresolved_under_plan" }),
+    plant({ inputType: "species", provider: "perenual", reason: "unresolved_under_plan" }),
+    plant({ inputType: "species", provider: "perenual", reason: "plan_restricted" }),
+    plant({ inputType: "species", provider: "perenual", reason: "not_found" }),
+  ];
+  assert.equal(computeUnresolvedUnderPlanCount(normalized, "perenual"), 2);
+  assert.equal(computePlanRestrictedCount(normalized, "perenual"), 1);
+});
+
+test("unresolved_under_plan #5: excluded from eligibleCount / record coverage / conditional trait coverage denominators", () => {
+  const normalized = [
+    plant({ inputType: "species", provider: "perenual", reason: "exact_scientific_match", traitValue: 100 }),
+    plant({ inputType: "species", provider: "perenual", reason: "unresolved_under_plan" }),
+    plant({ inputType: "species", provider: "perenual", reason: "unresolved_under_plan" }),
+  ];
+  // Only the one exact_scientific_match plant is eligible — the two
+  // unresolved_under_plan plants never inflate or deflate the denominator.
+  assert.equal(eligibleCount(normalized, "perenual"), 1);
+  const record = computeRecordCoverage(normalized, "perenual");
+  assert.deepEqual(record, { found: 1, total: 3, percent: 33.3 });
+
+  const rows = computeCoverage(normalized);
+  const row = rows.find((r) => r.trait === "height_max_cm");
+  assert.equal(row.perenual_conditional_total, 1);
+  assert.equal(row.perenual_conditional_percent, 100);
 });

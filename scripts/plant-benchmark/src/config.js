@@ -38,11 +38,21 @@ function readKey(name) {
 export function getConfig() {
   const perenualApiKey = readKey("PERENUAL_API_KEY");
   const trefleApiKey = readKey("TREFLE_API_KEY");
+  // Not a secret — documents which Perenual subscription tier the
+  // configured key belongs to, so the benchmark can tell a genuinely empty
+  // catalog search apart from a search that's merely invisible under a
+  // restricted-catalog plan (see providers/perenual.js's
+  // `unresolved_under_plan` handling). Left `null` (unknown) unless the
+  // operator explicitly sets it — an unknown tier never triggers that
+  // reclassification, it only ever affects Perenual `not_found` results.
+  const perenualAccessTierRaw = readKey("PERENUAL_ACCESS_TIER");
+  const perenualAccessTier = perenualAccessTierRaw ? perenualAccessTierRaw.toLowerCase() : null;
   return {
     benchmarkRoot: BENCHMARK_ROOT,
     perenualApiKey,
     trefleApiKey,
     hasPerenualKey: Boolean(perenualApiKey),
     hasTrefleKey: Boolean(trefleApiKey),
+    perenualAccessTier,
   };
 }

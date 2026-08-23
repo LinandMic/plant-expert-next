@@ -107,6 +107,25 @@ export function computeRecordCoverage(normalized, provider) {
   return { found, total, percent: percent(found, total) };
 }
 
+// A Perenual Personal-plan key can hit a plan-gated endpoint and get an
+// HTTP 429 "upgrade plan" response (see httpClient.js's `plan_restricted`
+// detection) — this is a subscription restriction, never evidence that the
+// plant is unknown or that a trait is genuinely missing. Counted
+// separately so the plan's limits are never misread as poor botanical
+// coverage (spec).
+export function computePlanRestrictedCount(normalized, provider) {
+  return normalized.filter((p) => p.providers[provider].selection_reason === "plan_restricted").length;
+}
+
+// Perenual only: under an explicitly configured limited-catalog access
+// tier (PERENUAL_ACCESS_TIER=personal), an empty search cannot be trusted
+// as a real `not_found` — see providers/perenual.js's `classifySearchResult`.
+// Counted separately, never folded into `not_found` or into "trait missing
+// from this provider": absence is not established either way.
+export function computeUnresolvedUnderPlanCount(normalized, provider) {
+  return normalized.filter((p) => p.providers[provider].selection_reason === "unresolved_under_plan").length;
+}
+
 // "Exact cultivar coverage" — restricted to the panel entries that are
 // themselves cultivar queries (`input_type === "cultivar"`): how many of
 // those got a genuine `exact_cultivar_match`. A `parent_only` result is

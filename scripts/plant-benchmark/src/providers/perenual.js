@@ -14,14 +14,34 @@
 // with small fixture objects — no network, no real API — see
 // scripts/plant-benchmark/test/perenual.test.js.
 //
-// IMPORTANT CAVEAT (read before trusting results): outbound network access
-// to perenual.com is blocked by this environment's egress policy (verified
-// directly — see README "Limites connues de l'exécution"). Every field
-// access below is defensive (`?? null`/`!== undefined`) precisely BECAUSE
-// the exact current response shape was not inspected live in this
-// environment. Re-run this provider with real network access and a real
-// key, then diff `raw/perenual/*.detail.json` against this mapping before
-// trusting any coverage numbers it produces.
+// CORRECTIONS applied after testing the REAL API from a normal network
+// environment (a real `species/details` response for Acer palmatum):
+//  - `dimensions` is actually an ARRAY of `{ type, min_value, max_value,
+//    unit }` entries (e.g. `[{ type: "Height", min_value: 20, max_value:
+//    20, unit: "feet" }]`), not the single object this benchmark assumed
+//    before real testing. The array form is now the primary shape; the
+//    documented object form is kept only as a compatibility fallback.
+//  - `container` and `indoor` are genuinely independent fields (a real
+//    response had `container: null, indoor: false` together) —
+//    `container_suitable` is now derived ONLY from `container`, never
+//    `container ?? indoor`.
+//  - `flowering_season` (e.g. "Spring") is a season, not a month list —
+//    it is never used to populate `flowering_months`.
+//  - a real Personal-plan key hit Perenual's plan-gated `species/details`
+//    endpoint and got HTTP 429 with an upgrade-plan message — see
+//    `httpClient.js`'s `plan_restricted` classification, propagated here
+//    as its own `selection_reason`, never `not_found`/`provider_error`.
+//  - separately, the SAME Personal-plan key ran a search that returned
+//    HTTP 200 with `data: []` for a plant later confirmed to exist in
+//    Perenual's catalog — Perenual documents the Personal tier as limited
+//    to a subset of species ("Species Data 1-3000"). Under an explicitly
+//    configured limited-catalog tier (`PERENUAL_ACCESS_TIER=personal`), an
+//    empty search is therefore NOT scientific proof of absence — it is
+//    classified `unresolved_under_plan`, distinct from both `not_found`
+//    (absence reasonably established) and `plan_restricted` (a specific
+//    429+upgrade-message response actually observed). This reclassification
+//    only ever fires when the tier is explicitly configured as limited —
+//    an unset/unknown/full-access tier never fabricates it.
 
 import { fetchJson } from "../httpClient.js";
 import { writeRaw, slugify } from "../cache.js";
@@ -30,15 +50,81 @@ import { selectCandidate } from "../candidateSelection.js";
 
 const BASE = "https://perenual.com/api/v2";
 
+// Fallback (documented-but-not-observed-live) object shape:
+// `dimensions: { min_value, max_value, unit }` directly, no `type`. Kept
+// only for compatibility — real responses use the array form below.
 export function extractDimensionCm(dimensions, key) {
-  // Spec §2: use the documented `min_value`/`max_value`/`unit` shape, not
-  // an undocumented `.min`/`.max`. Still fully defensive — this is only
-  // read if the field genuinely exists on the response.
-  if (!dimensions || typeof dimensions !== "object") return { raw: null, unit: null, cm: null };
+  if (!dimensions || typeof dimensions !== "object" || Array.isArray(dimensions)) return { raw: null, unit: null, cm: null };
   const raw = dimensions[key];
   const unit = dimensions.unit ?? null;
   if (raw === undefined || raw === null) return { raw: null, unit, cm: null };
   return { raw, unit, cm: convertToCm(typeof raw === "number" ? raw : Number(raw), unit) };
+}
+
+// Real shape, verified live: `dimensions` is an array, one entry per
+// measured dimension, each `{ type, min_value, max_value, unit }`. `type`
+// is matched case-insensitively against a small, explicit whitelist —
+// only a dimension whose meaning is unambiguous is ever mapped to a
+// trait; anything else is left unmapped rather than guessed (spec: "ne
+// mappe un autre type comme largeur/spread que si son sens est
+// explicitement déterminable").
+const DIMENSION_TYPE_TRAIT_PREFIX = {
+  height: "height",
+  spread: "spread",
+  width: "spread",
+};
+
+export function extractDimensionEntriesCm(dimensions) {
+  if (!Array.isArray(dimensions)) return [];
+  const out = [];
+  for (const entry of dimensions) {
+    if (!entry || typeof entry !== "object") continue;
+    const traitPrefix = DIMENSION_TYPE_TRAIT_PREFIX[String(entry.type || "").trim().toLowerCase()];
+    if (!traitPrefix) continue; // unrecognized dimension type — never guessed
+    const unit = entry.unit ?? null;
+    const rawMin = entry.min_value ?? null;
+    const rawMax = entry.max_value ?? null;
+    out.push({
+      traitPrefix,
+      rawMin,
+      rawMax,
+      unit,
+      minCm: rawMin !== null ? convertToCm(typeof rawMin === "number" ? rawMin : Number(rawMin), unit) : null,
+      maxCm: rawMax !== null ? convertToCm(typeof rawMax === "number" ? rawMax : Number(rawMax), unit) : null,
+    });
+  }
+  return out;
+}
+
+// Perenual tiers documented (by Perenual) as giving access to only a
+// SUBSET of the catalog. Only these tiers can ever trigger the
+// `unresolved_under_plan` reclassification below — deliberately NOT a
+// blanket assumption applied to every Perenual account (spec: "ne
+// hardcode pas arbitrairement cette hypothèse pour tous les comptes
+// Perenual"). Extend this set if Perenual documents another limited tier;
+// `premium`/`supreme` are NOT included here because they are not
+// documented as catalog-limited — an empty search under those tiers (or
+// under an unset/unknown tier) stays a normal `not_found`.
+const LIMITED_CATALOG_ACCESS_TIERS = new Set(["personal"]);
+
+export function isLimitedCatalogAccessTier(accessTier) {
+  return LIMITED_CATALOG_ACCESS_TIERS.has((accessTier || "").trim().toLowerCase());
+}
+
+/**
+ * classifySearchResult — pure. Given how many candidates a Perenual search
+ * actually returned and the configured access tier, decides whether an
+ * EMPTY result can be trusted as a real `not_found` or must instead be
+ * reported as `unresolved_under_plan` (catalog coverage unknown under this
+ * tier, absence not scientifically established). Returns `null` when
+ * normal candidate selection should proceed unmodified — i.e. whenever
+ * there ARE candidates, or the tier isn't a documented limited-catalog one.
+ */
+export function classifySearchResult({ rawCandidatesLength, accessTier }) {
+  if (rawCandidatesLength === 0 && isLimitedCatalogAccessTier(accessTier)) {
+    return "unresolved_under_plan";
+  }
+  return null;
 }
 
 /**
@@ -72,12 +158,25 @@ export function mapPerenualDetailToTraits({ candidateId, sourceUrl, detailData, 
   add("drought_tolerance", d.drought_tolerant);
   add("attracts", d.attracts);
   add("water_need", d.watering);
-  add("container_suitable", d.container ?? d.indoor);
+
+  // --- Corrected: `container` and `indoor` are independent fields (a real
+  // response had `container: null, indoor: false` — `indoor=false` does
+  // NOT mean "not container-suitable"). `container_suitable` comes ONLY
+  // from `container`; `container=null`/absent leaves it unmapped, never
+  // guessed from `indoor`. `indoor` is kept as its own distinct raw trait.
+  add("container_suitable", d.container, d.container);
+  add("indoor", d.indoor, d.indoor);
+
   if (d.hardiness && d.hardiness.min !== undefined) add("hardiness_min", d.hardiness.min);
   if (d.hardiness && d.hardiness.max !== undefined) add("hardiness_max", d.hardiness.max);
-  if (d.flowering_season !== undefined && d.flowering_season !== null) {
-    add("flowering_months", d.flowering_season, null, { uncertain: true });
-  }
+
+  // --- Corrected: `flowering_season` (e.g. "Spring") is a SEASON, not a
+  // list of months — never auto-translate "Spring" into March/April/May
+  // or any other guessed month set. Kept as its own distinct raw trait;
+  // `flowering_months` is only ever populated from genuine month data,
+  // which Perenual's observed shape does not provide, so it stays
+  // unmapped for this provider.
+  add("flowering_season", d.flowering_season, d.flowering_season);
 
   // --- Spec §4: evergreen — `cycle` removed as a source. It describes the
   // plant's life cycle (annual/perennial/biennial), not leaf retention,
@@ -116,16 +215,39 @@ export function mapPerenualDetailToTraits({ candidateId, sourceUrl, detailData, 
     add("edible", { edible_fruit: fruitVal ?? null, edible_leaf: leafVal ?? null }, derivedEdible);
   }
 
-  // --- Spec §2: dimensions via the documented min_value/max_value/unit
-  // shape, deterministic cm conversion only for supported units.
-  if (d.dimensions) {
+  // --- Dimensions (spec §2, corrected against a real response): the
+  // array form `[{ type, min_value, max_value, unit }]` is the primary
+  // shape — deterministic cm conversion only for supported units, never a
+  // fabricated width/spread when only a height entry is present. The
+  // single-object form is a compatibility fallback for the documented (but
+  // not observed live) shape.
+  if (Array.isArray(d.dimensions)) {
+    for (const entry of extractDimensionEntriesCm(d.dimensions)) {
+      if (entry.rawMax !== null) {
+        add(`${entry.traitPrefix}_max_cm`, entry.rawMax, entry.maxCm, {
+          fieldPath: `dimensions[type=${entry.traitPrefix}].max_value`,
+          rawUnit: entry.unit,
+          normalizedUnit: entry.maxCm !== null ? "cm" : null,
+          uncertain: entry.maxCm === null,
+        });
+      }
+      if (entry.rawMin !== null) {
+        add(`${entry.traitPrefix}_min_cm`, entry.rawMin, entry.minCm, {
+          fieldPath: `dimensions[type=${entry.traitPrefix}].min_value`,
+          rawUnit: entry.unit,
+          normalizedUnit: entry.minCm !== null ? "cm" : null,
+          uncertain: entry.minCm === null,
+        });
+      }
+    }
+  } else if (d.dimensions && typeof d.dimensions === "object") {
     const maxDim = extractDimensionCm(d.dimensions, "max_value");
     const minDim = extractDimensionCm(d.dimensions, "min_value");
     if (maxDim.raw !== null) {
-      add("height_max_cm", maxDim.raw, maxDim.cm, { rawUnit: maxDim.unit, normalizedUnit: maxDim.cm !== null ? "cm" : null, uncertain: maxDim.cm === null });
+      add("height_max_cm", maxDim.raw, maxDim.cm, { fieldPath: "dimensions.max_value", rawUnit: maxDim.unit, normalizedUnit: maxDim.cm !== null ? "cm" : null, uncertain: maxDim.cm === null });
     }
     if (minDim.raw !== null) {
-      add("height_min_cm", minDim.raw, minDim.cm, { rawUnit: minDim.unit, normalizedUnit: minDim.cm !== null ? "cm" : null, uncertain: minDim.cm === null });
+      add("height_min_cm", minDim.raw, minDim.cm, { fieldPath: "dimensions.min_value", rawUnit: minDim.unit, normalizedUnit: minDim.cm !== null ? "cm" : null, uncertain: minDim.cm === null });
     }
   }
 
@@ -138,7 +260,7 @@ export function mapPerenualDetailToTraits({ candidateId, sourceUrl, detailData, 
   };
 }
 
-export async function queryPerenual({ inputName, rawRoot, apiKey }) {
+export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = null }) {
   const slug = slugify(inputName);
   const retrievedAt = new Date().toISOString();
 
@@ -151,10 +273,15 @@ export async function queryPerenual({ inputName, rawRoot, apiKey }) {
   writeRaw(rawRoot, "perenual", `${slug}.search`, { input_name: inputName, result: searchResult });
 
   if (!searchResult.ok) {
+    // Spec correction: a 429 with an "upgrade plan" body is a subscription
+    // restriction, never a botanical `not_found`/generic `provider_error`
+    // — it must be visible as its own state so Personal-plan limits aren't
+    // misread as poor botanical coverage.
+    const reason = searchResult.error === "plan_restricted" ? "plan_restricted" : "provider_error";
     return {
       input_name: inputName,
-      status: "provider_error",
-      selection_reason: "provider_error",
+      status: reason,
+      selection_reason: reason,
       error: { provider: "perenual", status: "error", http_status: searchResult.status ?? null, message: searchResult.error, retrieved_at: retrievedAt },
       record: null,
       candidates: [],
@@ -163,6 +290,23 @@ export async function queryPerenual({ inputName, rawRoot, apiKey }) {
   }
 
   const rawCandidates = (searchResult.data && searchResult.data.data) || [];
+
+  // Spec correction: an empty search is only trustworthy as `not_found`
+  // when the configured access tier isn't a documented limited-catalog
+  // one. Under `PERENUAL_ACCESS_TIER=personal`, HTTP 200 + `data: []` does
+  // not establish absence — see `classifySearchResult` above.
+  const earlyClassification = classifySearchResult({ rawCandidatesLength: rawCandidates.length, accessTier });
+  if (earlyClassification) {
+    return {
+      input_name: inputName,
+      status: earlyClassification,
+      selection_reason: earlyClassification,
+      error: null,
+      record: null,
+      candidates: [],
+      traits: {},
+    };
+  }
 
   // Parse the query the same way WCVP does, so a cultivar query is scored
   // as a cultivar query here too (spec §11-13).
@@ -196,10 +340,23 @@ export async function queryPerenual({ inputName, rawRoot, apiKey }) {
   writeRaw(rawRoot, "perenual", `${slug}.detail`, { input_name: inputName, result: detailResult });
 
   if (!detailResult.ok) {
+    // Spec correction: a real Personal-plan key hit exactly this endpoint
+    // (`species/details/{id}`) and got a 429 "Please Upgrade Plan"
+    // response. The search already confidently identified this plant
+    // (`record` below still carries that identity for taxonomy
+    // cross-checking), but no trait data could be retrieved — this must
+    // NOT be counted as an eligible record with "0 traits found" (which
+    // would misread a subscription limit as bad botanical coverage), so
+    // `selection_reason` is overridden to `plan_restricted` in that case
+    // specifically. Any OTHER detail-fetch failure keeps the original
+    // search-time `selection_reason` unchanged — the plant was genuinely,
+    // confidently identified, only its trait data is missing (unchanged
+    // pre-existing behavior, not part of this correction).
+    const isPlanRestricted = detailResult.error === "plan_restricted";
     return {
       input_name: inputName,
-      status: "provider_error",
-      selection_reason,
+      status: isPlanRestricted ? "plan_restricted" : "provider_error",
+      selection_reason: isPlanRestricted ? "plan_restricted" : selection_reason,
       candidate_count: rawCandidates.length,
       error: { provider: "perenual", status: "error", http_status: detailResult.status ?? null, message: detailResult.error, retrieved_at: retrievedAt },
       record: baseRecord,
