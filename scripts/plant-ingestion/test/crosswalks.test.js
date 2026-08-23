@@ -31,10 +31,28 @@ test("#4: unknown sunlight provider value produces a warning and no mapping", ()
   assert.match(warnings[0], /unmapped provider value "dappled sun"/);
 });
 
-test("sun crosswalk: partial success keeps mapped values, warns only for unmapped ones", () => {
-  const { canonical, warnings } = crosswalkSunArray(["full sun", "dappled sun"]);
-  assert.deepEqual(canonical, ["full_sun"]);
+// All-or-nothing: a partially-mappable array must NEVER produce a partial
+// canonical array — that would misrepresent the plant's real exposure
+// profile (e.g. dropping an unmapped "part sun/part shade" would make it
+// look like "full sun only"). It stays null (incomplete), with a precise
+// warning for each unmapped value, until every informative raw value maps.
+test("sun crosswalk: a fully mappable array normalizes completely, no warning", () => {
+  const { canonical, warnings } = crosswalkSunArray(["full sun", "part shade"]);
+  assert.deepEqual(canonical, ["full_sun", "partial_sun"]);
+  assert.deepEqual(warnings, []);
+});
+
+test("sun crosswalk: a partially mappable array stays null (never partial), with a warning for the unmapped value", () => {
+  const { canonical, warnings } = crosswalkSunArray(["full sun", "part sun/part shade"]);
+  assert.equal(canonical, null);
   assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /unmapped provider value "part sun\/part shade"/);
+});
+
+test("sun crosswalk: an entirely unmappable array stays null, with a warning per unmapped value", () => {
+  const { canonical, warnings } = crosswalkSunArray(["dappled sun", "part sun/part shade"]);
+  assert.equal(canonical, null);
+  assert.equal(warnings.length, 2);
 });
 
 test("sun crosswalk: empty array is treated as no informative value (null, not [])", () => {

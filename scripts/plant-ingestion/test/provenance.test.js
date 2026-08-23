@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { mapTrefleDetailToTraits } from "../../plant-benchmark/src/providers/trefle.js";
+import { mapPerenualDetailToTraits } from "../../plant-benchmark/src/providers/perenual.js";
 import { buildObservations, buildSourceRecord } from "../src/provenance.js";
 
 // Fixture matching the facts already validated live for Acer palmatum on
@@ -74,4 +75,85 @@ test("buildSourceRecord: never stores a raw payload field", () => {
 test("buildObservations: no traits produces an empty array, never a placeholder", () => {
   assert.deepEqual(buildObservations({ provider: "perenual", catalogRef: "x", sourceRecordRef: "x:perenual:current", result: { traits: {} } }), []);
   assert.deepEqual(buildObservations({ provider: "perenual", catalogRef: "x", sourceRecordRef: "x:perenual:current", result: {} }), []);
+});
+
+// Real live JSON contained `attracts=[]` (Acer) and `soil=[]` (Bloodgood) —
+// exactly the "non-informative" values that must never produce an
+// observation (spec §1). false/0 must keep producing one.
+const PERENUAL_MIXED_INFORMATIVENESS_FIXTURE = {
+  attracts: [],
+  soil: [],
+  drought_tolerant: false,
+  container: 0,
+  type: "tree",
+};
+
+test("buildObservations: attracts=[] produces no observation", () => {
+  const { traits } = mapPerenualDetailToTraits({ candidateId: 27, sourceUrl: "https://perenual.com/x", detailData: PERENUAL_MIXED_INFORMATIVENESS_FIXTURE, retrievedAt: "2026-08-23T00:00:00.000Z" });
+  const observations = buildObservations({ provider: "perenual", catalogRef: "acer_palmatum_species", sourceRecordRef: "x:perenual:current", result: { traits } });
+  assert.ok(!observations.some((o) => o.trait === "attracts"));
+});
+
+test("buildObservations: soil=[] produces no observation", () => {
+  const { traits } = mapPerenualDetailToTraits({ candidateId: 27, sourceUrl: "https://perenual.com/x", detailData: PERENUAL_MIXED_INFORMATIVENESS_FIXTURE, retrievedAt: "2026-08-23T00:00:00.000Z" });
+  const observations = buildObservations({ provider: "perenual", catalogRef: "acer_palmatum_species", sourceRecordRef: "x:perenual:current", result: { traits } });
+  assert.ok(!observations.some((o) => o.trait === "soil"));
+});
+
+test("buildObservations: false (drought_tolerance) still produces an observation", () => {
+  const { traits } = mapPerenualDetailToTraits({ candidateId: 27, sourceUrl: "https://perenual.com/x", detailData: PERENUAL_MIXED_INFORMATIVENESS_FIXTURE, retrievedAt: "2026-08-23T00:00:00.000Z" });
+  const observations = buildObservations({ provider: "perenual", catalogRef: "acer_palmatum_species", sourceRecordRef: "x:perenual:current", result: { traits } });
+  const obs = observations.find((o) => o.trait === "drought_tolerance");
+  assert.ok(obs);
+  assert.equal(obs.raw_value, false);
+});
+
+test("buildObservations: 0 (container_suitable) still produces an observation", () => {
+  const { traits } = mapPerenualDetailToTraits({ candidateId: 27, sourceUrl: "https://perenual.com/x", detailData: PERENUAL_MIXED_INFORMATIVENESS_FIXTURE, retrievedAt: "2026-08-23T00:00:00.000Z" });
+  const observations = buildObservations({ provider: "perenual", catalogRef: "acer_palmatum_species", sourceRecordRef: "x:perenual:current", result: { traits } });
+  const obs = observations.find((o) => o.trait === "container_suitable");
+  assert.ok(obs);
+  assert.equal(obs.raw_value, 0);
+});
+
+// Field paths (spec §5): filled in deterministically for Perenual traits
+// whose reused benchmark mapper never records a field_path, since the
+// underlying field read IS deterministic even though the reused code
+// doesn't note it. Never overrides a field_path the provider code already
+// set (e.g. the dimensions[...] paths).
+test("field_path: known Perenual traits get their deterministic field_path filled in", () => {
+  const detail = { type: "tree", sunlight: ["full sun"], soil: ["Well-drained"], growth_rate: "Low", drought_tolerant: false, watering: "Average", indoor: false, hardiness: { min: 6, max: 6 }, flowering_season: "Spring", edible_fruit: false, edible_leaf: false };
+  const { traits } = mapPerenualDetailToTraits({ candidateId: 27, sourceUrl: "https://perenual.com/x", detailData: detail, retrievedAt: "2026-08-23T00:00:00.000Z" });
+  const observations = buildObservations({ provider: "perenual", catalogRef: "acer_palmatum_species", sourceRecordRef: "x:perenual:current", result: { traits } });
+
+  const byTrait = Object.fromEntries(observations.map((o) => [o.trait, o]));
+  assert.equal(byTrait.plant_type.field_path, "type");
+  assert.equal(byTrait.sun.field_path, "sunlight");
+  assert.equal(byTrait.soil.field_path, "soil");
+  assert.equal(byTrait.growth_rate.field_path, "growth_rate");
+  assert.equal(byTrait.drought_tolerance.field_path, "drought");
+  assert.equal(byTrait.water_need.field_path, "watering");
+  assert.equal(byTrait.indoor.field_path, "indoor");
+  assert.equal(byTrait.hardiness_min.field_path, "hardiness.min");
+  assert.equal(byTrait.hardiness_max.field_path, "hardiness.max");
+  assert.equal(byTrait.flowering_season.field_path, "flowering_season");
+  assert.equal(byTrait.edible_fruit.field_path, "edible_fruit");
+  assert.equal(byTrait.edible_leaf.field_path, "edible_leaf");
+  // Derived trait: an explicit, auditable compound path — never a single
+  // misleading field name, never silently null either.
+  assert.equal(byTrait.edible.field_path, "edible_fruit+edible_leaf");
+});
+
+test("field_path: an already-set field_path (e.g. dimensions) is never overridden by the fallback table", () => {
+  const detail = { dimensions: [{ type: "Height", min_value: 20, max_value: 20, unit: "feet" }] };
+  const { traits } = mapPerenualDetailToTraits({ candidateId: 27, sourceUrl: "https://perenual.com/x", detailData: detail, retrievedAt: "2026-08-23T00:00:00.000Z" });
+  const observations = buildObservations({ provider: "perenual", catalogRef: "acer_palmatum_species", sourceRecordRef: "x:perenual:current", result: { traits } });
+  const heightMax = observations.find((o) => o.trait === "height_max_cm");
+  assert.equal(heightMax.field_path, "dimensions[type=height].max_value");
+});
+
+test("field_path: Trefle's own field_path is preserved as-is, never touched by the Perenual fallback table", () => {
+  const { traits } = mapTrefleDetailToTraits({ candidateId: 1, sourceUrl: "https://trefle.io/api/v1/species/1", detailData: { growth: { light: 7 } }, retrievedAt: "2026-08-23T00:00:00.000Z" });
+  const observations = buildObservations({ provider: "trefle", catalogRef: "acer_palmatum_species", sourceRecordRef: "x:trefle:current", result: { traits } });
+  assert.equal(observations.find((o) => o.trait === "light_0_10").field_path, "growth.light");
 });

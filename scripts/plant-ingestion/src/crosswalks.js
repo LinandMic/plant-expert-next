@@ -2,6 +2,8 @@
 // mapping — an unrecognized provider value never gets a guessed canonical
 // value; it is dropped with an explicit warning instead (spec §11).
 
+import { isInformative } from "./informative.js";
+
 // Perenual `sunlight` raw string -> our canonical plant_catalog.sun
 // vocabulary (aligned with garden_zones.exposure). ONLY the two mappings
 // actually validated against real Perenual data for Acer palmatum are
@@ -20,20 +22,32 @@ export function crosswalkSunValue(rawValue) {
 }
 
 // crosswalkSunArray(rawArray) -> { canonical, warnings }
-// canonical is null (never []) when nothing in rawArray maps.
+// ALL-OR-NOTHING: `canonical` is only ever a complete, trustworthy array —
+// never []. If even ONE informative raw value fails to map, `canonical` is
+// null (not a partial array silently missing that value): a plant that is
+// e.g. both "full sun" AND some unmapped exposure would be badly
+// misrepresented by an array that only lists "full_sun", since that reads
+// as "full sun only". raw_value on the observation still keeps every
+// original provider value regardless (this function never touches it) —
+// only the canonical/selectable representation is withheld until the
+// crosswalk is complete.
 export function crosswalkSunArray(rawArray) {
-  if (!Array.isArray(rawArray) || rawArray.length === 0) return { canonical: null, warnings: [] };
-  const canonical = [];
+  const informativeValues = Array.isArray(rawArray) ? rawArray.filter(isInformative) : [];
+  if (informativeValues.length === 0) return { canonical: null, warnings: [] };
+
+  const mapped = [];
   const warnings = [];
-  for (const raw of rawArray) {
-    const mapped = crosswalkSunValue(raw);
-    if (mapped) {
-      if (!canonical.includes(mapped)) canonical.push(mapped);
+  let allMapped = true;
+  for (const raw of informativeValues) {
+    const m = crosswalkSunValue(raw);
+    if (m) {
+      if (!mapped.includes(m)) mapped.push(m);
     } else {
-      warnings.push(`sun crosswalk: unmapped provider value "${raw}" — no canonical value produced for it`);
+      allMapped = false;
+      warnings.push(`sun crosswalk: unmapped provider value "${raw}" — normalization left incomplete, no canonical value produced for this observation`);
     }
   }
-  return { canonical: canonical.length > 0 ? canonical : null, warnings };
+  return { canonical: allMapped ? mapped : null, warnings };
 }
 
 // GBIF/WCVP `rank` string -> our plant_taxa.rank vocabulary

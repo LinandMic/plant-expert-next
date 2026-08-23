@@ -12,6 +12,7 @@ import { taxonRef, catalogRef } from "./refs.js";
 import { buildTaxonDryRun, buildTaxonNames } from "./taxonomy.js";
 import { buildSpeciesCatalogEntry, buildCultivarCatalogEntry } from "./catalog.js";
 import { buildSourceRecord, buildObservations } from "./provenance.js";
+import { applyDeterministicNormalizations } from "./normalization.js";
 import { proposeSelections } from "./selections.js";
 import { checkAcerSpeciesDrift, checkBloodgoodDrift } from "./drift.js";
 
@@ -36,6 +37,22 @@ async function resolveSharedTaxon(parentName, { rawRoot }) {
 export function composeTaxonomyField(sharedTaxon) {
   if (sharedTaxon.blocked) return null;
   return { ...sharedTaxon.taxon, names: sharedTaxon.names };
+}
+
+// applyTaxonomyAmbiguity(sourceRecord, observations, warnings) -> observations
+// If this source record's taxonomy_match_type=ambiguous is applicable,
+// always records why (warnings.push). If it is NOT structurally resolved,
+// every observation from this source is marked uncertain=true (never
+// eligible for an automatic selection — see selections.js's `eligible`).
+// taxonomy_match_type itself is never touched.
+function applyTaxonomyAmbiguity(sourceRecord, observations, warnings) {
+  const assessment = sourceRecord.taxonomy_ambiguity;
+  if (!assessment.applicable) return observations;
+
+  warnings.push(`${sourceRecord.source_record.provider}: ${assessment.explanation}`);
+  if (assessment.resolved) return observations;
+
+  return observations.map((o) => ({ ...o, uncertain: true }));
 }
 
 async function fetchHorticultural(inputName, { rawRoot, config }) {
@@ -74,22 +91,34 @@ async function buildPlantEntry({ inputName, inputType, sharedTaxon, catalogRefVa
   }
 
   const sourceRecords = [];
-  const observations = [];
 
   const wcvpSr = buildSourceRecord({ provider: "wcvp", catalogRef: catalogRefValue, result: sharedTaxon.wcvpResult, wcvpTaxonomy: sharedTaxon.wcvpTaxonomy, retrievedAt });
   sourceRecords.push(wcvpSr.source_record);
 
-  const perenualSr = buildSourceRecord({ provider: "perenual", catalogRef: catalogRefValue, result: perenualResult, wcvpTaxonomy: sharedTaxon.wcvpTaxonomy, retrievedAt });
+  const perenualSr = buildSourceRecord({ provider: "perenual", catalogRef: catalogRefValue, result: perenualResult, wcvpTaxonomy: sharedTaxon.wcvpTaxonomy, retrievedAt, cultivarName });
   sourceRecords.push(perenualSr.source_record);
-  observations.push(...buildObservations({ provider: "perenual", catalogRef: catalogRefValue, sourceRecordRef: perenualSr.source_record_ref, result: perenualResult }));
+  const perenualObservations = buildObservations({ provider: "perenual", catalogRef: catalogRefValue, sourceRecordRef: perenualSr.source_record_ref, result: perenualResult });
 
-  const trefleSr = buildSourceRecord({ provider: "trefle", catalogRef: catalogRefValue, result: trefleResult, wcvpTaxonomy: sharedTaxon.wcvpTaxonomy, retrievedAt });
+  const trefleSr = buildSourceRecord({ provider: "trefle", catalogRef: catalogRefValue, result: trefleResult, wcvpTaxonomy: sharedTaxon.wcvpTaxonomy, retrievedAt, cultivarName });
   sourceRecords.push(trefleSr.source_record);
-  observations.push(...buildObservations({ provider: "trefle", catalogRef: catalogRefValue, sourceRecordRef: trefleSr.source_record_ref, result: trefleResult }));
+  const trefleObservations = buildObservations({ provider: "trefle", catalogRef: catalogRefValue, sourceRecordRef: trefleSr.source_record_ref, result: trefleResult });
+
+  // taxonomy_match_type=ambiguous cross-check: see taxonomyAmbiguity.js for
+  // the exact, non-intuitive reasoning. taxonomy_match_type ITSELF is never
+  // rewritten (it stays exactly what classifyMatch computed) — only the
+  // downstream uncertain-flagging/selection-blocking decision depends on
+  // whether the ambiguity is structurally explained.
+  const ambiguityAdjustedObservations = [
+    ...applyTaxonomyAmbiguity(perenualSr, perenualObservations, warnings),
+    ...applyTaxonomyAmbiguity(trefleSr, trefleObservations, warnings),
+  ];
+
+  const { observations, warnings: normalizationWarnings } = applyDeterministicNormalizations(ambiguityAdjustedObservations);
+  warnings.push(...normalizationWarnings);
 
   let selections = [];
   if (catalog) {
-    const proposed = proposeSelections({ catalogRef: catalogRefValue, observations });
+    const proposed = proposeSelections({ observations });
     selections = proposed.selections;
     warnings.push(...proposed.warnings);
   }
