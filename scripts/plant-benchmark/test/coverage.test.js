@@ -7,6 +7,7 @@ import {
   computeExactCultivarCoverage,
   computePlanRestrictedCount,
   computeUnresolvedUnderPlanCount,
+  hasInformativeValue,
   eligibleCount,
   discoverTraitNames,
   BENCHMARK_TRAITS,
@@ -159,4 +160,81 @@ test("unresolved_under_plan #5: excluded from eligibleCount / record coverage / 
   const row = rows.find((r) => r.trait === "height_max_cm");
   assert.equal(row.perenual_conditional_total, 1);
   assert.equal(row.perenual_conditional_percent, 100);
+});
+
+// --- hasInformativeValue (spec correction: [] no longer counts as present)
+
+test("hasInformativeValue: [] is missing", () => {
+  assert.equal(hasInformativeValue([]), false);
+});
+
+test("hasInformativeValue: {} is missing", () => {
+  assert.equal(hasInformativeValue({}), false);
+});
+
+test('hasInformativeValue: "" is missing', () => {
+  assert.equal(hasInformativeValue(""), false);
+  assert.equal(hasInformativeValue("   "), false); // whitespace-only
+});
+
+test("hasInformativeValue: null/undefined are missing", () => {
+  assert.equal(hasInformativeValue(null), false);
+  assert.equal(hasInformativeValue(undefined), false);
+});
+
+test("hasInformativeValue: false is present", () => {
+  assert.equal(hasInformativeValue(false), true);
+});
+
+test("hasInformativeValue: 0 is present", () => {
+  assert.equal(hasInformativeValue(0), true);
+});
+
+test('hasInformativeValue: ["Birds"] is present', () => {
+  assert.equal(hasInformativeValue(["Birds"]), true);
+});
+
+test("hasInformativeValue: non-empty string/number are present", () => {
+  assert.equal(hasInformativeValue("Average"), true);
+  assert.equal(hasInformativeValue(42), true);
+});
+
+test("hasInformativeValue: an object with at least one informative value is present; an object of only non-informative values is missing", () => {
+  assert.equal(hasInformativeValue({ edible_fruit: true, edible_leaf: null }), true);
+  assert.equal(hasInformativeValue({ edible_fruit: null, edible_leaf: undefined }), false);
+});
+
+test("coverage fixtures: attracts=[] no longer inflates coverage (BENCHMARK_TRAIT)", () => {
+  const normalized = [
+    {
+      input_type: "species",
+      providers: { perenual: { selection_reason: "exact_scientific_match" }, trefle: { selection_reason: "skipped_no_key" } },
+      traits: { attracts: { trait: "attracts", observations: [{ provider: "perenual", normalized_value: [] }] } },
+    },
+  ];
+  const rows = computeCoverage(normalized);
+  const row = rows.find((r) => r.trait === "attracts");
+  assert.equal(row.perenual_found, 0);
+  assert.equal(row.perenual_conditional_percent, 0);
+});
+
+test("coverage fixtures: soil=[] no longer inflates coverage (extra_discovered_trait)", () => {
+  const normalized = [
+    {
+      input_type: "species",
+      providers: { perenual: { selection_reason: "exact_scientific_match" }, trefle: { selection_reason: "skipped_no_key" } },
+      traits: { soil: { trait: "soil", observations: [{ provider: "perenual", normalized_value: [] }] } },
+    },
+  ];
+  const rows = computeExtraDiscoveredTraitCoverage(normalized);
+  const row = rows.find((r) => r.trait === "soil");
+  assert.equal(row.perenual_found, 0);
+  assert.equal(row.perenual_conditional_percent, 0);
+});
+
+// --- plant_type vs growth_form (spec correction) -------------------------
+
+test("BENCHMARK_TRAITS includes plant_type as distinct from growth_form", () => {
+  assert.ok(BENCHMARK_TRAITS.includes("plant_type"));
+  assert.ok(BENCHMARK_TRAITS.includes("growth_form"));
 });

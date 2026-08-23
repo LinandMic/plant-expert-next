@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapTrefleDetailToTraits } from "../src/providers/trefle.js";
+import { mapTrefleDetailToTraits, normalizeMonthCodes } from "../src/providers/trefle.js";
 
 const RETRIEVED_AT = "2026-01-01T00:00:00.000Z";
 
@@ -241,4 +241,61 @@ test("trefle: real fixture (Acer palmatum species/{id} shape) — all nested nul
   // sources count: 5 — kept at record scope, never split per trait.
   assert.equal(provenance.record_sources.length, 5);
   assert.equal(provenance.source_scope, "record");
+});
+
+// --- flowering_months normalization (spec correction) --------------------
+
+test("normalizeMonthCodes: real observed codes -> canonical month numbers", () => {
+  assert.deepEqual(normalizeMonthCodes(["apr", "may"]), [4, 5]);
+  assert.deepEqual(normalizeMonthCodes(["feb", "mar", "apr", "may"]), [2, 3, 4, 5]);
+});
+
+test("normalizeMonthCodes: case-insensitive, whitespace-tolerant", () => {
+  assert.deepEqual(normalizeMonthCodes(["Apr", " may "]), [4, 5]);
+});
+
+test("normalizeMonthCodes: an unrecognized code anywhere -> null for the whole array, never a partial/guessed result", () => {
+  assert.equal(normalizeMonthCodes(["apr", "xyz"]), null);
+});
+
+test("normalizeMonthCodes: empty array / non-array -> null, never fabricated", () => {
+  assert.equal(normalizeMonthCodes([]), null);
+  assert.equal(normalizeMonthCodes(null), null);
+  assert.equal(normalizeMonthCodes(undefined), null);
+});
+
+test("mapTrefleDetailToTraits: growth.bloom_months normalizes to canonical numbers, raw_value preserved, no seasonal inference", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { growth: { bloom_months: ["apr", "may"] } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.deepEqual(traits.flowering_months.observations[0].raw_value, ["apr", "may"]);
+  assert.deepEqual(traits.flowering_months.observations[0].normalized_value, [4, 5]);
+  assert.equal(traits.flowering_months.observations[0].field_path, "growth.bloom_months");
+});
+
+test("mapTrefleDetailToTraits: a valid normalized month array counts as trait present via hasInformativeValue", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { growth: { bloom_months: ["feb", "mar", "apr", "may"] } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(Array.isArray(traits.flowering_months.observations[0].normalized_value), true);
+  assert.ok(traits.flowering_months.observations[0].normalized_value.length > 0);
+});
+
+// --- growth_form vs plant_type (spec correction) --------------------------
+
+test("mapTrefleDetailToTraits: specifications.growth_form stays growth_form, distinct from Perenual's plant_type concept", () => {
+  const { traits } = mapTrefleDetailToTraits({
+    candidateId: 1,
+    sourceUrl: "https://example.test/1",
+    detailData: { specifications: { growth_form: "vine" } },
+    retrievedAt: RETRIEVED_AT,
+  });
+  assert.equal(traits.growth_form.observations[0].raw_value, "vine");
+  assert.equal(traits.plant_type, undefined);
 });

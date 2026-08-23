@@ -31,6 +31,17 @@
 //    endpoint and got HTTP 429 with an upgrade-plan message — see
 //    `httpClient.js`'s `plan_restricted` classification, propagated here
 //    as its own `selection_reason`, never `not_found`/`provider_error`.
+//    CORRECTED further: this is only trustworthy as `plan_restricted` for
+//    the QUERIED target when the search itself confidently matched that
+//    target (`exact_scientific_match`/`exact_cultivar_match`). Several
+//    real cases (querying "Viburnum tinus", "Hosta", "Miscanthus
+//    sinensis", "Malus domestica") only ever matched a related/looser
+//    candidate (a cultivar, a genus-level entry) via `parent_taxon_match`/
+//    `ambiguous`/fuzzy scoring, and IT is what returned 429 — a 429 on a
+//    candidate that was never confidently the target does not prove the
+//    target itself is plan-restricted. That case is `unresolved_under_plan`
+//    instead (same vocabulary as the empty-search case above — both mean
+//    "no confident, complete answer for this target under this plan").
 //  - separately, the SAME Personal-plan key ran a search that returned
 //    HTTP 200 with `data: []` for a plant later confirmed to exist in
 //    Perenual's catalog — Perenual documents the Personal tier as limited
@@ -128,6 +139,25 @@ export function classifySearchResult({ rawCandidatesLength, accessTier }) {
 }
 
 /**
+ * classifyDetailFailure — pure. A 429 "Please Upgrade Plan" on the detail
+ * endpoint is only proof that the QUERIED TARGET is plan-restricted when
+ * the search itself confidently matched that target
+ * (exact_scientific_match/exact_cultivar_match). A 429 on a merely
+ * related candidate (parent_taxon_match/ambiguous/fuzzy — e.g. querying
+ * "Viburnum tinus" but only ever matching "Viburnum tinus 'Lisarose'")
+ * never proves the target itself is restricted — that case is
+ * `unresolved_under_plan` instead, never a false `plan_restricted` claim.
+ * Returns `null` when the detail failure isn't plan-restricted at all —
+ * signals "keep the prior provider_error / original selection_reason
+ * behavior", unrelated to this correction.
+ */
+export function classifyDetailFailure({ selectionReason, detailError }) {
+  if (detailError !== "plan_restricted") return null;
+  const isConfidentTargetMatch = selectionReason === "exact_scientific_match" || selectionReason === "exact_cultivar_match";
+  return isConfidentTargetMatch ? "plan_restricted" : "unresolved_under_plan";
+}
+
+/**
  * mapPerenualDetailToTraits — pure. Given a `species/details/{id}` payload
  * (`d`), returns { traits, cultivarField, varietyField, subspeciesField,
  * hybridField }. No network, no side effects — safe to unit test with a
@@ -151,7 +181,11 @@ export function mapPerenualDetailToTraits({ candidateId, sourceUrl, detailData, 
   }
 
   // --- Spec §3: traits fetched as-is, no surinterpretation. ---
-  add("growth_form", d.type);
+  // Corrected: Perenual's `type` (e.g. "tree"/"shrub"/"herb") is a
+  // distinct concept from Trefle's `specifications.growth_form` despite
+  // the naming overlap this benchmark previously conflated them under —
+  // never merged, see `plant_type` vs `growth_form` in coverage.js.
+  add("plant_type", d.type);
   add("sun", d.sunlight);
   add("soil", d.soil);
   add("growth_rate", d.growth_rate);
@@ -340,23 +374,24 @@ export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = n
   writeRaw(rawRoot, "perenual", `${slug}.detail`, { input_name: inputName, result: detailResult });
 
   if (!detailResult.ok) {
-    // Spec correction: a real Personal-plan key hit exactly this endpoint
-    // (`species/details/{id}`) and got a 429 "Please Upgrade Plan"
-    // response. The search already confidently identified this plant
-    // (`record` below still carries that identity for taxonomy
-    // cross-checking), but no trait data could be retrieved — this must
-    // NOT be counted as an eligible record with "0 traits found" (which
-    // would misread a subscription limit as bad botanical coverage), so
-    // `selection_reason` is overridden to `plan_restricted` in that case
-    // specifically. Any OTHER detail-fetch failure keeps the original
-    // search-time `selection_reason` unchanged — the plant was genuinely,
-    // confidently identified, only its trait data is missing (unchanged
-    // pre-existing behavior, not part of this correction).
-    const isPlanRestricted = detailResult.error === "plan_restricted";
+    // Spec correction: a 429 "Please Upgrade Plan" on the detail endpoint
+    // is only proof that THE QUERIED TARGET is plan-restricted when the
+    // search itself confidently matched that target
+    // (exact_scientific_match/exact_cultivar_match). Real cases observed:
+    // querying "Viburnum tinus" only matched "Viburnum tinus 'Lisarose'"
+    // (parent_taxon_match); "Hosta" only matched "Hosta 'Abby'"; querying
+    // a species only matched an unrelated cultivar — in each case the 429
+    // was on that LOOSER candidate's detail fetch, never proven to be
+    // about the target itself. Presenting the target as `plan_restricted`
+    // there would be a false, overly specific claim. Any OTHER (non-429)
+    // detail-fetch failure keeps the original search-time
+    // `selection_reason` unchanged (unrelated to this correction).
+    const reason = classifyDetailFailure({ selectionReason: selection_reason, detailError: detailResult.error });
+
     return {
       input_name: inputName,
-      status: isPlanRestricted ? "plan_restricted" : "provider_error",
-      selection_reason: isPlanRestricted ? "plan_restricted" : selection_reason,
+      status: reason || "provider_error",
+      selection_reason: reason || selection_reason,
       candidate_count: rawCandidates.length,
       error: { provider: "perenual", status: "error", http_status: detailResult.status ?? null, message: detailResult.error, retrieved_at: retrievedAt },
       record: baseRecord,

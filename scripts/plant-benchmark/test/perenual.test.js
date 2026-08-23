@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractDimensionCm, extractDimensionEntriesCm, mapPerenualDetailToTraits, isLimitedCatalogAccessTier, classifySearchResult } from "../src/providers/perenual.js";
+import { extractDimensionCm, extractDimensionEntriesCm, mapPerenualDetailToTraits, isLimitedCatalogAccessTier, classifySearchResult, classifyDetailFailure } from "../src/providers/perenual.js";
 import { selectCandidate } from "../src/candidateSelection.js";
 
 const RETRIEVED_AT = "2026-01-01T00:00:00.000Z";
@@ -278,8 +278,11 @@ test("perenual: real fixture (Acer palmatum species/details shape) maps correctl
   // cycle="Perennial" never infers evergreen.
   assert.equal(traits.evergreen, undefined);
 
-  // other straightforward fields still map as-is.
-  assert.equal(traits.growth_form.observations[0].raw_value, "tree");
+  // other straightforward fields still map as-is. `type` maps to
+  // plant_type, never to growth_form (spec correction — split from
+  // Trefle's distinct specifications.growth_form concept).
+  assert.equal(traits.plant_type.observations[0].raw_value, "tree");
+  assert.equal(traits.growth_form, undefined);
   assert.equal(traits.growth_rate.observations[0].raw_value, "Low");
   assert.equal(traits.drought_tolerance.observations[0].raw_value, false);
   assert.equal(traits.hardiness_min.observations[0].raw_value, "6");
@@ -318,4 +321,33 @@ test("classifySearchResult: empty search under premium/supreme/unset tier is NEV
 
 test("classifySearchResult #4: a normal accessible result (candidates present) is never touched, even under the Personal tier", () => {
   assert.equal(classifySearchResult({ rawCandidatesLength: 3, accessTier: "personal" }), null);
+});
+
+// --- plan_restricted only for a confidently-matched target (spec correction)
+
+test("classifyDetailFailure: exact_scientific_match + 429 upgrade-plan -> plan_restricted", () => {
+  assert.equal(classifyDetailFailure({ selectionReason: "exact_scientific_match", detailError: "plan_restricted" }), "plan_restricted");
+});
+
+test("classifyDetailFailure: exact_cultivar_match + 429 upgrade-plan -> plan_restricted", () => {
+  assert.equal(classifyDetailFailure({ selectionReason: "exact_cultivar_match", detailError: "plan_restricted" }), "plan_restricted");
+});
+
+test("classifyDetailFailure: real cases — only a related candidate matched (parent_taxon_match) + 429 -> unresolved_under_plan, never plan_restricted for the target", () => {
+  // Reproduces: Viburnum tinus -> only "Viburnum tinus 'Lisarose'" matched;
+  // Hosta -> only "Hosta 'Abby'"; Miscanthus sinensis -> only "Miscanthus
+  // sinensis 'Autumn Light'"; Malus domestica -> only a Goldrush cultivar.
+  const result = classifyDetailFailure({ selectionReason: "parent_taxon_match", detailError: "plan_restricted" });
+  assert.equal(result, "unresolved_under_plan");
+  assert.notEqual(result, "plan_restricted");
+});
+
+test("classifyDetailFailure: ambiguous/fuzzy candidate + 429 -> unresolved_under_plan, never plan_restricted", () => {
+  assert.equal(classifyDetailFailure({ selectionReason: "ambiguous", detailError: "plan_restricted" }), "unresolved_under_plan");
+  assert.equal(classifyDetailFailure({ selectionReason: "fuzzy_candidate", detailError: "plan_restricted" }), "unresolved_under_plan");
+});
+
+test("classifyDetailFailure: a non-plan-restricted detail error is untouched (null -> caller keeps provider_error/original selection_reason)", () => {
+  assert.equal(classifyDetailFailure({ selectionReason: "exact_scientific_match", detailError: "timeout" }), null);
+  assert.equal(classifyDetailFailure({ selectionReason: "parent_taxon_match", detailError: "http_error" }), null);
 });

@@ -35,6 +35,13 @@
 //    it is kept under its own unambiguous name (`light_0_10`) and never
 //    auto-translated into "full sun"/"part shade"/"shade"; it no longer
 //    feeds the `sun` trait until a validated crosswalk exists.
+//  - `growth.bloom_months` is an array of documented 3-letter lowercase
+//    month codes (e.g. `["apr","may"]`) — these are now deterministically
+//    normalized to canonical month numbers (`[4,5]`) via a fixed
+//    whitelist, never left as `null` when the codes are genuinely
+//    recognized, and never a seasonal inference of any kind. An
+//    unrecognized code anywhere in the array leaves the whole
+//    normalization `null` (raw_value always kept) rather than guessing.
 //
 // The trait-mapping logic is a pure function (`mapTrefleDetailToTraits`)
 // deliberately separated from the network call, so it can be unit tested
@@ -47,6 +54,32 @@ import { makeObservation, pushObservation } from "../normalize.js";
 import { selectCandidate } from "../candidateSelection.js";
 
 const BASE = "https://trefle.io/api/v1";
+
+// Trefle's documented 3-letter lowercase month codes -> canonical month
+// number (1-12). Deterministic whitelist only — never a seasonal
+// inference (spec: "Pas d'inférence saisonnière").
+const MONTH_CODE_TO_NUMBER = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+/**
+ * normalizeMonthCodes — pure. Converts a raw `growth.bloom_months` array
+ * (e.g. `["apr","may"]`) into canonical month numbers (`[4,5]`). Returns
+ * `null` (never a partial/guessed result) if the input isn't a non-empty
+ * array, or if ANY code in it isn't a recognized month abbreviation —
+ * raw_value is always preserved regardless by the caller.
+ */
+export function normalizeMonthCodes(rawMonths) {
+  if (!Array.isArray(rawMonths) || rawMonths.length === 0) return null;
+  const numbers = [];
+  for (const code of rawMonths) {
+    const num = MONTH_CODE_TO_NUMBER[String(code || "").trim().toLowerCase()];
+    if (num === undefined) return null;
+    numbers.push(num);
+  }
+  return numbers;
+}
 
 /**
  * mapTrefleDetailToTraits — pure. Given a `species/{id}` payload's `data`
@@ -155,7 +188,7 @@ export function mapTrefleDetailToTraits({ candidateId, sourceUrl, detailData, re
     add("growth_rate", "growth.growth_rate", growth.growth_rate, growth.growth_rate);
   }
   add("drought_tolerance", "growth.drought_tolerance", growth.drought_tolerance, growth.drought_tolerance);
-  add("flowering_months", "growth.bloom_months", growth.bloom_months, null, null);
+  add("flowering_months", "growth.bloom_months", growth.bloom_months, normalizeMonthCodes(growth.bloom_months), null);
   add("evergreen", "foliage.leaf_retention", foliage.leaf_retention, foliage.leaf_retention);
 
   return { traits, provenance };

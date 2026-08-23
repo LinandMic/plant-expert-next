@@ -185,3 +185,53 @@ test("wcvp: shouldFallbackToFullTextSearch -> false when the exact lookup alread
   const selection = scoreWcvpResults([REAL_ROSMARINUS_SYNONYM_FIXTURE], "Rosmarinus officinalis");
   assert.equal(shouldFallbackToFullTextSearch([REAL_ROSMARINUS_SYNONYM_FIXTURE], selection), false);
 });
+
+// --- Homonym / exact-match tie-breaking (spec correction) ---------------
+
+// Reproduces the real observed bug: "Clematis montana" resolved to
+// "Clematis napaulensis" instead of staying "Clematis montana" — two
+// exact canonicalName candidates tied at score 100, one SYNONYM (resolving
+// elsewhere via acceptedKey), one ACCEPTED. results[] order alone had been
+// deciding the winner.
+const CLEMATIS_SYNONYM = { key: 111, canonicalName: "Clematis montana", taxonomicStatus: "SYNONYM", acceptedKey: 222, rank: "SPECIES" };
+const CLEMATIS_ACCEPTED = { key: 333, canonicalName: "Clematis montana", taxonomicStatus: "ACCEPTED", rank: "SPECIES" };
+
+test("wcvp homonyms: SYNONYM listed before ACCEPTED in results[] — ACCEPTED still wins, never results[] order", () => {
+  const selection = scoreWcvpResults([CLEMATIS_SYNONYM, CLEMATIS_ACCEPTED], "Clematis montana");
+  assert.equal(selection.selected.id, 333);
+  assert.equal(selection.selected.raw.taxonomicStatus, "ACCEPTED");
+  assert.equal(selection.selection_reason, "exact_scientific_match");
+  assert.notEqual(selection.selection_reason, "ambiguous");
+});
+
+test("wcvp homonyms: ACCEPTED listed first — still wins (order-independent)", () => {
+  const selection = scoreWcvpResults([CLEMATIS_ACCEPTED, CLEMATIS_SYNONYM], "Clematis montana");
+  assert.equal(selection.selected.id, 333);
+  assert.equal(selection.selection_reason, "exact_scientific_match");
+});
+
+test("wcvp homonyms: multiple exact ACCEPTED candidates -> ambiguous, never an arbitrary pick", () => {
+  const otherAccepted = { key: 444, canonicalName: "Clematis montana", taxonomicStatus: "ACCEPTED", rank: "SPECIES" };
+  const selection = scoreWcvpResults([CLEMATIS_ACCEPTED, otherAccepted], "Clematis montana");
+  assert.equal(selection.selection_reason, "ambiguous");
+});
+
+test("wcvp homonyms: zero ACCEPTED, exactly one SYNONYM among exact ties -> that SYNONYM is selected", () => {
+  const doubtful = { key: 555, canonicalName: "Clematis montana", taxonomicStatus: "DOUBTFUL", rank: "SPECIES" };
+  const selection = scoreWcvpResults([CLEMATIS_SYNONYM, doubtful], "Clematis montana");
+  assert.equal(selection.selected.id, 111);
+  assert.equal(selection.selected.raw.taxonomicStatus, "SYNONYM");
+  assert.equal(selection.selection_reason, "exact_scientific_match");
+});
+
+test("wcvp homonyms: zero ACCEPTED and multiple SYNONYM candidates -> ambiguous, never guessed", () => {
+  const otherSynonym = { key: 666, canonicalName: "Clematis montana", taxonomicStatus: "SYNONYM", acceptedKey: 777, rank: "SPECIES" };
+  const selection = scoreWcvpResults([CLEMATIS_SYNONYM, otherSynonym], "Clematis montana");
+  assert.equal(selection.selection_reason, "ambiguous");
+});
+
+test("wcvp homonyms: a single exact match (no tie) is unaffected by the homonym logic", () => {
+  const selection = scoreWcvpResults([CLEMATIS_ACCEPTED], "Clematis montana");
+  assert.equal(selection.selected.id, 333);
+  assert.equal(selection.selection_reason, "exact_scientific_match");
+});

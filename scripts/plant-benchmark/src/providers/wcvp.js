@@ -37,6 +37,14 @@ import { writeRaw, slugify } from "../cache.js";
 import { parseCultivarName } from "../taxonomyMatch.js";
 import { selectCandidate } from "../candidateSelection.js";
 
+function isAcceptedStatus(status) {
+  return /^accepted$/i.test((status || "").trim());
+}
+
+function isSynonymStatus(status) {
+  return /synonym/i.test(status || "");
+}
+
 const WCVP_DATASET_KEY = "f382f0ce-323a-4091-bb9f-add557f3a9a2";
 const GBIF_BASE = "https://api.gbif.org/v1";
 
@@ -59,11 +67,51 @@ function buildSearchUrl(name) {
 // the same shared, documented, non-`results[0]` candidate logic used by
 // every provider. Exported so the exact-lookup-first / full-text-fallback
 // decision can be unit tested without any network call (spec §12/§13).
+//
+// Corrected: the shared `selectCandidate` scores multiple exact
+// canonicalName matches as an unresolved tie at score 100 (it does not
+// flag scores of exactly 100 as ambiguous — see candidateSelection.js) and
+// falls back to whichever the API happened to list first. For WCVP this is
+// wrong whenever the tied candidates are HOMONYMS with different
+// taxonomicStatus — real case observed: two "Clematis montana" records,
+// one SYNONYM (resolving to "Clematis napaulensis" via acceptedKey) and
+// one ACCEPTED (staying "Clematis montana"); results[] order alone had
+// been silently picking the SYNONYM. WCVP-specific tie-breaking:
+//   - exactly one exact match -> unchanged (no tie to break).
+//   - >1 exact match, exactly one is ACCEPTED -> that one wins, never the
+//     SYNONYM, regardless of results[] order.
+//   - >1 exact match, >1 ACCEPTED among them -> genuinely ambiguous
+//     homonyms, `ambiguous`, never an arbitrary pick.
+//   - >1 exact match, zero ACCEPTED, exactly one SYNONYM -> that SYNONYM
+//     is selected (then resolved via acceptedKey as usual downstream).
+//   - >1 exact match, zero ACCEPTED, and not exactly one SYNONYM either
+//     (0 or several) -> not safely resolvable -> `ambiguous`.
 export function scoreWcvpResults(rawResults, queryName) {
   const candidateInputs = (rawResults || []).map((r) => ({ id: r.key, rawName: r.canonicalName || r.scientificName || "", raw: r }));
   // WCVP is always queried on the botanical parent — never pass a
   // cultivar epithet into the selection logic here.
-  return selectCandidate({ parentName: queryName, cultivarName: null, candidates: candidateInputs });
+  const generic = selectCandidate({ parentName: queryName, cultivarName: null, candidates: candidateInputs });
+
+  const exactTies = generic.candidates.filter((c) => c.score === 100 && c.reason === "exact_scientific_match");
+  if (exactTies.length <= 1) return generic;
+
+  const accepted = exactTies.filter((c) => isAcceptedStatus(c.raw && c.raw.taxonomicStatus));
+  if (accepted.length === 1) {
+    return { selected: accepted[0], selection_reason: "exact_scientific_match", candidates: generic.candidates };
+  }
+  if (accepted.length > 1) {
+    // Multiple ACCEPTED homonyms — never guessed between them.
+    return { selected: exactTies[0], selection_reason: "ambiguous", candidates: generic.candidates };
+  }
+
+  const synonyms = exactTies.filter((c) => isSynonymStatus(c.raw && c.raw.taxonomicStatus));
+  if (synonyms.length === 1) {
+    return { selected: synonyms[0], selection_reason: "exact_scientific_match", candidates: generic.candidates };
+  }
+
+  // No ACCEPTED, and not exactly one SYNONYM either — not safely
+  // resolvable from name + status alone.
+  return { selected: exactTies[0], selection_reason: "ambiguous", candidates: generic.candidates };
 }
 
 // Pure — the exact lookup is only "reliable enough" when it actually

@@ -13,6 +13,25 @@ function percent(found, total) {
   return total ? round1((found / total) * 100) : 0;
 }
 
+// Deterministic informative-presence check, used everywhere coverage
+// decides whether an observation's `normalized_value` counts as "the
+// provider actually gave us something" — corrected: an empty array/object/
+// string was previously counted as present just because it wasn't
+// `null`/`undefined` (e.g. Perenual's real `attracts: []`, `soil: []`
+// would have inflated coverage despite carrying zero information).
+//   missing: null, undefined, "" / whitespace-only string, [], {} (or an
+//            object whose own values are themselves all non-informative).
+//   present: false, 0, any other non-empty string/number, non-empty
+//            arrays (regardless of element content), objects with at
+//            least one informative value.
+export function hasInformativeValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.values(value).some(hasInformativeValue);
+  return true; // booleans (including false) and numbers (including 0)
+}
+
 // Canonical traits the future Plant Finder actually wants to evaluate,
 // independent of what any given provider happens to return. This list is
 // fixed by us, not discovered from a response — a provider missing a
@@ -32,8 +51,14 @@ export const BENCHMARK_TRAITS = [
   "height_min_cm",
   "height_max_cm",
   "spread_max_cm",
-  // growth form
+  // growth form (Trefle `specifications.growth_form` ONLY)
   "growth_form",
+  // plant type (Perenual `type` ONLY — e.g. "tree"/"shrub"/"herb").
+  // Deliberately split from growth_form: despite the superficial naming
+  // overlap, Perenual's `type` and Trefle's `specifications.growth_form`
+  // are two distinct provider concepts and are never merged under any
+  // implicit equivalence rule.
+  "plant_type",
   // soleil
   "sun",
   // humidité du sol
@@ -152,10 +177,10 @@ function coverageRowsForTraits(normalized, traitNames) {
     for (const plant of normalized) {
       const entry = plant.traits[trait];
       if (!entry) continue;
-      if (entry.observations.some((o) => o.provider === "perenual" && o.normalized_value !== null && o.normalized_value !== undefined)) {
+      if (entry.observations.some((o) => o.provider === "perenual" && hasInformativeValue(o.normalized_value))) {
         perenualFound++;
       }
-      if (entry.observations.some((o) => o.provider === "trefle" && o.normalized_value !== null && o.normalized_value !== undefined)) {
+      if (entry.observations.some((o) => o.provider === "trefle" && hasInformativeValue(o.normalized_value))) {
         trefleFound++;
       }
     }
