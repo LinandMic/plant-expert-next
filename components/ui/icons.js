@@ -153,3 +153,32 @@ export function IconMapPin(props) {
     </Svg>
   );
 }
+
+export function IconCalendar(props) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="5.5" width="16" height="14.5" rx="2" />
+      <path d="M4 9.5h16" />
+      <path d="M8 3.5v3.5M16 3.5v3.5" />
+    </Svg>
+  );
+}
+
+export function IconTrash(props) {
+  return (
+    <Svg {...props}>
+      <path d="M5 7h14" />
+      <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+      <path d="M6.5 7 7.3 19a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8L17.5 7" />
+      <path d="M10 11v6M14 11v6" />
+    </Svg>
+  );
+}
+
+export function IconX(props) {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </Svg>
+  );
+}

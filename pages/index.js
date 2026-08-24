@@ -14,7 +14,25 @@ import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
 import AccueilDashboard from "@/components/AccueilDashboard";
 import AppShell from "@/components/ui/AppShell";
-import { IconHome, IconCamera, IconSprout, IconSearch, IconUser, IconInfo } from "@/components/ui/icons";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
+import SectionHeader from "@/components/ui/SectionHeader";
+import {
+  IconHome,
+  IconCamera,
+  IconSprout,
+  IconSearch,
+  IconUser,
+  IconInfo,
+  IconBell,
+  IconCalendar,
+  IconMapPin,
+  IconTrash,
+  IconSprig,
+  IconChevronRight,
+  IconSun,
+  IconX,
+} from "@/components/ui/icons";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
@@ -565,7 +583,16 @@ function todayLocalDateString() {
   return `${y}-${m}-${day}`;
 }
 
-function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated }) {
+// zoneNameForPlant(plant, zonesList) -> the plant's zone name, or null when
+// unassigned or when the zone it pointed to no longer exists — never a raw
+// zoneId, never "undefined".
+function zoneNameForPlant(plant, zonesList) {
+  if (!plant || !plant.zoneId) return null;
+  const zone = (zonesList || []).find((z) => z.id === plant.zoneId);
+  return zone ? zone.name : null;
+}
+
+function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated, onGoIdentifier }) {
   // selectedId (not the plant object itself) is the only state kept for the
   // open detail view — the plant is always re-derived from the live
   // `jardin` array below, so any update to `jardin` (e.g. a successful
@@ -662,6 +689,15 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
     setReminderNotice(null);
   };
 
+  // Composes the three existing filter setters — no new state, no new
+  // business logic, just a convenience for the "no results" empty state's
+  // reset action.
+  const handleResetFilters = () => {
+    setSearchQ("");
+    setFilterCat("Tout");
+    setZoneFilter("all");
+  };
+
   const handleOpenReminderModal = () => {
     if (reminders.requiresAuth) {
       setReminderNotice({ type: "error", text: "Connectez-vous pour créer et synchroniser vos rappels sur tous vos appareils." });
@@ -743,164 +779,251 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
     );
   }
 
+  const hasZones = zones.zones.length > 0;
+  const hasActiveFilters = searchQ !== "" || filterCat !== "Tout" || zoneFilter !== "all";
+  const activeZoneName = zoneFilter !== "all" && zoneFilter !== "unassigned" ? zoneNameForPlant({ zoneId: zoneFilter }, zones.zones) : null;
+
   return (
-    <div className="tab-page">
+    <div className="mj-page">
+      <style>{GARDEN_STYLES}</style>
       {migrating && <div className="context-banner">🔄 Synchronisation de votre jardin avec votre compte...</div>}
       {error && <div className="error-box">⚠️ {error}</div>}
       {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
+
+      <header className="mj-header">
+        <div>
+          <div className="mj-eyebrow">MON JARDIN</div>
+          <h1 className="mj-title">Votre jardin</h1>
+          <p className="mj-subtitle">Suivez vos plantes, leurs zones et leur entretien au fil des saisons.</p>
+        </div>
+        {onGoIdentifier && (
+          <Button onClick={onGoIdentifier} className="mj-header-cta">
+            <IconCamera size={17} /> Identifier une plante
+          </Button>
+        )}
+      </header>
+
       {loading && jardin.length === 0 ? (
-        <div className="loading-state">
-          <div className="leaf-spin">🌿</div>
-          <div className="loading-title">Chargement de votre jardin</div>
+        <div className="mj-loading">
+          <IconSprig size={26} />
+          <div className="mj-loading-title">Chargement de votre jardin…</div>
         </div>
       ) : jardin.length === 0 ? (
         <>
-          <div className="empty-jardin">
-            <div className="empty-icon">🌾</div>
-            <div className="empty-title">Ton jardin est vide</div>
-            <div className="empty-sub">Identifie une plante et clique Ajouter à Mon Jardin</div>
-          </div>
+          <Card className="mj-empty-card">
+            <IconSprig size={28} />
+            <div className="mj-empty-title">Votre jardin est vide</div>
+            <p className="mj-empty-sub">Identifiez une plante et ajoutez-la à Mon Jardin pour la retrouver ici.</p>
+            {onGoIdentifier && (
+              <Button variant="secondary" onClick={onGoIdentifier}>
+                <IconCamera size={16} /> Identifier une plante
+              </Button>
+            )}
+          </Card>
           {isAuthenticated && (
-            <div className="jardin-summary">
-              <button type="button" className="jardin-summary-chip-btn" onClick={() => setZonesOpen((v) => !v)}>
-                {zones.zones.length === 0
-                  ? "📍 Zones · Ajouter"
-                  : `📍 ${zones.zones.length} zone${zones.zones.length > 1 ? "s" : ""}`}
+            <section className="mj-section">
+              <button type="button" className="mj-section-toggle" onClick={() => setZonesOpen((v) => !v)}>
+                <span className="mj-section-toggle-label"><IconMapPin size={17} /> Zones du jardin</span>
+                <span className="mj-section-toggle-action">{zonesOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
               </button>
-            </div>
-          )}
-          {isAuthenticated && zonesOpen && (
-            <div className="jardin-section">
-              <button type="button" className="jardin-section-collapse-btn" onClick={() => setZonesOpen(false)}>
-                Masquer les zones
-              </button>
-              <GardenZonesPanel
-                zones={zones.zones}
-                loading={zones.loading}
-                error={zones.error}
-                createZone={zones.createZone}
-                updateZone={zones.updateZone}
-                deleteZone={zones.deleteZone}
-              />
-            </div>
+              {zonesOpen && (
+                <Card className="mj-section-body">
+                  <GardenZonesPanel
+                    zones={zones.zones}
+                    loading={zones.loading}
+                    error={zones.error}
+                    createZone={zones.createZone}
+                    updateZone={zones.updateZone}
+                    deleteZone={zones.deleteZone}
+                  />
+                </Card>
+              )}
+            </section>
           )}
         </>
       ) : (
         <>
-          <div className="jardin-summary">
-            <span className="jardin-summary-chip">🌿 {jardin.length} plante{jardin.length > 1 ? "s" : ""}</span>
-            <span className="jardin-summary-chip">📋 {tasksCount} tâche{tasksCount > 1 ? "s" : ""}</span>
-            <span className="jardin-summary-chip">💧 {wateringTasksCount} arrosage{wateringTasksCount > 1 ? "s" : ""}</span>
-            {weatherLoading ? (
-              <span className="jardin-summary-chip">🌦️ Météo…</span>
-            ) : weatherLocationName ? (
-              <span className="jardin-summary-chip">🌦️ {weatherLocationName}</span>
-            ) : null}
+          <div className="mj-stats-row">
+            <Card className="mj-stat-card">
+              <span className="mj-stat-icon"><IconSprout size={18} /></span>
+              <div className="mj-stat-value">{jardin.length}</div>
+              <div className="mj-stat-label">plante{jardin.length > 1 ? "s" : ""}</div>
+            </Card>
+            <Card className="mj-stat-card">
+              <span className="mj-stat-icon"><IconBell size={18} /></span>
+              <div className="mj-stat-value">{tasksCount}</div>
+              <div className="mj-stat-label">tâche{tasksCount > 1 ? "s" : ""} à venir</div>
+            </Card>
+            <Card className="mj-stat-card">
+              <span className="mj-stat-icon"><IconSun size={18} /></span>
+              <div className="mj-stat-value">{wateringTasksCount}</div>
+              <div className="mj-stat-label">arrosage{wateringTasksCount > 1 ? "s" : ""}</div>
+            </Card>
             {isAuthenticated && (
-              <button type="button" className="jardin-summary-chip-btn" onClick={() => setZonesOpen((v) => !v)}>
-                {zones.zones.length === 0
-                  ? "📍 Zones · Ajouter"
-                  : `📍 ${zones.zones.length} zone${zones.zones.length > 1 ? "s" : ""}`}
-              </button>
+              <Card className="mj-stat-card">
+                <span className="mj-stat-icon"><IconMapPin size={18} /></span>
+                <div className="mj-stat-value">{zones.zones.length}</div>
+                <div className="mj-stat-label">zone{zones.zones.length > 1 ? "s" : ""}</div>
+              </Card>
             )}
           </div>
-
-          <div className="filters-row">
-            <input className="search-input" placeholder="🔍 Rechercher..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
-          </div>
-          {isAuthenticated && zones.zones.length > 0 && (
-            <div className="filters-row">
-              <select className="search-input" value={zoneFilter} onChange={e => setZoneFilter(e.target.value)}>
-                <option value="all">Toutes les zones</option>
-                <option value="unassigned">Sans zone</option>
-                {zones.zones.map(z => (
-                  <option key={z.id} value={z.id}>{z.name}</option>
-                ))}
-              </select>
+          {weatherLocationName && (
+            <div className="mj-weather-line">
+              {weatherLoading ? "Météo…" : <>Météo pour <strong>{weatherLocationName}</strong></>}
             </div>
           )}
-          <div className="cats-row">
-            {["Tout", ...CATEGORIES].map(c => (
-              <button key={c} className={"cat-btn" + (filterCat === c ? " active" : "")} onClick={() => setFilterCat(c)}>{c}</button>
-            ))}
-          </div>
 
-          {!tasksOpen ? (
-            <button type="button" className="jardin-section-toggle" onClick={() => setTasksOpen(true)}>
-              <span>📋 Tâches — {tasksCount} à venir</span>
-              <span className="jardin-section-toggle-action">Voir</span>
-            </button>
-          ) : (
-            <div className="jardin-section">
-              <button type="button" className="jardin-section-collapse-btn" onClick={() => setTasksOpen(false)}>Masquer les tâches</button>
-              <RemindersOverview
-                reminders={reminders}
-                garden={{ jardin }}
-                actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
-                weatherRecommendations={weatherRecommendationsByReminderId}
-                weatherLocationName={weatherLocationName}
-              />
+          {isAuthenticated && hasZones && (
+            <div className="mj-zones-row" role="tablist" aria-label="Filtrer par zone">
+              <button
+                type="button"
+                className={"mj-zone-chip" + (zoneFilter === "all" ? " active" : "")}
+                onClick={() => setZoneFilter("all")}
+              >
+                Toutes les zones
+              </button>
+              {zones.zones.map((z) => (
+                <button
+                  key={z.id}
+                  type="button"
+                  className={"mj-zone-chip" + (zoneFilter === z.id ? " active" : "")}
+                  onClick={() => setZoneFilter(z.id)}
+                >
+                  {z.name}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={"mj-zone-chip" + (zoneFilter === "unassigned" ? " active" : "")}
+                onClick={() => setZoneFilter("unassigned")}
+              >
+                Sans zone
+              </button>
+              <button type="button" className="mj-zone-manage-btn" onClick={() => setZonesOpen((v) => !v)}>
+                Gérer les zones
+              </button>
             </div>
           )}
 
           {isAuthenticated && zonesOpen && (
-            <div className="jardin-section">
-              <button type="button" className="jardin-section-collapse-btn" onClick={() => setZonesOpen(false)}>
+            <section className="mj-section">
+              <button type="button" className="mj-section-collapse-btn" onClick={() => setZonesOpen(false)}>
                 Masquer les zones
               </button>
-              <GardenZonesPanel
-                zones={zones.zones}
-                loading={zones.loading}
-                error={zones.error}
-                createZone={zones.createZone}
-                updateZone={zones.updateZone}
-                deleteZone={zones.deleteZone}
+              <Card className="mj-section-body">
+                <GardenZonesPanel
+                  zones={zones.zones}
+                  loading={zones.loading}
+                  error={zones.error}
+                  createZone={zones.createZone}
+                  updateZone={zones.updateZone}
+                  deleteZone={zones.deleteZone}
+                />
+              </Card>
+            </section>
+          )}
+
+          <div className="mj-search-row">
+            <div className="mj-search-field">
+              <IconSearch size={17} />
+              <input
+                className="mj-search-input"
+                placeholder="Rechercher une plante..."
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
               />
+              {searchQ && (
+                <button type="button" className="mj-search-clear" onClick={() => setSearchQ("")} aria-label="Effacer la recherche">
+                  <IconX size={15} />
+                </button>
+              )}
             </div>
+          </div>
+          <div className="mj-cats-row">
+            {["Tout", ...CATEGORIES].map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={"mj-cat-chip" + (filterCat === c ? " active" : "")}
+                onClick={() => setFilterCat(c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+
+          <div className="mj-dash-row">
+            <Card className="mj-dash-card" onClick={() => setTasksOpen((v) => !v)}>
+              <span className="mj-dash-icon"><IconBell size={19} /></span>
+              <div className="mj-dash-text">
+                <div className="mj-dash-title">Tâches</div>
+                <div className="mj-dash-sub">{tasksCount} à venir</div>
+              </div>
+              <span className="mj-dash-action">{tasksOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+            </Card>
+            <Card className="mj-dash-card" onClick={() => setAFaireOpen((v) => !v)}>
+              <span className="mj-dash-icon"><IconCalendar size={19} /></span>
+              <div className="mj-dash-text">
+                <div className="mj-dash-title">À faire en {moisLabel}</div>
+                <div className="mj-dash-sub">
+                  {moisTasks.length > 0 ? `${moisTasks.length} plante${moisTasks.length > 1 ? "s" : ""}` : "rien de particulier"}
+                </div>
+              </div>
+              <span className="mj-dash-action">{aFaireOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+            </Card>
+          </div>
+
+          {tasksOpen && (
+            <section className="mj-section">
+              <Card className="mj-section-body">
+                <RemindersOverview
+                  reminders={reminders}
+                  garden={{ jardin }}
+                  actions={{ markDone: reminders.markDone, markSkipped: reminders.markSkipped, snooze: reminders.snooze }}
+                  weatherRecommendations={weatherRecommendationsByReminderId}
+                  weatherLocationName={weatherLocationName}
+                />
+              </Card>
+            </section>
           )}
 
-          {!aFaireOpen ? (
-            <button type="button" className="jardin-section-toggle" onClick={() => setAFaireOpen(true)}>
-              <span>
-                📅 À faire en {moisLabel} — {moisTasks.length > 0 ? `${moisTasks.length} plante${moisTasks.length > 1 ? "s" : ""}` : "rien de particulier"}
-              </span>
-              <span className="jardin-section-toggle-action">Voir</span>
-            </button>
-          ) : (
-            <div className="mois-card">
-              <div className="mois-title-row">
-                <div className="mois-title">📅 À faire en {moisLabel}</div>
-                <button type="button" className="mois-collapse-btn" onClick={() => setAFaireOpen(false)}>Masquer</button>
-              </div>
-              <div className="mois-list">
+          {aFaireOpen && (
+            <section className="mj-section">
+              <Card className="mj-section-body mj-mois-card">
                 {moisTasks.length === 0 ? (
-                  <div className="mois-vide">Rien de particulier ce mois-ci 🌿</div>
+                  <div className="mj-mois-vide">Rien de particulier ce mois-ci.</div>
                 ) : (
-                  moisTasks.map(p => (
-                    <div key={p.id} className="mois-item">
-                      <span className="mois-plante">{p.data && p.data.identite && p.data.identite.nom_commun}</span>
-                      <span className="mois-tache">{p.data.calendrier[moisActuel]}</span>
-                    </div>
-                  ))
+                  <div className="mj-mois-list">
+                    {moisTasks.map((p) => (
+                      <div key={p.id} className="mj-mois-item">
+                        <span className="mj-mois-plante">{p.data && p.data.identite && p.data.identite.nom_commun}</span>
+                        <span className="mj-mois-tache">{p.data.calendrier[moisActuel]}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </div>
-            </div>
+              </Card>
+            </section>
           )}
 
-          <div className="jardin-select-bar">
+          <div className="mj-select-bar">
             {!selectionMode ? (
-              <button type="button" className="cat-btn" onClick={() => setSelectionMode(true)}>☑️ Sélectionner</button>
+              <button type="button" className="mj-select-toggle-btn" onClick={() => setSelectionMode(true)}>
+                Sélectionner
+              </button>
             ) : (
               <>
-                <button type="button" className="cat-btn" onClick={handleSelectAll}>
+                <button type="button" className="mj-select-toggle-btn" onClick={handleSelectAll}>
                   {allVisibleSelected ? "Tout désélectionner" : "Tout sélectionner"}
                 </button>
-                <span className="jardin-select-count">
-                  {selectedIds.size} plante{selectedIds.size > 1 ? "s" : ""} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+                <span className="mj-select-count">
+                  {selectedIds.size} sélectionnée{selectedIds.size > 1 ? "s" : ""}
                 </span>
-                <button type="button" className="cat-btn" onClick={handleCancelSelection}>Annuler</button>
+                <button type="button" className="mj-select-toggle-btn" onClick={handleCancelSelection}>Annuler</button>
                 {selectedIds.size > 0 && (
-                  <button type="button" className="btn-analyze" onClick={handleOpenReminderModal}>🔔 Créer des rappels</button>
+                  <Button onClick={handleOpenReminderModal} className="mj-select-reminder-btn">
+                    <IconBell size={16} /> Créer des rappels
+                  </Button>
                 )}
               </>
             )}
@@ -916,54 +1039,197 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             />
           )}
 
-          <div className="jardin-grid">
-            {filtered.map(p => (
-              <div
-                key={p.id}
-                className={"jardin-card" + (selectionMode && selectedIds.has(p.id) ? " jardin-card-selected" : "")}
-                onClick={() => selectionMode ? toggleSelected(p.id) : setSelectedId(p.id)}
-              >
-                {selectionMode && (
-                  <input
-                    type="checkbox"
-                    className="jardin-select-checkbox"
-                    checked={selectedIds.has(p.id)}
-                    onChange={() => toggleSelected(p.id)}
-                    onClick={e => e.stopPropagation()}
-                  />
-                )}
-                <div className="jardin-card-img">
-                  {p.imagePreview ? <img src={p.imagePreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} /> : <span style={{fontSize:36}}>🌱</span>}
-                </div>
-                <div className="jardin-card-body">
-                  <div className="jardin-card-name">{p.data && p.data.identite && p.data.identite.nom_commun}</div>
-                  <div className="jardin-card-latin">{p.data && p.data.identite && p.data.identite.nom_latin}</div>
-                  <div className="jardin-card-cat">{(p.data && p.data.identite && p.data.identite.categorie) || "Plante"}</div>
-                  {p.plantation && <div className="jardin-card-plantation">{p.plantation.icon} {p.plantation.label}</div>}
-                </div>
-                {!selectionMode && <span className="jardin-card-chevron" aria-hidden="true">›</span>}
-                {!selectionMode && (
-                  confirmDeleteId === p.id ? (
-                    <div className="jardin-delete-confirm" onClick={e => e.stopPropagation()}>
-                      <span className="jardin-delete-confirm-text">Supprimer cette plante ?</span>
-                      <div className="jardin-delete-confirm-actions">
-                        <button type="button" className="jardin-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
-                        <button type="button" className="jardin-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+          {filtered.length === 0 ? (
+            <Card className="mj-empty-card">
+              <IconSprig size={26} />
+              <div className="mj-empty-title">Aucune plante ne correspond</div>
+              <p className="mj-empty-sub">
+                {activeZoneName
+                  ? <>Aucun résultat pour la zone « {activeZoneName} » avec ces filtres.</>
+                  : "Essayez une autre recherche ou réinitialisez les filtres."}
+              </p>
+              {hasActiveFilters && (
+                <Button variant="secondary" onClick={handleResetFilters}>Réinitialiser les filtres</Button>
+              )}
+            </Card>
+          ) : (
+            <div className="mj-grid">
+              {filtered.map((p) => {
+                const nom = p.data && p.data.identite && p.data.identite.nom_commun;
+                const nomLatin = p.data && p.data.identite && p.data.identite.nom_latin;
+                const categorie = p.data && p.data.identite && p.data.identite.categorie;
+                const zoneName = zoneNameForPlant(p, zones.zones);
+                return (
+                  <div
+                    key={p.id}
+                    className={"mj-card" + (selectionMode && selectedIds.has(p.id) ? " mj-card-selected" : "")}
+                    onClick={() => (selectionMode ? toggleSelected(p.id) : setSelectedId(p.id))}
+                  >
+                    {selectionMode && (
+                      <input
+                        type="checkbox"
+                        className="mj-card-checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => toggleSelected(p.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={nom ? `Sélectionner ${nom}` : "Sélectionner cette plante"}
+                      />
+                    )}
+                    <div className="mj-card-photo">
+                      {p.imagePreview ? (
+                        <img src={p.imagePreview} alt="" />
+                      ) : (
+                        <IconSprig size={30} />
+                      )}
+                    </div>
+                    <div className="mj-card-body">
+                      {nom && <div className="mj-card-name">{nom}</div>}
+                      {nomLatin && <div className="mj-card-latin">{nomLatin}</div>}
+                      <div className="mj-card-meta">
+                        {categorie && <span className="mj-card-tag">{categorie}</span>}
+                        {zoneName && <span className="mj-card-tag mj-card-tag-zone"><IconMapPin size={12} /> {zoneName}</span>}
                       </div>
                     </div>
-                  ) : (
-                    <button className="jardin-delete" onClick={(e) => handleRequestDelete(e, p.id)}>✕</button>
-                  )
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="jardin-count">{jardin.length} plante{jardin.length > 1 ? "s" : ""} dans ton jardin</div>
+                    {!selectionMode && <span className="mj-card-chevron" aria-hidden="true"><IconChevronRight size={18} /></span>}
+                    {!selectionMode && (
+                      confirmDeleteId === p.id ? (
+                        <div className="mj-delete-confirm" onClick={(e) => e.stopPropagation()}>
+                          <span className="mj-delete-confirm-text">Supprimer cette plante ?</span>
+                          <div className="mj-delete-confirm-actions">
+                            <button type="button" className="mj-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
+                            <button type="button" className="mj-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button type="button" className="mj-card-delete" onClick={(e) => handleRequestDelete(e, p.id)} aria-label="Supprimer cette plante">
+                          <IconTrash size={15} />
+                        </button>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="mj-count">{jardin.length} plante{jardin.length > 1 ? "s" : ""} dans votre jardin</div>
         </>
       )}
     </div>
   );
 }
+
+const GARDEN_STYLES = `
+  .mj-page { max-width:100%; }
+  .mj-header { display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:28px;padding-bottom:22px;border-bottom:1px solid var(--pe-border); }
+  .mj-eyebrow { font:var(--pe-text-small);color:var(--pe-accent);text-transform:uppercase;letter-spacing:1.2px;font-weight:700; }
+  .mj-title { margin-top:6px;font-family:var(--pe-font-display);font-weight:600;font-size:clamp(26px,3.2vw,40px);color:var(--pe-text);line-height:1.1; }
+  .mj-subtitle { margin-top:8px;font:var(--pe-text-body);color:var(--pe-text-muted);max-width:480px; }
+  .mj-header-cta { flex-shrink:0;display:inline-flex;align-items:center;gap:8px;white-space:nowrap; }
+  @media (max-width:640px) { .mj-header { flex-direction:column;align-items:stretch;gap:14px;padding-bottom:16px;margin-bottom:22px; } .mj-header-cta { align-self:flex-start; } }
+
+  .mj-loading, .mj-empty-card { padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--pe-text-muted);font:var(--pe-text-body); }
+  .mj-loading svg, .mj-empty-card svg { color:var(--pe-sage-400); }
+  .mj-empty-title { font:var(--pe-text-h3);color:var(--pe-text); }
+  .mj-empty-sub { max-width:360px; }
+  .mj-loading-title { font:var(--pe-text-h3);color:var(--pe-text); }
+
+  .mj-stats-row { display:flex;gap:14px;margin-bottom:16px;overflow-x:auto;padding-bottom:2px; }
+  .mj-stat-card { flex:1;min-width:110px;padding:16px 18px;display:flex;flex-direction:column;gap:4px; }
+  .mj-stat-icon { color:var(--pe-accent);display:flex;margin-bottom:4px; }
+  .mj-stat-value { font-family:var(--pe-font-display);font-size:26px;font-weight:600;color:var(--pe-text);line-height:1.1; }
+  .mj-stat-label { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400; }
+  @media (max-width:640px) { .mj-stats-row { display:grid;grid-template-columns:repeat(2,1fr);overflow-x:visible; } .mj-stat-card { min-width:0; } }
+
+  .mj-weather-line { font:var(--pe-text-small);color:var(--pe-text-muted);margin-bottom:20px; }
+  .mj-weather-line strong { color:var(--pe-text);font-weight:600; }
+
+  .mj-zones-row { display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;margin-bottom:18px;padding-bottom:2px; }
+  .mj-zone-chip { flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;min-height:38px; }
+  .mj-zone-chip:hover { border-color:var(--pe-border-strong); }
+  .mj-zone-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
+  .mj-zone-manage-btn { flex-shrink:0;padding:9px 14px;border-radius:999px;border:1px dashed var(--pe-border-strong);background:transparent;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:38px; }
+  .mj-zone-manage-btn:hover { color:var(--pe-text);border-color:var(--pe-accent); }
+
+  .mj-section { margin-bottom:18px; }
+  .mj-section-toggle { width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);cursor:pointer;font:var(--pe-text-body);color:var(--pe-text);min-height:44px; }
+  .mj-section-toggle-label { display:flex;align-items:center;gap:8px;font-weight:600; }
+  .mj-section-toggle-action { display:flex;align-items:center;gap:2px;color:var(--pe-accent);font:var(--pe-text-small);font-weight:600; }
+  .mj-section-collapse-btn { margin-bottom:8px;padding:8px 4px;border:none;background:none;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer; }
+  .mj-section-collapse-btn:hover { color:var(--pe-text); }
+  .mj-section-body { padding:20px; }
+
+  .mj-search-row { margin-bottom:12px; }
+  .mj-search-field { display:flex;align-items:center;gap:10px;padding:0 16px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);height:48px; }
+  .mj-search-field:focus-within { border-color:var(--pe-accent); }
+  .mj-search-input { flex:1;border:none;outline:none;background:transparent;font:var(--pe-text-body);color:var(--pe-text);height:100%; }
+  .mj-search-input::placeholder { color:var(--pe-text-muted); }
+  .mj-search-clear { display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:none;background:var(--pe-sand);color:var(--pe-text-muted);cursor:pointer;flex-shrink:0; }
+  .mj-search-clear:hover { color:var(--pe-text); }
+
+  .mj-cats-row { display:flex;gap:8px;overflow-x:auto;margin-bottom:22px;padding-bottom:2px; }
+  .mj-cat-chip { flex-shrink:0;padding:8px 15px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:38px; white-space:nowrap; }
+  .mj-cat-chip:hover { border-color:var(--pe-border-strong);color:var(--pe-text); }
+  .mj-cat-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
+
+  .mj-dash-row { display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px; }
+  @media (max-width:640px) { .mj-dash-row { grid-template-columns:1fr; } }
+  .mj-dash-card { padding:16px 18px;display:flex;align-items:center;gap:14px;text-align:left; }
+  .mj-dash-icon { flex-shrink:0;width:38px;height:38px;border-radius:50%;background:var(--pe-sand);color:var(--pe-accent);display:flex;align-items:center;justify-content:center; }
+  .mj-dash-text { flex:1;min-width:0; }
+  .mj-dash-title { font:var(--pe-text-h3);color:var(--pe-text); }
+  .mj-dash-sub { margin-top:2px;font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400; }
+  .mj-dash-action { flex-shrink:0;display:flex;align-items:center;gap:2px;font:var(--pe-text-small);font-weight:600;color:var(--pe-accent);white-space:nowrap; }
+
+  .mj-mois-card { display:block; }
+  .mj-mois-vide { color:var(--pe-text-muted);font:var(--pe-text-body); }
+  .mj-mois-list { display:flex;flex-direction:column;gap:10px; }
+  .mj-mois-item { display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--pe-border); }
+  .mj-mois-item:last-child { border-bottom:none;padding-bottom:0; }
+  .mj-mois-plante { font:var(--pe-text-small);font-weight:700;color:var(--pe-text); }
+  .mj-mois-tache { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400;text-align:right; }
+
+  .mj-select-bar { display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;min-height:44px; }
+  .mj-select-toggle-btn { padding:9px 16px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:40px; }
+  .mj-select-toggle-btn:hover { border-color:var(--pe-border-strong); }
+  .mj-select-count { font:var(--pe-text-small);color:var(--pe-text-muted); }
+  .mj-select-reminder-btn { display:inline-flex;align-items:center;gap:8px; }
+
+  .mj-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:16px; }
+  @media (max-width:1080px) { .mj-grid { grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:640px) { .mj-grid { grid-template-columns:1fr; } }
+
+  .mj-card { position:relative;display:flex;gap:14px;align-items:center;padding:14px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);box-shadow:var(--pe-shadow-sm);cursor:pointer;transition:box-shadow .15s,border-color .15s; }
+  .mj-card:hover { box-shadow:var(--pe-shadow-md);border-color:var(--pe-border-strong); }
+  .mj-card-selected { border-color:var(--pe-accent);background:var(--pe-sand); }
+  .mj-card-checkbox { flex-shrink:0;width:20px;height:20px;accent-color:var(--pe-accent);cursor:pointer; }
+  .mj-card-photo { flex-shrink:0;width:72px;height:72px;border-radius:var(--pe-radius-sm);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400);overflow:hidden; }
+  .mj-card-photo img { width:100%;height:100%;object-fit:cover;display:block; }
+  .mj-card-body { flex:1;min-width:0; }
+  .mj-card-name { font:var(--pe-text-h3);color:var(--pe-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .mj-card-latin { margin-top:2px;font-style:italic;font-size:13px;color:var(--pe-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .mj-card-meta { margin-top:8px;display:flex;flex-wrap:wrap;gap:6px; }
+  .mj-card-tag { display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;background:var(--pe-sand);color:var(--pe-text-muted);font-size:11.5px;font-weight:600; }
+  .mj-card-tag-zone { color:var(--pe-accent); }
+  .mj-card-chevron { flex-shrink:0;color:var(--pe-text-muted); }
+  .mj-card-delete { position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:50%;border:none;background:var(--pe-surface);color:var(--pe-text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--pe-shadow-sm);opacity:0;transition:opacity .15s; }
+  .mj-card:hover .mj-card-delete, .mj-card:focus-within .mj-card-delete { opacity:1; }
+  .mj-card-delete:hover { color:var(--pe-terracotta); }
+  @media (max-width:640px) { .mj-card-delete { opacity:1; } }
+
+  .mj-delete-confirm { position:absolute;inset:0;border-radius:var(--pe-radius-md);background:var(--pe-surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;text-align:center;box-shadow:var(--pe-shadow-md); }
+  .mj-delete-confirm-text { font:var(--pe-text-small);color:var(--pe-text);font-weight:600; }
+  .mj-delete-confirm-actions { display:flex;gap:8px; }
+  .mj-delete-confirm-yes { padding:7px 14px;border-radius:999px;border:none;background:var(--pe-terracotta);color:var(--pe-white);font:var(--pe-text-small);font-weight:700;cursor:pointer;min-height:36px; }
+  .mj-delete-confirm-no { padding:7px 14px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:36px; }
+
+  .mj-count { margin-top:20px;text-align:center;font:var(--pe-text-small);color:var(--pe-text-muted); }
+
+  @media (max-width:480px) {
+    .mj-stat-card { padding:14px; }
+    .mj-search-field { height:46px; }
+    .mj-cat-chip, .mj-zone-chip { padding:8px 13px; }
+  }
+`;
 
 // One bounded retry each for the profile and weather loads — never a
 // polling loop, never unbounded: each is a plain for-loop capped at
@@ -1426,7 +1692,7 @@ export default function Home() {
         />
       )}
       {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} onGoIdentifier={() => setActiveNav("identifier")} />}
 
       <p className="pe-ai-disclaimer">
         <IconInfo size={13} />
