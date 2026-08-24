@@ -526,7 +526,8 @@ function IdentifierTab({ addPlant }) {
   };
 
   return (
-    <div className="tab-page">
+    <div className="pi-page">
+      <style>{IDENTIFIER_STYLES}</style>
       {showModal && (
         <PlantationModal
           onConfirm={(p, u) => { setPlantation(p); setUsage(u); doAnalyze(p, u); }}
@@ -534,44 +535,182 @@ function IdentifierTab({ addPlant }) {
         />
       )}
       {!result && !loading && (
-        <div className="input-panel">
-          <div className={"drop-zone" + (imagePreview ? " has-image" : "")}
-            onClick={() => !imagePreview && fileRef.current && fileRef.current.click()}
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
-            {imagePreview ? (
-              <>{/* eslint-disable-next-line */}<img src={imagePreview} alt="" className="drop-preview" />
-                <div className="drop-overlay" onClick={e => { e.stopPropagation(); fileRef.current && fileRef.current.click(); }}><span>📷 Changer</span></div></>
-            ) : (
-              <><span className="drop-icon">📸</span><div className="drop-title">Dépose une photo ici</div><div className="drop-sub">ou clique pour choisir</div></>
-            )}
+        <>
+          <header className="pi-header">
+            <div className="pi-eyebrow">IDENTIFIER</div>
+            <h1 className="pi-title">Quelle est cette plante ?</h1>
+            <p className="pi-subtitle">Prenez ou importez une photo pour tenter de l&apos;identifier.</p>
+          </header>
+
+          <div className="pi-layout">
+            <Card className="pi-main-card">
+              <div
+                className={"pi-dropzone" + (imagePreview ? " has-image" : "")}
+                role={imagePreview ? undefined : "button"}
+                tabIndex={imagePreview ? undefined : 0}
+                aria-label={imagePreview ? undefined : "Choisir ou déposer une photo de plante"}
+                onClick={() => !imagePreview && fileRef.current && fileRef.current.click()}
+                onKeyDown={(e) => {
+                  if (!imagePreview && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    fileRef.current && fileRef.current.click();
+                  }
+                }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+              >
+                {imagePreview ? (
+                  <>
+                    <img
+                      src={imagePreview}
+                      alt={imageFile && imageFile.name ? `Photo sélectionnée : ${imageFile.name}` : "Photo sélectionnée"}
+                      className="pi-preview-img"
+                    />
+                    <button
+                      type="button"
+                      className="pi-change-btn"
+                      onClick={e => { e.stopPropagation(); fileRef.current && fileRef.current.click(); }}
+                    >
+                      <IconCamera size={15} /> Changer
+                    </button>
+                    {imageFile && imageFile.name && <div className="pi-filename">{imageFile.name}</div>}
+                  </>
+                ) : (
+                  <>
+                    <span className="pi-dropzone-icon"><IconCamera size={26} /></span>
+                    <div className="pi-dropzone-title">Dépose une photo ici</div>
+                    <div className="pi-dropzone-sub">ou clique pour en choisir une</div>
+                  </>
+                )}
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                style={{display:"none"}}
+                tabIndex={-1}
+                aria-hidden="true"
+                aria-label="Choisir une photo de plante"
+                onChange={e => e.target.files && handleFile(e.target.files[0])}
+              />
+
+              <div className="pi-divider"><div className="pi-divider-line" /><span>ou</span><div className="pi-divider-line" /></div>
+
+              <div className="pi-name-field">
+                <label htmlFor="pi-plant-name" className="pi-name-label">Nom de la plante</label>
+                <div className="pi-name-input-wrap">
+                  <IconSearch size={16} />
+                  <input
+                    id="pi-plant-name"
+                    ref={nameInputRef}
+                    className="pi-name-input"
+                    placeholder="Ex. Lavande, Rosier..."
+                    value={plantName}
+                    onChange={e => setPlantName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleAnalyze()}
+                  />
+                </div>
+              </div>
+
+              <Button onClick={handleAnalyze} className="pi-analyze-btn">
+                <IconSearch size={16} /> Analyser
+              </Button>
+
+              {error && <div className="error-box pi-error">⚠️ {error}</div>}
+            </Card>
+
+            <Card className="pi-tips-card">
+              <div className="pi-tips-head">
+                <IconSprig size={18} />
+                <span>Pour de meilleurs résultats</span>
+              </div>
+              <ul className="pi-tips-list">
+                <li>Photographiez la plante de près</li>
+                <li>Privilégiez une image nette et bien éclairée</li>
+                <li>Montrez les feuilles ou les fleurs si elles sont visibles</li>
+                <li>Évitez une plante trop éloignée dans le cadre</li>
+              </ul>
+            </Card>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e => e.target.files && handleFile(e.target.files[0])} />
-          <div className="divider"><div className="divider-line" /><span className="divider-text">ou</span><div className="divider-line" /></div>
-          <div className="name-row">
-            <input ref={nameInputRef} className="plant-input" placeholder="Nom de la plante..." value={plantName} onChange={e => setPlantName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAnalyze()} />
-            <button className="btn-analyze" onClick={handleAnalyze}>🔍 Analyser</button>
-          </div>
-          {error && <div className="error-box">⚠️ {error}</div>}
-        </div>
+        </>
       )}
       {loading && (
-        <div className="loading-state">
-          <div className="leaf-spin">🌿</div>
-          <div className="loading-title">Analyse en cours</div>
-          <div className="loading-sub">{plantation ? "Adaptation pour " + plantation.label : "Identification et conseils..."}...</div>
+        <div className="pi-loading" role="status" aria-live="polite">
+          <div className="pi-spinner" aria-hidden="true" />
+          <div className="pi-loading-title">Analyse en cours</div>
+          <div className="pi-loading-sub">{plantation ? "Adaptation pour " + plantation.label : "Identification et conseils"}...</div>
         </div>
       )}
       {result && !loading && (
-        <>
-          <div className="reset-row"><button className="btn-reset" onClick={reset}>← Nouvelle analyse</button></div>
+        <div className="pi-result-wrap">
+          <div className="pi-reset-row"><button type="button" className="pi-reset-btn" onClick={reset}>← Nouvelle analyse</button></div>
           <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} identificationStatus={identificationStatus} identificationActions={identificationActions} />
-          {saveError && <div className="error-box" style={{marginTop:12}}>⚠️ {saveError}</div>}
-        </>
+          {saveError && <div className="error-box pi-error" style={{marginTop:12}}>⚠️ {saveError}</div>}
+        </div>
       )}
     </div>
   );
 }
+
+const IDENTIFIER_STYLES = `
+  .pi-header { margin-bottom:28px;padding-bottom:22px;border-bottom:1px solid var(--pe-border); }
+  .pi-eyebrow { font:var(--pe-text-small);color:var(--pe-accent);text-transform:uppercase;letter-spacing:1.2px;font-weight:700; }
+  .pi-title { margin-top:6px;font-family:var(--pe-font-display);font-weight:600;font-size:clamp(26px,3.2vw,40px);color:var(--pe-text);line-height:1.1; }
+  .pi-subtitle { margin-top:8px;font:var(--pe-text-body);color:var(--pe-text-muted);max-width:480px; }
+  @media (max-width:640px) { .pi-header { padding-bottom:16px;margin-bottom:22px; } }
+
+  .pi-layout { display:grid;grid-template-columns:1.7fr 1fr;gap:20px;align-items:start; }
+  @media (max-width:900px) { .pi-layout { grid-template-columns:1fr; } }
+
+  .pi-main-card { padding:24px; }
+  @media (max-width:480px) { .pi-main-card { padding:16px; } }
+
+  .pi-dropzone { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:260px;padding:24px;border-radius:var(--pe-radius-md);border:1.5px dashed var(--pe-border-strong);background:var(--pe-ivory);cursor:pointer;text-align:center;transition:border-color .15s,background-color .15s; }
+  .pi-dropzone:hover, .pi-dropzone:focus-visible { border-color:var(--pe-accent);background:var(--pe-sand); }
+  .pi-dropzone:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+  .pi-dropzone-icon { color:var(--pe-sage-400);display:flex;margin-bottom:6px; }
+  .pi-dropzone-title { font:var(--pe-text-h3);color:var(--pe-text); }
+  .pi-dropzone-sub { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400; }
+  @media (max-width:480px) { .pi-dropzone { min-height:220px;padding:16px; } }
+
+  .pi-dropzone.has-image { display:block;padding:0;overflow:hidden;cursor:default;min-height:0; }
+  .pi-preview-img { display:block;width:100%;max-height:440px;object-fit:cover;border-radius:var(--pe-radius-md); }
+  .pi-change-btn { position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:6px;padding:8px 16px;min-height:44px;border-radius:999px;border:none;background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;box-shadow:var(--pe-shadow-md); }
+  .pi-change-btn:hover { background:var(--pe-sand); }
+  .pi-filename { margin-top:8px;padding:0 4px;font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+
+  .pi-divider { display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--pe-text-muted);font:var(--pe-text-small); }
+  .pi-divider-line { flex:1;height:1px;background:var(--pe-border); }
+
+  .pi-name-field { margin-bottom:14px; }
+  .pi-name-label { display:block;margin-bottom:6px;font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:600; }
+  .pi-name-input-wrap { display:flex;align-items:center;gap:10px;padding:0 16px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);height:48px; }
+  .pi-name-input-wrap:focus-within { border-color:var(--pe-accent); }
+  .pi-name-input { flex:1;border:none;outline:none;background:transparent;font:var(--pe-text-body);color:var(--pe-text);height:100%; }
+  .pi-name-input::placeholder { color:var(--pe-text-muted); }
+
+  .pi-analyze-btn { width:100%; }
+  .pi-error { margin-top:14px; }
+
+  .pi-tips-card { padding:22px;background:var(--pe-sand);border-color:transparent; }
+  .pi-tips-head { display:flex;align-items:center;gap:8px;color:var(--pe-accent);font:var(--pe-text-h3);margin-bottom:14px; }
+  .pi-tips-list { list-style:none;display:flex;flex-direction:column;gap:10px; }
+  .pi-tips-list li { position:relative;padding-left:18px;font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400;line-height:1.5; }
+  .pi-tips-list li::before { content:"";position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:50%;background:var(--pe-accent); }
+  @media (max-width:900px) { .pi-tips-card { padding:18px; } }
+
+  .pi-loading { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:80px 24px;text-align:center; }
+  .pi-spinner { width:52px;height:52px;border-radius:50%;border:3px solid var(--pe-sand);border-top-color:var(--pe-accent);animation:pi-spin .85s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .pi-spinner { animation:none; } }
+  @keyframes pi-spin { to { transform:rotate(360deg); } }
+  .pi-loading-title { font:var(--pe-text-h3);color:var(--pe-text); }
+  .pi-loading-sub { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400; }
+
+  .pi-result-wrap { max-width:680px;margin:0 auto; }
+  .pi-reset-row { padding:0 0 12px; }
+  .pi-reset-btn { display:inline-flex;align-items:center;padding:8px 4px;border:none;background:none;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:44px; }
+  .pi-reset-btn:hover { color:var(--pe-accent); }
+`;
 
 // Local calendar day only — never UTC — same convention duplicated in
 // lib/reminderApi.js and components/RemindersOverview.js.
