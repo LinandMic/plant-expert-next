@@ -182,3 +182,17 @@ export function IconX(props) {
     </Svg>
   );
 }
+
+// A simple sliders/equalizer glyph — used for the Plant Finder's "Filtres"
+// toggle. Deliberately generic (three lines + handles), not a funnel, so it
+// doesn't read as a data-table filter icon.
+export function IconFilter(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+      <circle cx="9" cy="6" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="18" r="1.6" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}

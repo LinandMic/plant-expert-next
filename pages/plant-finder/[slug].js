@@ -1,6 +1,8 @@
+import AppShell from "@/components/ui/AppShell";
 import { useRouter } from "next/router";
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
-import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths, plantTypeLabel } from "@/lib/plantFinderFormat";
+import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths, plantTypeLabel, plantFinderDisplayTitle } from "@/lib/plantFinderFormat";
+import { IconHome, IconCamera, IconSprout, IconSearch, IconUser, IconSprig } from "@/components/ui/icons";
 
 // Server-rendered on purpose: returning `notFound: true` is what gives a
 // missing slug (or a draft row RLS already hides) Next.js's real 404
@@ -25,14 +27,22 @@ export async function getServerSideProps({ params }) {
   return { props: { plant } };
 }
 
+// Same standalone-route navItems as pages/plant-finder/index.js — see that
+// file's comment for why Accueil/Identifier/Mon jardin all point at "/".
+const NAV_ITEMS = [
+  { key: "accueil", label: "Accueil", icon: IconHome, kind: "link", href: "/", placement: "main" },
+  { key: "identifier", label: "Identifier", icon: IconCamera, kind: "link", href: "/", placement: "main", emphasis: true },
+  { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "link", href: "/", placement: "main" },
+  { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
+  { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
+];
+
 function Field({ label, value }) {
   if (value === null || value === undefined || value === "") return null;
   return (
-    <div className="info-card">
-      <div>
-        <div className="info-label">{label}</div>
-        <div className="info-value">{value}</div>
-      </div>
+    <div className="pfd-info-card">
+      <div className="pfd-info-label">{label}</div>
+      <div className="pfd-info-value">{value}</div>
     </div>
   );
 }
@@ -47,11 +57,9 @@ function Field({ label, value }) {
 function CoreField({ label, value }) {
   const display = value === null || value === undefined || value === "" ? "Non renseigné" : value;
   return (
-    <div className="info-card">
-      <div>
-        <div className="info-label">{label}</div>
-        <div className="info-value">{display}</div>
-      </div>
+    <div className="pfd-info-card">
+      <div className="pfd-info-label">{label}</div>
+      <div className="pfd-info-value">{display}</div>
     </div>
   );
 }
@@ -72,60 +80,40 @@ export default function PlantFinderDetailPage({ plant }) {
   const containerLabel = formatBoolean(plant.containerSuitable);
   const edibleLabel = formatBoolean(plant.edible);
   const flowering = formatFloweringMonths(plant.floweringMonths);
+  // Same commonName-leads / displayName-as-scientific-subtitle convention as
+  // PlantFinderCard, kept consistent across list -> detail (spec §12).
+  const { title, scientificSubtitle } = plantFinderDisplayTitle(plant);
 
   return (
-    <div className="app">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        :root { --ink:#0f1f0f;--forest:#1e3a1e;--moss:#3a6b3a;--sage:#7aad7a;--mist:#e8f0e8;--paper:#f4f2ed;--cream:#faf8f3;--gold:#c4962a;--rust:#8b3a1e;--r:14px;--shadow:0 4px 20px rgba(15,31,15,0.1); }
-        body { font-family:'Outfit',sans-serif;background:var(--paper);color:var(--ink); }
-        .app { min-height:100vh;padding-bottom:40px; }
-        .header { background:var(--forest);padding:24px 20px 16px; }
-        .header h1 { font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:700;color:white; }
-        .header h1 em { color:var(--sage);font-style:normal; }
-        .header p { color:rgba(255,255,255,0.45);font-size:12px;margin-top:3px; }
-        .tab-page { padding:16px 16px 20px;max-width:680px;margin:0 auto; }
-        .plant-hero { background:var(--forest);border-radius:var(--r);overflow:hidden;box-shadow:0 8px 32px rgba(15,31,15,0.2);padding:20px 18px; }
-        .pf-hero-top { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
-        .hero-name { font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:700;color:white;line-height:1.15; }
-        .pf-badge { flex-shrink:0;border-radius:20px;padding:4px 11px;font-size:12px;font-weight:600;white-space:nowrap; }
-        .pf-badge-species { background:rgba(122,173,122,0.25);color:var(--sage); }
-        .pf-badge-cultivar { background:rgba(196,150,42,0.25);color:#f0d890; }
-        .hero-latin { font-style:italic;color:rgba(255,255,255,0.6);font-size:14px;margin-top:6px; }
-        .hero-family { color:rgba(255,255,255,0.4);font-size:11px;margin-top:3px;text-transform:uppercase;letter-spacing:0.8px; }
-        .hero-common { color:rgba(255,255,255,0.7);font-size:14px;margin-top:8px; }
-        .section-title { font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--forest);margin:20px 0 12px;font-weight:700; }
-        .info-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px; }
-        .info-card { background:var(--cream);border-radius:10px;padding:11px; }
-        .info-label { font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:#999;font-weight:600;margin-bottom:2px; }
-        .info-value { font-size:13px;color:var(--ink);font-weight:500;line-height:1.4; }
-        .back-btn { display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-top:20px;font-weight:500;text-decoration:none; }
-        @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
-      `}</style>
+    <AppShell navItems={NAV_ITEMS} activeKey="trouver">
+      <div className="pfd-page">
+        <style>{DETAIL_STYLES}</style>
 
-      <div className="header">
-        <h1>Plante <em>Expert</em></h1>
-        <p>Botaniste IA · Identification & Mon Jardin</p>
-      </div>
+        <a href={backHref} className="pfd-back-link">← Retour à la recherche</a>
 
-      <div className="tab-page">
-        <div className="plant-hero">
-          <div className="pf-hero-top">
-            <h1 className="hero-name">{plant.displayName}</h1>
-            {badgeLabel && (
-              <span className={"pf-badge " + (plant.entryType === "cultivar" ? "pf-badge-cultivar" : "pf-badge-species")}>
-                {badgeLabel}
-              </span>
-            )}
+        <div className="pfd-hero">
+          <div className="pfd-hero-photo">
+            <IconSprig size={40} />
           </div>
-          {plant.taxon?.canonicalName && <div className="hero-latin">{plant.taxon.canonicalName}</div>}
-          {plant.taxon?.family && <div className="hero-family">{plant.taxon.family}</div>}
-          {plant.commonName && <div className="hero-common">{plant.commonName}</div>}
+          <div className="pfd-hero-text">
+            <div className="pfd-hero-top">
+              <h1 className="pfd-hero-name">{title}</h1>
+              {badgeLabel && (
+                <span className={"pfd-badge " + (plant.entryType === "cultivar" ? "pfd-badge-cultivar" : "pfd-badge-species")}>
+                  {badgeLabel}
+                </span>
+              )}
+            </div>
+            {scientificSubtitle && <div className="pfd-hero-latin">{scientificSubtitle}</div>}
+            {plant.taxon?.canonicalName && plant.taxon.canonicalName !== plant.displayName && (
+              <div className="pfd-hero-canonical">{plant.taxon.canonicalName}</div>
+            )}
+            {plant.taxon?.family && <div className="pfd-hero-family">{plant.taxon.family}</div>}
+          </div>
         </div>
 
-        <h2 className="section-title">Caractéristiques</h2>
-        <div className="info-grid">
+        <h2 className="pfd-section-title">Caractéristiques</h2>
+        <div className="pfd-info-grid">
           <CoreField label="Type" value={plantType} />
           <Field label="Genre botanique" value={plant.taxon?.genus} />
           <CoreField label="Hauteur" value={height} />
@@ -137,9 +125,33 @@ export default function PlantFinderDetailPage({ plant }) {
           <Field label="Comestible" value={edibleLabel} />
           <Field label="Floraison" value={flowering} />
         </div>
-
-        <a href={backHref} className="back-btn">← Retour à la recherche</a>
       </div>
-    </div>
+    </AppShell>
   );
 }
+
+const DETAIL_STYLES = `
+  .pfd-page { max-width:760px; }
+  .pfd-back-link { display:inline-flex;align-items:center;gap:6px;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;text-decoration:none;margin-bottom:20px; }
+  .pfd-back-link:hover { color:var(--pe-accent); }
+
+  .pfd-hero { display:flex;gap:20px;align-items:flex-start;padding:24px;border-radius:var(--pe-radius-lg);background:var(--pe-surface);border:1px solid var(--pe-border);box-shadow:var(--pe-shadow-sm);margin-bottom:28px; }
+  .pfd-hero-photo { flex-shrink:0;width:88px;height:88px;border-radius:var(--pe-radius-md);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400); }
+  .pfd-hero-text { flex:1;min-width:0; }
+  .pfd-hero-top { display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+  .pfd-hero-name { font-family:var(--pe-font-display);font-weight:600;font-size:clamp(22px,3vw,30px);color:var(--pe-text);line-height:1.15; }
+  .pfd-badge { flex-shrink:0;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap; }
+  .pfd-badge-species { background:var(--pe-sand);color:var(--pe-accent); }
+  .pfd-badge-cultivar { background:#fdf3e0;color:#8a6a1e; }
+  .pfd-hero-latin { font-style:italic;color:var(--pe-text-muted);font-size:15px;margin-top:6px; }
+  .pfd-hero-canonical { color:var(--pe-text-muted);font-size:13px;margin-top:3px; }
+  .pfd-hero-family { color:var(--pe-text-muted);font-size:11px;margin-top:6px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600; }
+  @media (max-width:480px) { .pfd-hero { padding:18px;gap:14px; } .pfd-hero-photo { width:64px;height:64px; } }
+
+  .pfd-section-title { font-family:var(--pe-font-display);font-weight:600;font-size:20px;color:var(--pe-text);margin-bottom:14px; }
+  .pfd-info-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+  .pfd-info-card { background:var(--pe-sand);border-radius:var(--pe-radius-sm);padding:13px 14px; }
+  .pfd-info-label { font-size:10.5px;text-transform:uppercase;letter-spacing:0.7px;color:var(--pe-text-muted);font-weight:700;margin-bottom:3px; }
+  .pfd-info-value { font:var(--pe-text-body);font-size:14px;color:var(--pe-text);font-weight:500;line-height:1.4; }
+  @media (max-width:480px) { .pfd-info-grid { grid-template-columns:1fr; } }
+`;

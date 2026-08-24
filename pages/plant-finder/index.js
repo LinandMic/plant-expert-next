@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import AppShell from "@/components/ui/AppShell";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import PlantFinderCard from "@/components/PlantFinderCard";
 import { searchPublishedPlants } from "@/lib/plantFinderApi";
 import {
@@ -18,9 +21,32 @@ import {
   resetFilters,
   clearAllFilters,
 } from "@/lib/plantFinderFilters";
+import {
+  IconHome,
+  IconCamera,
+  IconSprout,
+  IconSearch,
+  IconUser,
+  IconSprig,
+  IconX,
+  IconFilter,
+} from "@/components/ui/icons";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const EMPTY_FILTERS = { query: "", plantType: null, sun: null, heightCategory: null };
+
+// This page is a standalone Next.js route (not a tab inside pages/index.js),
+// so it builds its own navItems for AppShell. "Accueil"/"Identifier"/"Mon
+// jardin" can only be reached as tabs inside "/" (no per-tab deep link
+// exists), so — same as the finder's previous, now-replaced bottom nav —
+// they all point at "/".
+const NAV_ITEMS = [
+  { key: "accueil", label: "Accueil", icon: IconHome, kind: "link", href: "/", placement: "main" },
+  { key: "identifier", label: "Identifier", icon: IconCamera, kind: "link", href: "/", placement: "main", emphasis: true },
+  { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "link", href: "/", placement: "main" },
+  { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
+  { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
+];
 
 export default function PlantFinderPage() {
   const router = useRouter();
@@ -132,216 +158,249 @@ export default function PlantFinderPage() {
   const returnTo = new URLSearchParams(serializeFiltersToQuery(filters)).toString();
 
   return (
-    <div className="app">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        :root { --ink:#0f1f0f;--forest:#1e3a1e;--moss:#3a6b3a;--sage:#7aad7a;--mist:#e8f0e8;--paper:#f4f2ed;--cream:#faf8f3;--gold:#c4962a;--rust:#8b3a1e;--r:14px;--shadow:0 4px 20px rgba(15,31,15,0.1); }
-        body { font-family:'Outfit',sans-serif;background:var(--paper);color:var(--ink); }
-        .app { min-height:100vh;padding-bottom:80px; }
-        .header { background:var(--forest);padding:24px 20px 16px; }
-        .header h1 { font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:700;color:white; }
-        .header h1 em { color:var(--sage);font-style:normal; }
-        .header p { color:rgba(255,255,255,0.45);font-size:12px;margin-top:3px; }
-        .tab-page { padding:16px 16px 20px;max-width:680px;margin:0 auto; }
-        .modal-title { font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--forest);font-weight:700;margin-bottom:4px; }
-        .modal-sub { color:#999;font-size:13px;margin-bottom:20px;line-height:1.5; }
-        .auth-label { font-size:11px;font-weight:600;color:var(--forest);margin-bottom:5px;display:block; }
-        .filters-row { margin-bottom:12px; }
-        .search-input { width:100%;border:1.5px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:14px;outline:none;background:white; }
-        .search-input:focus { border-color:var(--moss); }
-        select.search-input { appearance:auto; }
+    <AppShell navItems={NAV_ITEMS} activeKey="trouver">
+      <div className="pf2-page">
+        <style>{FINDER_STYLES}</style>
 
-        .filters-toggle { display:flex;align-items:center;gap:6px;background:white;border:1.5px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--forest);cursor:pointer;margin-bottom:10px;min-height:40px; }
-        .filters-toggle:focus-visible { outline:2px solid var(--moss);outline-offset:2px; }
-        .filters-toggle[aria-expanded="true"] { border-color:var(--moss); }
+        <header className="pf2-header">
+          <div className="pf2-eyebrow">TROUVER</div>
+          <h1 className="pf2-title">Trouvez la plante idéale</h1>
+          <p className="pf2-subtitle">Explorez le catalogue selon vos envies et les conditions de votre jardin.</p>
+        </header>
 
-        .filters-panel { display:none; }
-        .filters-panel.open { display:flex;flex-direction:column;gap:14px; }
-        .filters-panel-inner { background:var(--cream);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:14px;margin-bottom:14px; }
-
-        .filter-fieldset { border:none;padding:0;margin:0; }
-        .filter-legend { font-size:11px;font-weight:600;color:var(--forest);margin-bottom:6px;padding:0; }
-        .chip-options { display:flex;flex-wrap:wrap;gap:8px; }
-        .chip-checkbox { display:flex;align-items:center;gap:6px;background:white;border:1.5px solid rgba(0,0,0,0.1);border-radius:20px;padding:8px 12px;font-size:13px;color:var(--ink);cursor:pointer;min-height:36px; }
-        .chip-checkbox:has(input:checked) { border-color:var(--moss);background:var(--mist);color:var(--forest);font-weight:600; }
-        .chip-checkbox input { width:16px;height:16px;accent-color:var(--moss); }
-
-        .filter-actions { display:flex;flex-wrap:wrap;gap:10px; }
-        .filter-reset-btn, .filter-clear-btn { background:none;border:1.5px solid rgba(0,0,0,0.12);border-radius:8px;padding:8px 12px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;color:var(--moss);cursor:pointer;min-height:36px; }
-        .filter-clear-btn { color:var(--rust);border-color:rgba(139,58,30,0.2); }
-        .filter-reset-btn:focus-visible, .filter-clear-btn:focus-visible { outline:2px solid var(--moss);outline-offset:2px; }
-
-        .active-chips { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px; }
-        .active-chip { display:flex;align-items:center;gap:6px;background:var(--mist);color:var(--forest);border:none;border-radius:20px;padding:7px 12px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;min-height:32px; }
-        .active-chip:focus-visible { outline:2px solid var(--moss);outline-offset:2px; }
-
-        .result-count { font-size:12px;color:#999;margin-bottom:10px;font-weight:500; }
-
-        .error-box { background:#fff5f5;border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:12px 14px;color:var(--rust);font-size:14px; }
-        .loading-state { text-align:center;padding:60px 20px; }
-        .leaf-spin { font-size:48px;display:inline-block;animation:spin 2s linear infinite;margin-bottom:14px; }
-        @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
-        .loading-title { font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--forest); }
-        .empty-jardin { text-align:center;padding:80px 20px; }
-        .empty-icon { font-size:56px;margin-bottom:14px; }
-        .empty-title { font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--forest);margin-bottom:6px; }
-        .pf-grid { display:flex;flex-direction:column;gap:10px; }
-        .pf-card { display:block;background:white;border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow);border:1px solid rgba(0,0,0,0.06);text-decoration:none;color:inherit;transition:transform 0.15s; }
-        .pf-card:focus-visible { outline:2px solid var(--moss);outline-offset:2px; }
-        @media (hover: hover) and (pointer: fine) { .pf-card:hover { transform:translateY(-1px); } }
-        .pf-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
-        .pf-card-name { font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:700;color:var(--ink); }
-        .pf-badge { flex-shrink:0;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;white-space:nowrap; }
-        .pf-badge-species { background:var(--mist);color:var(--moss); }
-        .pf-badge-cultivar { background:#fdf3e0;color:#8a6a1e; }
-        .pf-card-common { font-size:12px;color:#999;font-style:italic;margin-top:2px; }
-        .pf-card-meta { display:flex;flex-wrap:wrap;gap:6px;margin-top:8px; }
-        .pf-card-tag { background:var(--cream);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--forest);font-weight:500; }
-        .back-btn { display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-top:20px;font-weight:500;text-decoration:none; }
-        .bottom-nav { position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid rgba(0,0,0,0.1);display:flex;z-index:100;box-shadow:0 -4px 20px rgba(0,0,0,0.08); }
-        .nav-item { flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px 12px;cursor:pointer;border:none;background:none;font-family:'Outfit',sans-serif;color:#bbb;font-size:11px;transition:color 0.2s;gap:3px;position:relative;text-decoration:none; }
-        .nav-item.active { color:var(--moss); }
-        .nav-icon { font-size:22px; }
-
-        @media (min-width: 768px) {
-          .filters-toggle { display:none; }
-          .filters-panel { display:flex !important;flex-direction:column;gap:14px; }
-        }
-      `}</style>
-
-      <div className="header">
-        <h1>Plante <em>Expert</em></h1>
-        <p>Botaniste IA · Identification & Mon Jardin</p>
-      </div>
-
-      <div className="tab-page">
-        <h2 className="modal-title">Trouver une plante</h2>
-        <p className="modal-sub">Recherchez une plante par son nom et découvrez ses caractéristiques.</p>
-
-        <div className="filters-row">
-          <label htmlFor="plant-finder-search" className="auth-label">Rechercher une plante</label>
-          <input
-            id="plant-finder-search"
-            type="search"
-            className="search-input"
-            placeholder="Rechercher une plante…"
-            value={queryInput}
-            onChange={(e) => setQueryInput(e.target.value)}
-            autoComplete="off"
-          />
+        <div className="pf2-search-row">
+          <div className="pf2-search-field">
+            <IconSearch size={17} />
+            <input
+              type="search"
+              className="pf2-search-input"
+              placeholder="Rechercher une plante…"
+              aria-label="Rechercher une plante"
+              value={queryInput}
+              onChange={(e) => setQueryInput(e.target.value)}
+              autoComplete="off"
+            />
+            {queryInput && (
+              <button type="button" className="pf2-search-clear" onClick={() => setQueryInput("")} aria-label="Effacer la recherche">
+                <IconX size={15} />
+              </button>
+            )}
+          </div>
         </div>
 
         <button
           type="button"
-          className="filters-toggle"
+          className="pf2-filters-toggle"
           aria-expanded={filtersOpen}
-          aria-controls="plant-finder-filters-panel"
+          aria-controls="pf2-filters-panel"
           onClick={() => setFiltersOpen((v) => !v)}
         >
-          ⚙️ Filtres{activeCount > 0 ? ` (${activeCount})` : ""}
+          <IconFilter size={16} />
+          Filtres{activeCount > 0 ? ` (${activeCount})` : ""}
         </button>
 
-        <div id="plant-finder-filters-panel" className={"filters-panel" + (filtersOpen ? " open" : "")}>
-          <div className="filters-panel-inner">
-            <div>
-              <label htmlFor="pf-filter-type" className="auth-label">Type de plante</label>
-              <select id="pf-filter-type" className="search-input" value={filters.plantType || ""} onChange={handleTypeChange}>
-                <option value="">Tous les types</option>
-                {PLANT_TYPE_VALUES.map((value) => (
-                  <option key={value} value={value}>{plantTypeLabel(value)}</option>
-                ))}
-              </select>
-            </div>
+        <div className="pf2-layout">
+          <aside id="pf2-filters-panel" className={"pf2-sidebar" + (filtersOpen ? " open" : "")}>
+            <Card className="pf2-sidebar-inner">
+              <div className="pf2-sidebar-title">Filtres</div>
 
-            <fieldset className="filter-fieldset">
-              <legend className="filter-legend">Exposition</legend>
-              <div className="chip-options">
-                {SUN_VALUES.map((value) => (
-                  <label key={value} className="chip-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={activeSun.includes(value)}
-                      onChange={() => handleSunToggle(value)}
-                    />
-                    <span>{sunLabel(value)}</span>
+              <div className="pf2-filter-group">
+                <div className="pf2-filter-label" id="pf2-type-label">Type</div>
+                <div className="pf2-pill-row" role="group" aria-labelledby="pf2-type-label">
+                  <label className="pf2-pill">
+                    <input type="radio" name="pf2-type" value="" checked={!filters.plantType} onChange={handleTypeChange} />
+                    <span>Tous</span>
                   </label>
+                  {PLANT_TYPE_VALUES.map((value) => (
+                    <label key={value} className="pf2-pill">
+                      <input type="radio" name="pf2-type" value={value} checked={filters.plantType === value} onChange={handleTypeChange} />
+                      <span>{plantTypeLabel(value)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <fieldset className="pf2-filter-group pf2-fieldset">
+                <legend className="pf2-filter-label">Exposition</legend>
+                <div className="pf2-pill-row">
+                  {SUN_VALUES.map((value) => (
+                    <label key={value} className="pf2-pill">
+                      <input type="checkbox" checked={activeSun.includes(value)} onChange={() => handleSunToggle(value)} />
+                      <span>{sunLabel(value)}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="pf2-filter-group">
+                <div className="pf2-filter-label" id="pf2-height-label">Hauteur adulte</div>
+                <div className="pf2-pill-row" role="group" aria-labelledby="pf2-height-label">
+                  <label className="pf2-pill">
+                    <input type="radio" name="pf2-height" value="" checked={!filters.heightCategory} onChange={handleHeightChange} />
+                    <span>Toutes</span>
+                  </label>
+                  {HEIGHT_CATEGORY_VALUES.map((value) => (
+                    <label key={value} className="pf2-pill">
+                      <input type="radio" name="pf2-height" value={value} checked={filters.heightCategory === value} onChange={handleHeightChange} />
+                      <span>{heightCategoryLabel(value)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pf2-sidebar-actions">
+                <button type="button" className="pf2-reset-btn" onClick={handleResetFilters}>Réinitialiser les filtres</button>
+                <button type="button" className="pf2-clear-btn" onClick={handleClearAll}>Tout effacer</button>
+              </div>
+
+              <button type="button" className="pf2-panel-close-btn" onClick={() => setFiltersOpen(false)}>
+                Voir les résultats
+              </button>
+            </Card>
+          </aside>
+
+          <div className="pf2-results">
+            {chips.length > 0 && (
+              <div className="pf2-chips" aria-label="Filtres actifs">
+                {chips.map((chip) => (
+                  <button
+                    key={`${chip.key}-${chip.value || "single"}`}
+                    type="button"
+                    className="pf2-chip"
+                    onClick={() => handleRemoveChip(chip.key, chip.value)}
+                    aria-label={`Retirer le filtre ${chip.label}`}
+                  >
+                    {chip.label} <IconX size={12} />
+                  </button>
                 ))}
               </div>
-            </fieldset>
+            )}
 
-            <div>
-              <label htmlFor="pf-filter-height" className="auth-label">Hauteur adulte</label>
-              <select id="pf-filter-height" className="search-input" value={filters.heightCategory || ""} onChange={handleHeightChange}>
-                <option value="">Toutes les hauteurs</option>
-                {HEIGHT_CATEGORY_VALUES.map((value) => (
-                  <option key={value} value={value}>{heightCategoryLabel(value)}</option>
+            {!loading && !error && plants.length > 0 && (
+              <div className="pf2-result-count">{formatResultCount(plants.length)}</div>
+            )}
+
+            {loading ? (
+              <div className="pf2-loading" role="status" aria-live="polite">
+                <div className="pf2-spinner" aria-hidden="true" />
+                <div className="pf2-loading-title">Recherche en cours…</div>
+              </div>
+            ) : error ? (
+              <div className="pf2-error-box">{error}</div>
+            ) : plants.length === 0 ? (
+              <Card className="pf2-empty-card">
+                <IconSprig size={26} />
+                <div className="pf2-empty-title">
+                  {hasActiveCriteria ? "Aucune plante ne correspond" : "Aucune plante disponible pour le moment"}
+                </div>
+                {hasActiveCriteria && (
+                  <>
+                    <p className="pf2-empty-sub">Essayez d&apos;élargir vos critères de recherche.</p>
+                    <Button variant="secondary" onClick={handleClearAll}>Réinitialiser les filtres</Button>
+                  </>
+                )}
+              </Card>
+            ) : (
+              <div className="pf2-grid">
+                {plants.map((plant) => (
+                  <PlantFinderCard key={plant.id} plant={plant} returnTo={returnTo} />
                 ))}
-              </select>
-            </div>
-
-            <div className="filter-actions">
-              <button type="button" className="filter-reset-btn" onClick={handleResetFilters}>Réinitialiser les filtres</button>
-              <button type="button" className="filter-clear-btn" onClick={handleClearAll}>Tout effacer</button>
-            </div>
+              </div>
+            )}
           </div>
         </div>
-
-        {chips.length > 0 && (
-          <div className="active-chips" aria-label="Filtres actifs">
-            {chips.map((chip) => (
-              <button
-                key={`${chip.key}-${chip.value || "single"}`}
-                type="button"
-                className="active-chip"
-                onClick={() => handleRemoveChip(chip.key, chip.value)}
-                aria-label={`Retirer le filtre ${chip.label}`}
-              >
-                {chip.label} ×
-              </button>
-            ))}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="loading-state">
-            <div className="leaf-spin">🌿</div>
-            <div className="loading-title">Recherche en cours...</div>
-          </div>
-        ) : error ? (
-          <div className="error-box">{error}</div>
-        ) : plants.length === 0 ? (
-          <div className="empty-jardin">
-            <div className="empty-icon">🌱</div>
-            <div className="empty-title">
-              {hasActiveCriteria ? "Aucune plante ne correspond à votre recherche." : "Aucune plante disponible pour le moment."}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="result-count">{formatResultCount(plants.length)}</div>
-            <div className="pf-grid">
-              {plants.map((plant) => (
-                <PlantFinderCard key={plant.id} plant={plant} returnTo={returnTo} />
-              ))}
-            </div>
-          </>
-        )}
-
-        <a href="/" className="back-btn">← Retour à Plant Expert</a>
       </div>
-
-      <nav className="bottom-nav">
-        <a href="/" className="nav-item">
-          <span className="nav-icon">🔍</span>Identifier
-        </a>
-        <a href="/" className="nav-item">
-          <span className="nav-icon">🌳</span>Mon Jardin
-        </a>
-        <a href="/plant-finder" className="nav-item active">
-          <span className="nav-icon">🔎</span>Trouver une plante
-        </a>
-      </nav>
-    </div>
+    </AppShell>
   );
 }
+
+const FINDER_STYLES = `
+  .pf2-page { max-width:100%; }
+  .pf2-header { margin-bottom:24px;padding-bottom:22px;border-bottom:1px solid var(--pe-border); }
+  .pf2-eyebrow { font:var(--pe-text-small);color:var(--pe-accent);text-transform:uppercase;letter-spacing:1.2px;font-weight:700; }
+  .pf2-title { margin-top:6px;font-family:var(--pe-font-display);font-weight:600;font-size:clamp(26px,3.2vw,40px);color:var(--pe-text);line-height:1.1; }
+  .pf2-subtitle { margin-top:8px;font:var(--pe-text-body);color:var(--pe-text-muted);max-width:520px; }
+  @media (max-width:640px) { .pf2-header { padding-bottom:16px;margin-bottom:20px; } }
+
+  .pf2-search-row { margin-bottom:14px; }
+  .pf2-search-field { display:flex;align-items:center;gap:10px;padding:0 16px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);height:50px; }
+  .pf2-search-field:focus-within { border-color:var(--pe-accent); }
+  .pf2-search-input { flex:1;border:none;outline:none;background:transparent;font:var(--pe-text-body);color:var(--pe-text);height:100%; }
+  .pf2-search-input::placeholder { color:var(--pe-text-muted); }
+  .pf2-search-clear { display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:none;background:var(--pe-sand);color:var(--pe-text-muted);cursor:pointer;flex-shrink:0; }
+  .pf2-search-clear:hover { color:var(--pe-text); }
+
+  .pf2-filters-toggle { display:flex;align-items:center;gap:8px;width:100%;padding:12px 16px;min-height:44px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-body);font-weight:600;cursor:pointer;margin-bottom:16px; }
+  .pf2-filters-toggle[aria-expanded="true"] { border-color:var(--pe-accent);color:var(--pe-accent); }
+
+  .pf2-layout { display:block; }
+  .pf2-sidebar { display:none; }
+  .pf2-sidebar.open { display:block;margin-bottom:20px; }
+  .pf2-sidebar-inner { padding:20px;display:flex;flex-direction:column;gap:18px; }
+  .pf2-sidebar-title { font:var(--pe-text-h3);color:var(--pe-text); }
+  .pf2-panel-close-btn { width:100%; }
+
+  .pf2-filter-group { display:flex;flex-direction:column;gap:10px; }
+  .pf2-fieldset { border:none;padding:0;margin:0; }
+  .pf2-filter-label { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px; }
+  .pf2-pill-row { display:flex;flex-wrap:wrap;gap:8px; }
+
+  .pf2-pill { position:relative;display:inline-flex;align-items:center;padding:8px 15px;min-height:40px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:border-color .15s,background-color .15s,color .15s; }
+  .pf2-pill input { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
+  .pf2-pill:has(input:checked) { border-color:var(--pe-accent);background:var(--pe-sand);color:var(--pe-accent); }
+  .pf2-pill:has(input:focus-visible) { outline:2px solid var(--pe-accent);outline-offset:2px; }
+
+  .pf2-sidebar-actions { display:flex;flex-direction:column;gap:8px;padding-top:4px;border-top:1px solid var(--pe-border); }
+  .pf2-reset-btn, .pf2-clear-btn { padding:9px 4px;border:none;background:none;font:var(--pe-text-small);font-weight:600;cursor:pointer;text-align:left;min-height:40px; }
+  .pf2-reset-btn { color:var(--pe-accent); }
+  .pf2-clear-btn { color:var(--pe-text-muted); }
+  .pf2-reset-btn:hover, .pf2-clear-btn:hover { text-decoration:underline; }
+
+  .pf2-chips { display:flex;flex-wrap:nowrap;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px; }
+  .pf2-chip { flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;min-height:36px;border-radius:999px;border:none;background:var(--pe-sand);color:var(--pe-accent);font:var(--pe-text-small);font-weight:600;cursor:pointer;white-space:nowrap; }
+  .pf2-chip:hover { background:var(--pe-border-strong); }
+
+  .pf2-result-count { font:var(--pe-text-small);color:var(--pe-text-muted);margin-bottom:14px; }
+
+  .pf2-loading { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:80px 24px;text-align:center; }
+  .pf2-spinner { width:48px;height:48px;border-radius:50%;border:3px solid var(--pe-sand);border-top-color:var(--pe-accent);animation:pf2-spin .85s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .pf2-spinner { animation:none; } }
+  @keyframes pf2-spin { to { transform:rotate(360deg); } }
+  .pf2-loading-title { font:var(--pe-text-h3);color:var(--pe-text); }
+
+  .pf2-error-box { background:#fff5f5;border:1px solid rgba(139,58,30,0.2);border-radius:var(--pe-radius-md);padding:14px 16px;color:var(--pe-terracotta,#8b3a1e);font:var(--pe-text-body); }
+
+  .pf2-empty-card { padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--pe-text-muted);font:var(--pe-text-body); }
+  .pf2-empty-card svg { color:var(--pe-sage-400); }
+  .pf2-empty-title { font:var(--pe-text-h3);color:var(--pe-text); }
+  .pf2-empty-sub { max-width:380px; }
+
+  .pf2-grid { display:grid;grid-template-columns:1fr;gap:16px; }
+
+  .pf2-card { position:relative;display:flex;gap:14px;align-items:center;padding:14px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);box-shadow:var(--pe-shadow-sm);text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s; }
+  .pf2-card:hover { box-shadow:var(--pe-shadow-md);border-color:var(--pe-border-strong); }
+  .pf2-card:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+  .pf2-card-photo { flex-shrink:0;width:64px;height:64px;border-radius:var(--pe-radius-sm);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400); }
+  .pf2-card-body { flex:1;min-width:0; }
+  .pf2-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
+  .pf2-card-name { font:var(--pe-text-h3);color:var(--pe-text); }
+  .pf2-card-latin { margin-top:2px;font-style:italic;font-size:13px;color:var(--pe-text-muted); }
+  .pf2-badge { flex-shrink:0;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600;white-space:nowrap; }
+  .pf2-badge-species { background:var(--pe-sand);color:var(--pe-accent); }
+  .pf2-badge-cultivar { background:#fdf3e0;color:#8a6a1e; }
+  .pf2-card-meta { margin-top:8px;display:flex;flex-wrap:wrap;gap:6px; }
+  .pf2-card-tag { display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;background:var(--pe-sand);color:var(--pe-text-muted);font-size:11.5px;font-weight:600; }
+  .pf2-card-chevron { flex-shrink:0;color:var(--pe-text-muted); }
+
+  @media (min-width:640px) {
+    .pf2-grid { grid-template-columns:repeat(2,1fr); }
+  }
+
+  @media (min-width:1024px) {
+    .pf2-filters-toggle { display:none; }
+    .pf2-panel-close-btn { display:none; }
+    .pf2-layout { display:grid;grid-template-columns:270px 1fr;gap:28px;align-items:start; }
+    .pf2-sidebar { display:block !important;position:sticky;top:24px; }
+    .pf2-grid { grid-template-columns:repeat(3,1fr); }
+  }
+`;
