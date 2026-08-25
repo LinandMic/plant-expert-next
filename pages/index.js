@@ -34,6 +34,12 @@ import {
   IconChevronRight,
   IconSun,
   IconX,
+  IconCheck,
+  IconHelpCircle,
+  IconScissors,
+  IconDroplet,
+  IconFlask,
+  IconAlertCircle,
 } from "@/components/ui/icons";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
@@ -237,19 +243,31 @@ function PlantationModal({ onConfirm, onSkip }) {
 
 function TagList({ items, color }) {
   const c = color || "green";
-  if (!items || !items.length) return React.createElement("p", {className:"empty-text"}, "Aucune donnée");
-  return React.createElement("div", {className:"tag-list"},
-    items.map((item, i) => React.createElement("div", {key:i, className:"tag tag-"+c},
-      React.createElement("span", {className:"tag-dot"}), item
-    ))
+  if (!items || !items.length) return <p className="pdet-empty-text">Aucune donnée</p>;
+  return (
+    <div className="pdet-tag-list">
+      {items.map((item, i) => (
+        <div key={i} className={"pdet-tag pdet-tag-" + c}>
+          <span className="pdet-tag-dot" />
+          {item}
+        </div>
+      ))}
+    </div>
   );
 }
 
-function InfoCard({ icon, label, value }) {
+// A missing/empty value never renders an empty decorative box (spec: "SI
+// une donnée n'existe pas -> masquer proprement l'élément") — every call
+// site in PlanteFiche below relies on this instead of re-guarding itself.
+function InfoCard({ icon: Icon, label, value }) {
+  if (value === null || value === undefined || value === "") return null;
   return (
-    <div className="info-card">
-      <span className="info-icon">{icon}</span>
-      <div><div className="info-label">{label}</div><div className="info-value">{value}</div></div>
+    <div className="pdet-info-card">
+      {Icon && <span className="pdet-info-icon"><Icon size={16} /></span>}
+      <div className="pdet-info-body">
+        <div className="pdet-info-label">{label}</div>
+        <div className="pdet-info-value">{value}</div>
+      </div>
     </div>
   );
 }
@@ -257,170 +275,216 @@ function InfoCard({ icon, label, value }) {
 function CalendrierGrid({ data }) {
   const moisActuel = new Date().getMonth();
   return (
-    <div className="cal-grid">
+    <div className="pdet-cal-grid">
       {MONTHS.map(([key, label], i) => (
-        <div key={key} className={"cal-cell" + (i === moisActuel ? " cal-cell-active" : "")}>
-          <div className="cal-month">{label}</div>
-          <div className="cal-text">{data[key] || "—"}</div>
+        <div key={key} className={"pdet-cal-cell" + (i === moisActuel ? " active" : "")}>
+          <div className="pdet-cal-month">{label}</div>
+          <div className="pdet-cal-text">{data[key] || "—"}</div>
         </div>
       ))}
     </div>
   );
 }
 
+const PLANT_DETAIL_TABS = [
+  { key: "maladies", label: "Maladies", icon: IconAlertCircle },
+  { key: "taille", label: "Taille", icon: IconScissors },
+  { key: "nutriments", label: "Nutriments", icon: IconFlask },
+  { key: "arrosage", label: "Arrosage", icon: IconDroplet },
+  { key: "calendrier", label: "Calendrier", icon: IconCalendar },
+];
+
 function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions, zoneId, zones, isAuthenticated, onSaveZone }) {
   const [activeTab, setActiveTab] = useState("maladies");
-  const tabs = [
-    { key: "maladies", label: "Maladies", icon: "🔬" },
-    { key: "taille", label: "Taille", icon: "✂️" },
-    { key: "nutriments", label: "Nutriments", icon: "🧪" },
-    { key: "arrosage", label: "Arrosage", icon: "💧" },
-    { key: "calendrier", label: "Calendrier", icon: "📅" },
-  ];
-  if (onSaveContext) tabs.push({ key: "jardin", label: "Jardin", icon: "🪴" });
+  const tabs = onSaveContext ? [...PLANT_DETAIL_TABS, { key: "jardin", label: "Jardin", icon: IconSprout }] : PLANT_DETAIL_TABS;
   const r = result;
+  const identite = r && r.identite;
+  // zoneId/zones are only ever passed from the Mon Jardin context — reuses
+  // the exact same pure helper Mon Jardin's own cards use, so a plant whose
+  // zone was since deleted never shows a stale/raw zoneId here either.
+  const zoneName = zones ? zoneNameForPlant({ zoneId }, zones) : null;
+
   return (
-    <div className="result-panel">
-      <div className="plant-hero">
-        <div className="hero-content">
-          {imagePreview ? <div className="hero-img-wrap"><img src={imagePreview} alt="" className="hero-img" /></div> : <div className="hero-no-img">🌱</div>}
-          <div className="hero-text">
-            <div className={"confidence-badge conf-" + (r.identite && r.identite.confiance)}>{r.identite && "Confiance : " + r.identite.confiance}</div>
-            <div className="hero-name">{r.identite && r.identite.nom_commun}</div>
-            <div className="hero-latin">{r.identite && r.identite.nom_latin}</div>
-            <div className="hero-family">{r.identite && r.identite.famille}</div>
-            {alreadySaved && identificationStatus === "confirmed" && <div className="id-status-badge id-status-confirmed">✓ Identification confirmée</div>}
-            {alreadySaved && identificationStatus === "uncertain" && <div className="id-status-badge id-status-uncertain">🤔 Identification à confirmer</div>}
-            {plantation && <div className="plantation-tag">{plantation.icon} {plantation.label}</div>}
-            {usage && <div className="plantation-tag" style={{marginLeft:4}}>{usage.icon} {usage.label}</div>}
+    <div className="pdet-page">
+      <style>{PLANT_DETAIL_STYLES}</style>
+      <div className="pdet-hero">
+        <div className="pdet-hero-top">
+          <div className="pdet-hero-photo">
+            {imagePreview ? (
+              <img
+                src={imagePreview}
+                alt={identite && identite.nom_commun ? `Photo de ${identite.nom_commun}` : "Photo de la plante"}
+              />
+            ) : (
+              <IconSprig size={34} />
+            )}
+          </div>
+          <div className="pdet-hero-text">
+            {identite && identite.confiance && (
+              <span className={"pdet-confidence pdet-confidence-" + identite.confiance}>
+                Confiance : {identite.confiance}
+              </span>
+            )}
+            {identite && identite.nom_commun && <h1 className="pdet-hero-name">{identite.nom_commun}</h1>}
+            {identite && identite.nom_latin && <div className="pdet-hero-latin">{identite.nom_latin}</div>}
+            <div className="pdet-hero-facts">
+              {identite && identite.categorie && <span className="pdet-fact-pill">{identite.categorie}</span>}
+              {identite && identite.famille && <span className="pdet-fact-pill">{identite.famille}</span>}
+              {zoneName && <span className="pdet-fact-pill pdet-fact-pill-zone"><IconMapPin size={12} /> {zoneName}</span>}
+            </div>
+            <div className="pdet-status-row">
+              {alreadySaved && identificationStatus === "confirmed" && (
+                <span className="pdet-status-badge pdet-status-confirmed"><IconCheck size={13} /> Identification confirmée</span>
+              )}
+              {alreadySaved && identificationStatus === "uncertain" && (
+                <span className="pdet-status-badge pdet-status-uncertain"><IconHelpCircle size={13} /> Identification à confirmer</span>
+              )}
+              {plantation && <span className="pdet-context-pill">{plantation.icon} {plantation.label}</span>}
+              {usage && <span className="pdet-context-pill">{usage.icon} {usage.label}</span>}
+            </div>
           </div>
         </div>
-        <div className="hero-desc">{r.identite && r.identite.description}</div>
-        <div className="hero-save">
+
+        {identite && identite.description && <p className="pdet-hero-desc">{identite.description}</p>}
+
+        <div className="pdet-save-row">
           {alreadySaved ? (
-            <span className="saved-badge">✓ Dans Mon Jardin</span>
+            <span className="pdet-saved-badge"><IconCheck size={15} /> Dans Mon Jardin</span>
           ) : identificationStatus === "rejected" ? (
-            <span className="id-blocked-note">Ajout à Mon Jardin bloqué — identification rejetée</span>
+            <span className="pdet-blocked-note">Ajout à Mon Jardin bloqué — identification rejetée</span>
           ) : (
-            <button className="btn-save" onClick={onSave}>+ Ajouter à Mon Jardin</button>
+            <Button onClick={onSave}><IconSprout size={16} /> Ajouter à Mon Jardin</Button>
           )}
         </div>
+
         {identificationActions && identificationStatus && !alreadySaved && (
-          <div className="identification-check">
+          <div className="pdet-id-check" role="group" aria-label="Confirmer l'identification">
             <button
               type="button"
-              className={"id-check-btn" + (identificationStatus === "confirmed" ? " active-yes" : "")}
+              aria-pressed={identificationStatus === "confirmed"}
+              className={"pdet-id-check-btn" + (identificationStatus === "confirmed" ? " active-yes" : "")}
               onClick={identificationActions.onConfirm}
             >
-              ✅ Oui, c&apos;est ça
+              <IconCheck size={15} /> Oui, c&apos;est ça
             </button>
             <button
               type="button"
-              className={"id-check-btn" + (identificationStatus === "rejected" ? " active-no" : "")}
+              aria-pressed={identificationStatus === "rejected"}
+              className={"pdet-id-check-btn" + (identificationStatus === "rejected" ? " active-no" : "")}
               onClick={identificationActions.onReject}
             >
-              ❌ Non
+              <IconX size={15} /> Non
             </button>
             <button
               type="button"
-              className={"id-check-btn" + (identificationStatus === "uncertain" ? " active-unsure" : "")}
+              aria-pressed={identificationStatus === "uncertain"}
+              className={"pdet-id-check-btn" + (identificationStatus === "uncertain" ? " active-unsure" : "")}
               onClick={identificationActions.onUncertain}
             >
-              🤷 Je ne sais pas
+              <IconHelpCircle size={15} /> Je ne sais pas
             </button>
           </div>
         )}
-        <div className="tabs-wrap">
-          <div className="tabs">
-            {tabs.map(s => (
-              <button key={s.key} className={"tab" + (activeTab === s.key ? " active" : "")} onClick={() => setActiveTab(s.key)}>
-                <span className="tab-icon">{s.icon}</span>{s.label}
-              </button>
-            ))}
-          </div>
+
+        <div className="pdet-tabs" role="tablist">
+          {tabs.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === s.key}
+              className={"pdet-tab" + (activeTab === s.key ? " active" : "")}
+              onClick={() => setActiveTab(s.key)}
+            >
+              <s.icon size={15} />
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
+
       {identificationStatus === "rejected" && identificationActions && !alreadySaved && (
-        <div className="tab-content" style={{marginBottom:12}}>
-          <div className="section-title">❌ Identification rejetée</div>
-          <div className="error-box" style={{margin:"0 0 16px"}}>
+        <div className="pdet-content-card" style={{ marginBottom: 16 }}>
+          <div className="pdet-section-title"><IconX size={17} /> Identification rejetée</div>
+          <div className="error-box" style={{ margin: "0 0 16px" }}>
             Vous avez indiqué que ce résultat n&apos;était pas correct. Il ne peut pas être ajouté à Mon Jardin tel quel.
           </div>
-          <div className="modal-actions">
-            <button type="button" className="btn-modal-confirm" onClick={identificationActions.onRetakePhoto}>📷 Reprendre une photo</button>
-            <button type="button" className="btn-modal-skip" onClick={identificationActions.onSwitchToNameSearch}>🔍 Identifier par nom</button>
+          <div className="pdet-rejected-actions">
+            <Button onClick={identificationActions.onRetakePhoto}><IconCamera size={16} /> Reprendre une photo</Button>
+            <Button variant="secondary" onClick={identificationActions.onSwitchToNameSearch}><IconSearch size={16} /> Identifier par nom</Button>
           </div>
         </div>
       )}
       {identificationStatus === "uncertain" && !alreadySaved && (
-        <div className="tab-content" style={{marginBottom:12}}>
-          <div className="section-title">🤔 Identification à confirmer</div>
-          <div className="highlight-box">
+        <div className="pdet-content-card" style={{ marginBottom: 16 }}>
+          <div className="pdet-section-title"><IconHelpCircle size={17} /> Identification à confirmer</div>
+          <div className="pdet-highlight-box">
             Pour confirmer cette identification, essaie une nouvelle photo : la plante entière, une feuille, une fleur ou un fruit si disponible, et l&apos;écorce ou la tige si pertinent.
           </div>
         </div>
       )}
-      <div className="tab-content">
+
+      <div className="pdet-content-card">
         {activeTab === "maladies" && r.maladies && (
           <div>
-            <div className="section-title">🔬 Maladies & Ravageurs</div>
-            <div className="subsection"><div className="subsection-title">Vulnérabilités</div><TagList items={r.maladies.vulnerabilites} color="red" /></div>
-            <div className="subsection"><div className="subsection-title">Symptômes</div><TagList items={r.maladies.symptomes_alerte} color="gold" /></div>
-            <div className="subsection"><div className="subsection-title">Traitements</div><TagList items={r.maladies.traitements} color="green" /></div>
-            {r.maladies.conseil_urgence && <div className="highlight-box"><div className="highlight-label">Urgence</div>{r.maladies.conseil_urgence}</div>}
+            <div className="pdet-section-title"><IconAlertCircle size={17} /> Maladies &amp; Ravageurs</div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">Vulnérabilités</div><TagList items={r.maladies.vulnerabilites} color="red" /></div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">Symptômes</div><TagList items={r.maladies.symptomes_alerte} color="gold" /></div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">Traitements</div><TagList items={r.maladies.traitements} color="green" /></div>
+            {r.maladies.conseil_urgence && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Urgence</div>{r.maladies.conseil_urgence}</div>}
           </div>
         )}
         {activeTab === "taille" && r.taille && (
           <div>
-            <div className="section-title">✂️ Taille</div>
-            <div className="info-grid">
-              <InfoCard icon="📅" label="Période" value={r.taille.periode_ideale} />
-              <InfoCard icon="🔄" label="Fréquence" value={r.taille.frequence} />
+            <div className="pdet-section-title"><IconScissors size={17} /> Taille</div>
+            <div className="pdet-info-grid">
+              <InfoCard icon={IconCalendar} label="Période" value={r.taille.periode_ideale} />
+              <InfoCard label="Fréquence" value={r.taille.frequence} />
             </div>
-            <div className="highlight-box"><div className="highlight-label">Technique</div>{r.taille.technique}</div>
-            {r.taille.a_eviter && <div className="highlight-box" style={{borderLeftColor:"#8b3a1e",background:"#fff8f6"}}><div className="highlight-label" style={{color:"#8b3a1e"}}>À éviter</div>{r.taille.a_eviter}</div>}
-            {r.taille.conseil_pro && <div className="highlight-box" style={{borderLeftColor:"#c4962a",background:"#fffbf0"}}><div className="highlight-label" style={{color:"#c4962a"}}>Conseil pro</div>{r.taille.conseil_pro}</div>}
+            {r.taille.technique && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Technique</div>{r.taille.technique}</div>}
+            {r.taille.a_eviter && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">À éviter</div>{r.taille.a_eviter}</div>}
+            {r.taille.conseil_pro && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">Conseil pro</div>{r.taille.conseil_pro}</div>}
           </div>
         )}
         {activeTab === "nutriments" && r.nutriments && (
           <div>
-            <div className="section-title">🧪 Nutriments & Engrais</div>
-            {plantation && <div className="context-banner">{plantation.icon} Conseils adaptés : {plantation.label}</div>}
-            <div className="subsection"><div className="subsection-title">Besoins</div><TagList items={r.nutriments.besoins_principaux} color="green" /></div>
-            <div className="info-grid" style={{marginTop:14}}>
-              <InfoCard icon="🌱" label="Engrais recommandé" value={r.nutriments.engrais_recommande} />
-              <InfoCard icon="⏰" label="Période" value={r.nutriments.periode_fertilisation} />
+            <div className="pdet-section-title"><IconFlask size={17} /> Nutriments &amp; Engrais</div>
+            {plantation && <div className="pdet-context-banner">{plantation.icon} Conseils adaptés : {plantation.label}</div>}
+            <div className="pdet-subsection"><div className="pdet-subsection-title">Besoins</div><TagList items={r.nutriments.besoins_principaux} color="green" /></div>
+            <div className="pdet-info-grid" style={{ marginTop: 14 }}>
+              <InfoCard icon={IconFlask} label="Engrais recommandé" value={r.nutriments.engrais_recommande} />
+              <InfoCard icon={IconCalendar} label="Période" value={r.nutriments.periode_fertilisation} />
             </div>
-            {r.nutriments.frequence_apport && <div className="highlight-box"><div className="highlight-label">Quantités et fréquence</div>{r.nutriments.frequence_apport}</div>}
-            {r.nutriments.signes_carence && r.nutriments.signes_carence.length > 0 && <div className="subsection"><div className="subsection-title">Signes de carence</div><TagList items={r.nutriments.signes_carence} color="gold" /></div>}
-            {r.nutriments.surdosage_risques && <div className="highlight-box" style={{borderLeftColor:"#8b3a1e",background:"#fff8f6"}}><div className="highlight-label" style={{color:"#8b3a1e"}}>Risque surdosage</div>{r.nutriments.surdosage_risques}</div>}
+            {r.nutriments.frequence_apport && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Quantités et fréquence</div>{r.nutriments.frequence_apport}</div>}
+            {r.nutriments.signes_carence && r.nutriments.signes_carence.length > 0 && <div className="pdet-subsection"><div className="pdet-subsection-title">Signes de carence</div><TagList items={r.nutriments.signes_carence} color="gold" /></div>}
+            {r.nutriments.surdosage_risques && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">Risque surdosage</div>{r.nutriments.surdosage_risques}</div>}
           </div>
         )}
         {activeTab === "arrosage" && r.arrosage && (
           <div>
-            <div className="section-title">💧 Arrosage</div>
-            {plantation && <div className="context-banner">{plantation.icon} Conseils adaptés : {plantation.label}</div>}
-            <div className="info-grid">
-              <InfoCard icon="☀️" label="Été" value={r.arrosage.frequence_ete} />
-              <InfoCard icon="❄️" label="Hiver" value={r.arrosage.frequence_hiver} />
+            <div className="pdet-section-title"><IconDroplet size={17} /> Arrosage</div>
+            {plantation && <div className="pdet-context-banner">{plantation.icon} Conseils adaptés : {plantation.label}</div>}
+            <div className="pdet-info-grid">
+              <InfoCard icon={IconSun} label="Été" value={r.arrosage.frequence_ete} />
+              <InfoCard label="Hiver" value={r.arrosage.frequence_hiver} />
             </div>
-            <div className="highlight-box"><div className="highlight-label">Méthode</div>{r.arrosage.methode}</div>
-            {r.arrosage.conseil_pratique && <div className="highlight-box" style={{borderLeftColor:"#c4962a",background:"#fffbf0"}}><div className="highlight-label" style={{color:"#c4962a"}}>Conseil pratique</div>{r.arrosage.conseil_pratique}</div>}
-            <div className="info-grid" style={{marginTop:10}}>
-              {r.arrosage.signes_manque && <InfoCard icon="🥀" label="Manque" value={r.arrosage.signes_manque} />}
-              {r.arrosage.signes_exces && <InfoCard icon="🟡" label="Excès" value={r.arrosage.signes_exces} />}
+            {r.arrosage.methode && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Méthode</div>{r.arrosage.methode}</div>}
+            {r.arrosage.conseil_pratique && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">Conseil pratique</div>{r.arrosage.conseil_pratique}</div>}
+            <div className="pdet-info-grid" style={{ marginTop: 10 }}>
+              <InfoCard icon={IconAlertCircle} label="Manque" value={r.arrosage.signes_manque} />
+              <InfoCard icon={IconAlertCircle} label="Excès" value={r.arrosage.signes_exces} />
             </div>
           </div>
         )}
         {activeTab === "calendrier" && r.calendrier && (
           <div>
-            <div className="section-title">📅 Calendrier annuel</div>
+            <div className="pdet-section-title"><IconCalendar size={17} /> Calendrier annuel</div>
             <CalendrierGrid data={r.calendrier} />
           </div>
         )}
         {activeTab === "jardin" && onSaveContext && (
           <div>
-            <div className="section-title">🪴 Contexte du jardin</div>
+            <div className="pdet-section-title"><IconSprout size={17} /> Contexte du jardin</div>
             <PlantContextEditor
               context={context}
               onSave={onSaveContext}
@@ -435,6 +499,98 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
     </div>
   );
 }
+
+const PLANT_DETAIL_STYLES = `
+  .pdet-page { max-width:760px;margin:0 auto; }
+
+  .pdet-hero { padding:24px;border-radius:var(--pe-radius-lg);background:var(--pe-surface);border:1px solid var(--pe-border);box-shadow:var(--pe-shadow-sm);margin-bottom:20px; }
+  .pdet-hero-top { display:flex;gap:18px;align-items:flex-start; }
+  .pdet-hero-photo { flex-shrink:0;width:96px;height:96px;border-radius:var(--pe-radius-md);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400);overflow:hidden; }
+  .pdet-hero-photo img { width:100%;height:100%;object-fit:cover;display:block; }
+  .pdet-hero-text { flex:1;min-width:0; }
+  @media (max-width:480px) { .pdet-hero { padding:18px; } .pdet-hero-top { gap:14px; } .pdet-hero-photo { width:72px;height:72px; } }
+
+  .pdet-confidence { display:inline-flex;padding:3px 10px;border-radius:999px;font:var(--pe-text-small);font-size:11px;font-weight:700;margin-bottom:7px; }
+  .pdet-confidence-élevée { background:var(--pe-sand);color:var(--pe-accent); }
+  .pdet-confidence-moyenne { background:#fdf3e0;color:#8a6a1e; }
+  .pdet-confidence-faible { background:#fff0ec;color:var(--pe-terracotta,#8b3a1e); }
+
+  .pdet-hero-name { font-family:var(--pe-font-display);font-weight:600;font-size:clamp(20px,2.6vw,28px);color:var(--pe-text);line-height:1.15; }
+  .pdet-hero-latin { margin-top:3px;font-style:italic;font-size:14px;color:var(--pe-text-muted); }
+  .pdet-hero-facts { margin-top:10px;display:flex;flex-wrap:wrap;gap:6px; }
+  .pdet-fact-pill { display:inline-flex;align-items:center;gap:3px;padding:3px 10px;border-radius:999px;background:var(--pe-sand);color:var(--pe-text-muted);font-size:11.5px;font-weight:600; }
+  .pdet-fact-pill-zone { color:var(--pe-accent); }
+  .pdet-status-row { margin-top:10px;display:flex;flex-wrap:wrap;gap:8px; }
+  .pdet-status-badge { display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:700; }
+  .pdet-status-confirmed { background:var(--pe-sand);color:var(--pe-accent); }
+  .pdet-status-uncertain { background:#fdf3e0;color:#8a6a1e; }
+  .pdet-context-pill { display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:var(--pe-ivory);border:1px solid var(--pe-border);color:var(--pe-text);font-size:11.5px;font-weight:600; }
+
+  .pdet-hero-desc { margin-top:16px;font:var(--pe-text-body);color:var(--pe-text-muted); }
+
+  .pdet-save-row { margin-top:18px; }
+  .pdet-saved-badge { display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:999px;background:var(--pe-sand);color:var(--pe-accent);font:var(--pe-text-small);font-weight:700; }
+  .pdet-blocked-note { display:inline-block;padding:9px 4px;color:var(--pe-text-muted);font:var(--pe-text-small); }
+
+  .pdet-id-check { margin-top:14px;display:flex;flex-wrap:wrap;gap:8px; }
+  .pdet-id-check-btn { display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:border-color .15s,background-color .15s,color .15s; }
+  .pdet-id-check-btn:hover { border-color:var(--pe-border-strong); }
+  .pdet-id-check-btn.active-yes { border-color:var(--pe-accent);background:var(--pe-sand);color:var(--pe-accent); }
+  .pdet-id-check-btn.active-no { border-color:var(--pe-terracotta,#8b3a1e);background:#fff0ec;color:var(--pe-terracotta,#8b3a1e); }
+  .pdet-id-check-btn.active-unsure { border-color:#c4962a;background:#fdf3e0;color:#8a6a1e; }
+
+  .pdet-tabs { margin-top:20px;display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;border-bottom:1px solid var(--pe-border); }
+  .pdet-tab { flex-shrink:0;display:inline-flex;align-items:center;gap:7px;padding:10px 14px;min-height:44px;border:none;background:none;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px; }
+  .pdet-tab:hover { color:var(--pe-text); }
+  .pdet-tab.active { color:var(--pe-accent);border-bottom-color:var(--pe-accent); }
+  .pdet-tab:focus-visible { outline:2px solid var(--pe-accent);outline-offset:-2px; }
+
+  .pdet-content-card { padding:24px;border-radius:var(--pe-radius-lg);background:var(--pe-surface);border:1px solid var(--pe-border);box-shadow:var(--pe-shadow-sm); }
+  @media (max-width:480px) { .pdet-content-card { padding:18px; } }
+  .pdet-section-title { display:flex;align-items:center;gap:8px;font-family:var(--pe-font-display);font-weight:600;font-size:19px;color:var(--pe-text);margin-bottom:16px; }
+  .pdet-section-title svg { color:var(--pe-accent);flex-shrink:0; }
+
+  .pdet-subsection { margin-bottom:16px; }
+  .pdet-subsection:last-child { margin-bottom:0; }
+  .pdet-subsection-title { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px; }
+
+  .pdet-tag-list { display:flex;flex-direction:column;gap:6px; }
+  .pdet-tag { display:flex;align-items:flex-start;gap:8px;font:var(--pe-text-body);font-size:14px;color:var(--pe-text);line-height:1.45; }
+  .pdet-tag-dot { flex-shrink:0;width:6px;height:6px;border-radius:50%;margin-top:7px; }
+  .pdet-tag-green .pdet-tag-dot { background:var(--pe-accent); }
+  .pdet-tag-gold .pdet-tag-dot { background:#c4962a; }
+  .pdet-tag-red .pdet-tag-dot { background:var(--pe-terracotta,#8b3a1e); }
+  .pdet-empty-text { color:var(--pe-text-muted);font:var(--pe-text-small); }
+
+  .pdet-info-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px; }
+  .pdet-info-card { display:flex;align-items:flex-start;gap:9px;background:var(--pe-sand);border-radius:var(--pe-radius-sm);padding:12px 13px; }
+  .pdet-info-icon { flex-shrink:0;color:var(--pe-accent);display:flex;margin-top:1px; }
+  .pdet-info-label { font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--pe-text-muted);font-weight:700;margin-bottom:2px; }
+  .pdet-info-value { font-size:13.5px;color:var(--pe-text);font-weight:500;line-height:1.4; }
+  @media (max-width:480px) { .pdet-info-grid { grid-template-columns:1fr; } }
+
+  .pdet-highlight-box { background:var(--pe-ivory);border-left:3px solid var(--pe-accent);border-radius:0 var(--pe-radius-sm) var(--pe-radius-sm) 0;padding:12px 14px;font:var(--pe-text-body);font-size:14px;color:var(--pe-text);margin-bottom:12px; }
+  .pdet-highlight-box:last-child { margin-bottom:0; }
+  .pdet-highlight-label { font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--pe-text-muted);font-weight:700;margin-bottom:4px; }
+  .pdet-highlight-warn { border-left-color:var(--pe-terracotta,#8b3a1e);background:#fff8f6; }
+  .pdet-highlight-warn .pdet-highlight-label { color:var(--pe-terracotta,#8b3a1e); }
+  .pdet-highlight-gold { border-left-color:#c4962a;background:#fffbf0; }
+  .pdet-highlight-gold .pdet-highlight-label { color:#8a6a1e; }
+
+  .pdet-context-banner { background:var(--pe-sand);border-radius:var(--pe-radius-sm);padding:10px 13px;font:var(--pe-text-small);color:var(--pe-accent);font-weight:600;margin-bottom:14px; }
+
+  .pdet-cal-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:8px; }
+  @media (max-width:560px) { .pdet-cal-grid { grid-template-columns:repeat(2,1fr); } }
+  .pdet-cal-cell { background:var(--pe-sand);border-radius:var(--pe-radius-sm);padding:10px 11px; }
+  .pdet-cal-cell.active { background:var(--pe-accent); }
+  .pdet-cal-month { font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;font-weight:700;color:var(--pe-text-muted);margin-bottom:3px; }
+  .pdet-cal-cell.active .pdet-cal-month { color:rgba(255,255,255,0.75); }
+  .pdet-cal-text { font-size:12.5px;color:var(--pe-text);line-height:1.35; }
+  .pdet-cal-cell.active .pdet-cal-text { color:var(--pe-on-accent); }
+
+  .pdet-rejected-actions { display:flex;flex-wrap:wrap;gap:10px; }
+  @media (max-width:480px) { .pdet-rejected-actions { flex-direction:column; } .pdet-rejected-actions .pe-btn { width:100%; } }
+`;
 
 function IdentifierTab({ addPlant }) {
   const [plantName, setPlantName] = useState("");
@@ -708,7 +864,7 @@ const IDENTIFIER_STYLES = `
   .pi-loading-title { font:var(--pe-text-h3);color:var(--pe-text); }
   .pi-loading-sub { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400; }
 
-  .pi-result-wrap { max-width:680px;margin:0 auto; }
+  .pi-result-wrap { max-width:760px;margin:0 auto; }
   .pi-reset-row { padding:0 0 12px; }
   .pi-reset-btn { display:inline-flex;align-items:center;padding:8px 4px;border:none;background:none;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:44px; }
   .pi-reset-btn:hover { color:var(--pe-accent); }
@@ -732,6 +888,20 @@ function zoneNameForPlant(plant, zonesList) {
   const zone = (zonesList || []).find((z) => z.id === plant.zoneId);
   return zone ? zone.name : null;
 }
+
+// Styles for MonJardinTab's selectedPlant/PlanteFiche detail branch —
+// rendered inline here (rather than relying on MonJardinTab's own
+// GARDEN_STYLES) since this branch returns before GARDEN_STYLES' own
+// <style> tag would ever mount.
+const MJ_DETAIL_STYLES = `
+  .mj-detail-page { max-width:760px;margin:0 auto; }
+  .mj-detail-back { display:inline-flex;align-items:center;padding:8px 4px;margin-bottom:16px;border:none;background:none;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:40px; }
+  .mj-detail-back:hover { color:var(--pe-accent); }
+  .mj-detail-error { margin-top:16px; }
+  .mj-detail-delete-row { margin-top:16px; }
+  .mj-detail-delete-btn { display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:10px 16px;border-radius:var(--pe-radius-sm);border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer; }
+  .mj-detail-delete-btn:hover { border-color:var(--pe-terracotta,#8b3a1e);color:var(--pe-terracotta,#8b3a1e); }
+`;
 
 function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated, onGoIdentifier }) {
   // selectedId (not the plant object itself) is the only state kept for the
@@ -911,11 +1081,16 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
 
   if (selectedPlant) {
     return (
-      <div className="tab-page">
-        <button className="back-btn" onClick={() => setSelectedId(null)}>← Mon Jardin</button>
+      <div className="mj-detail-page">
+        <style>{MJ_DETAIL_STYLES}</style>
+        <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>← Mon Jardin</button>
         <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} />
-        {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
-        <div style={{padding:"16px 0"}}><button className="btn-danger" onClick={() => handleDelete(selectedPlant.id)}>🗑 Retirer du jardin</button></div>
+        {deleteError && <div className="error-box mj-detail-error">⚠️ {deleteError}</div>}
+        <div className="mj-detail-delete-row">
+          <button type="button" className="mj-detail-delete-btn" onClick={() => handleDelete(selectedPlant.id)}>
+            <IconTrash size={15} /> Retirer du jardin
+          </button>
+        </div>
       </div>
     );
   }

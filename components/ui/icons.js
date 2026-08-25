@@ -196,3 +196,53 @@ export function IconFilter(props) {
     </Svg>
   );
 }
+
+export function IconCheck(props) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </Svg>
+  );
+}
+
+// Circle + question mark — same visual family as IconInfo/IconAlertCircle
+// (circle plus a small mark), used where a result is genuinely uncertain
+// rather than wrong or informational.
+export function IconHelpCircle(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.5 9.3c.3-1.6 1.7-2.6 3.3-2.3 1.5.3 2.4 1.5 2.1 2.9-.2 1-1 1.5-1.7 2-.7.4-1.2.8-1.2 1.6" />
+      <path d="M12 16.9v.1" />
+    </Svg>
+  );
+}
+
+export function IconScissors(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="7" cy="6.5" r="2.3" />
+      <circle cx="7" cy="17.5" r="2.3" />
+      <path d="M9 8l11 8" />
+      <path d="M9 16l11-8" />
+    </Svg>
+  );
+}
+
+export function IconDroplet(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3.5c3.5 4.3 6 7.8 6 10.8a6 6 0 1 1-12 0c0-3 2.5-6.5 6-10.8Z" />
+    </Svg>
+  );
+}
+
+export function IconFlask(props) {
+  return (
+    <Svg {...props}>
+      <path d="M9.5 3.5h5" />
+      <path d="M10.5 3.5v5.2L6 17a2 2 0 0 0 1.8 3h8.4a2 2 0 0 0 1.8-3l-4.5-8.3V3.5" />
+      <path d="M8 14.5h8" />
+    </Svg>
+  );
+}
