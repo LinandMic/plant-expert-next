@@ -40,6 +40,7 @@ import {
   IconDroplet,
   IconFlask,
   IconAlertCircle,
+  IconArrowRight,
 } from "@/components/ui/icons";
 
 const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
@@ -194,18 +195,24 @@ function PlantationModal({ onConfirm, onSkip }) {
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
+    <div className="plm-overlay">
+      <style>{PLM_STYLES}</style>
+      <div className="plm-panel" role="dialog" aria-modal="true" aria-labelledby="plm-title">
+        <div className="plm-step">Étape {step}/2</div>
         {step === 1 && (
           <>
-            <div className="modal-step">Étape 1/2</div>
-            <div className="modal-title">Contexte de plantation</div>
-            <div className="modal-sub">Les quantités eau et engrais seront adaptées</div>
-            <div className="plantation-grid">
+            <div className="plm-title" id="plm-title">Contexte de plantation</div>
+            <div className="plm-sub">Les quantités eau et engrais seront adaptées</div>
+            <div className="plm-option-grid" role="group" aria-label="Contexte de plantation">
               {PLANTATION_TYPES.map(p => (
-                <button key={p.id} className={"plantation-btn" + (plantation && plantation.id === p.id ? " active" : "")} onClick={() => setPlantation(p)}>
-                  <span className="plantation-icon">{p.icon}</span>
-                  <span className="plantation-label">{p.label}</span>
+                <button
+                  type="button"
+                  key={p.id}
+                  className={"plm-option" + (plantation && plantation.id === p.id ? " active" : "")}
+                  aria-pressed={!!(plantation && plantation.id === p.id)}
+                  onClick={() => setPlantation(p)}
+                >
+                  {p.label}
                 </button>
               ))}
             </div>
@@ -213,33 +220,58 @@ function PlantationModal({ onConfirm, onSkip }) {
         )}
         {step === 2 && (
           <>
-            <div className="modal-step">Étape 2/2</div>
-            <div className="modal-title">Usage de la plante</div>
-            <div className="modal-sub">Les conseils de taille seront adaptés à cet usage</div>
-            <div className="plantation-grid">
+            <div className="plm-title" id="plm-title">Usage de la plante</div>
+            <div className="plm-sub">Les conseils de taille seront adaptés à cet usage</div>
+            <div className="plm-option-grid" role="group" aria-label="Usage de la plante">
               {USAGE_TYPES.map(u => (
-                <button key={u.id} className={"plantation-btn" + (usageSelected && usageSelected.id === u.id ? " active" : "")} onClick={() => setUsageSelected(u)}>
-                  <span className="plantation-icon">{u.icon}</span>
-                  <span className="plantation-label">{u.label}</span>
+                <button
+                  type="button"
+                  key={u.id}
+                  className={"plm-option" + (usageSelected && usageSelected.id === u.id ? " active" : "")}
+                  aria-pressed={!!(usageSelected && usageSelected.id === u.id)}
+                  onClick={() => setUsageSelected(u)}
+                >
+                  {u.label}
                 </button>
               ))}
             </div>
           </>
         )}
-        <div className="modal-actions">
-          <button className="btn-modal-confirm"
+        <div className="plm-actions">
+          <Button
+            type="button"
             disabled={step === 1 ? !plantation : false}
-            onClick={handleConfirm}>
-            {step === 1 ? "Suivant →" : "Obtenir les conseils adaptés"}
-          </button>
-          <button className="btn-modal-skip" onClick={() => onSkip()}>
+            onClick={handleConfirm}
+          >
+            {step === 1 ? <>Suivant <IconArrowRight size={16} /></> : "Obtenir les conseils adaptés"}
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => onSkip()}>
             Passer (conseils généraux)
-          </button>
+          </Button>
         </div>
       </div>
     </div>
   );
 }
+
+const PLM_STYLES = `
+  .plm-overlay { position:fixed;inset:0;background:rgba(24,33,29,0.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:1000; }
+  .plm-panel { position:relative;width:100%;max-width:480px;max-height:min(640px,90vh);overflow-y:auto;background:var(--pe-surface);border-radius:var(--pe-radius-lg);border:1px solid var(--pe-border);box-shadow:var(--pe-shadow-md);padding:28px; }
+
+  .plm-step { font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--pe-text-muted);margin-bottom:8px; }
+  .plm-title { font-family:var(--pe-font-display);font-weight:600;font-size:21px;color:var(--pe-text); }
+  .plm-sub { margin-top:4px;margin-bottom:18px;color:var(--pe-text-muted);font-size:13.5px; }
+
+  .plm-option-grid { display:flex;flex-wrap:wrap;gap:8px; }
+  .plm-option { min-height:44px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font-family:var(--pe-font-body);font-size:13.5px;font-weight:600;cursor:pointer;transition:border-color .15s,background-color .15s,color .15s; }
+  .plm-option:hover { border-color:var(--pe-border-strong); }
+  .plm-option:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+  .plm-option.active { border-color:var(--pe-accent);background:var(--pe-sand);color:var(--pe-accent); }
+
+  .plm-actions { display:flex;gap:8px;flex-wrap:wrap;margin-top:22px; }
+
+  @media (max-width:480px) { .plm-panel { padding:20px; } }
+`;
 
 function TagList({ items, color }) {
   const c = color || "green";
