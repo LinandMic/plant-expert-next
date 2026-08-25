@@ -21,32 +21,11 @@ import {
   resetFilters,
   clearAllFilters,
 } from "@/lib/plantFinderFilters";
-import {
-  IconHome,
-  IconCamera,
-  IconSprout,
-  IconSearch,
-  IconUser,
-  IconSprig,
-  IconX,
-  IconFilter,
-} from "@/components/ui/icons";
+import { IconSprig, IconX, IconFilter, IconSearch } from "@/components/ui/icons";
+import { EXTERNAL_NAV_ITEMS } from "@/components/ui/externalNavItems";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const EMPTY_FILTERS = { query: "", plantType: null, sun: null, heightCategory: null };
-
-// This page is a standalone Next.js route (not a tab inside pages/index.js),
-// so it builds its own navItems for AppShell. "Accueil"/"Identifier"/"Mon
-// jardin" can only be reached as tabs inside "/" (no per-tab deep link
-// exists), so — same as the finder's previous, now-replaced bottom nav —
-// they all point at "/".
-const NAV_ITEMS = [
-  { key: "accueil", label: "Accueil", icon: IconHome, kind: "link", href: "/", placement: "main" },
-  { key: "identifier", label: "Identifier", icon: IconCamera, kind: "link", href: "/", placement: "main", emphasis: true },
-  { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "link", href: "/", placement: "main" },
-  { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
-  { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
-];
 
 export default function PlantFinderPage() {
   const router = useRouter();
@@ -158,7 +137,7 @@ export default function PlantFinderPage() {
   const returnTo = new URLSearchParams(serializeFiltersToQuery(filters)).toString();
 
   return (
-    <AppShell navItems={NAV_ITEMS} activeKey="trouver">
+    <AppShell navItems={EXTERNAL_NAV_ITEMS} activeKey="trouver">
       <div className="pf2-page">
         <style>{FINDER_STYLES}</style>
 

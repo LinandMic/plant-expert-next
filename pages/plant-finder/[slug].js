@@ -2,7 +2,8 @@ import AppShell from "@/components/ui/AppShell";
 import { useRouter } from "next/router";
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
 import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths, plantTypeLabel, plantFinderDisplayTitle } from "@/lib/plantFinderFormat";
-import { IconHome, IconCamera, IconSprout, IconSearch, IconUser, IconSprig } from "@/components/ui/icons";
+import { IconSprig } from "@/components/ui/icons";
+import { EXTERNAL_NAV_ITEMS } from "@/components/ui/externalNavItems";
 
 // Server-rendered on purpose: returning `notFound: true` is what gives a
 // missing slug (or a draft row RLS already hides) Next.js's real 404
@@ -26,16 +27,6 @@ export async function getServerSideProps({ params }) {
 
   return { props: { plant } };
 }
-
-// Same standalone-route navItems as pages/plant-finder/index.js — see that
-// file's comment for why Accueil/Identifier/Mon jardin all point at "/".
-const NAV_ITEMS = [
-  { key: "accueil", label: "Accueil", icon: IconHome, kind: "link", href: "/", placement: "main" },
-  { key: "identifier", label: "Identifier", icon: IconCamera, kind: "link", href: "/", placement: "main", emphasis: true },
-  { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "link", href: "/", placement: "main" },
-  { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
-  { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
-];
 
 function Field({ label, value }) {
   if (value === null || value === undefined || value === "") return null;
@@ -85,7 +76,7 @@ export default function PlantFinderDetailPage({ plant }) {
   const { title, scientificSubtitle } = plantFinderDisplayTitle(plant);
 
   return (
-    <AppShell navItems={NAV_ITEMS} activeKey="trouver">
+    <AppShell navItems={EXTERNAL_NAV_ITEMS} activeKey="trouver">
       <div className="pfd-page">
         <style>{DETAIL_STYLES}</style>
 

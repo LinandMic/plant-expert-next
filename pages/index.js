@@ -1,5 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useRouter } from "next/router";
 import { useAuth } from "@/lib/useAuth";
+import { tabFromQuery, tabToQuery } from "@/lib/homeTabRouting";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
 import { useGardenZones } from "@/lib/useGardenZones";
@@ -1400,7 +1402,9 @@ function AccountBar({ auth, onLogin }) {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [activeNav, setActiveNav] = useState("accueil");
+  const [navInitialized, setNavInitialized] = useState(false);
   const auth = useAuth();
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
@@ -1411,6 +1415,33 @@ export default function Home() {
     setAuthModalMode(mode);
     setShowAuthModal(true);
   };
+
+  // URL -> tab: the initial load, a browser back/forward navigation, or an
+  // external link landing here with ?tab=... (Plant Finder's "Identifier"/
+  // "Mon jardin" nav links) must always show the right tab. "/" used to be
+  // pure local state with no such mechanism at all — clicking those links
+  // from Plant Finder silently landed back on Accueil, which is the bug
+  // this effect (together with the one below) fixes.
+  useEffect(() => {
+    if (!router.isReady) return;
+    setActiveNav(tabFromQuery(router.query));
+    setNavInitialized(true);
+  }, [router.isReady, router.query.tab]);
+
+  // tab -> URL: keep the address bar in sync whenever the tab changes
+  // locally (a sidebar/bottom-nav click, "onGoIdentifier", etc.), so the
+  // current tab is shareable, refresh-safe, and back/forward-navigable.
+  // Guarded by navInitialized so this never fires before the effect above
+  // has done its first URL->state pass, and only replaces when the URL
+  // isn't already showing this tab — together, that's what keeps this from
+  // ever looping with the effect above.
+  useEffect(() => {
+    if (!navInitialized) return;
+    if (tabFromQuery(router.query) === activeNav) return;
+    const query = tabToQuery(activeNav);
+    router.replace({ pathname: "/", query }, undefined, { shallow: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeNav, navInitialized]);
 
   // The DB's own ON DELETE SET NULL (zone_id) already guarantees every
   // plant that pointed at this zone now has zone_id = NULL server-side once
