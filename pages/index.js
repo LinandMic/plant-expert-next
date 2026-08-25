@@ -371,8 +371,8 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
               {alreadySaved && identificationStatus === "uncertain" && (
                 <span className="pdet-status-badge pdet-status-uncertain"><IconHelpCircle size={13} /> Identification à confirmer</span>
               )}
-              {plantation && <span className="pdet-context-pill">{plantation.icon} {plantation.label}</span>}
-              {usage && <span className="pdet-context-pill">{usage.icon} {usage.label}</span>}
+              {plantation && <span className="pdet-context-pill">{plantation.label}</span>}
+              {usage && <span className="pdet-context-pill">{usage.label}</span>}
             </div>
           </div>
         </div>
@@ -481,7 +481,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
         {activeTab === "nutriments" && r.nutriments && (
           <div>
             <div className="pdet-section-title"><IconFlask size={17} /> Nutriments &amp; Engrais</div>
-            {plantation && <div className="pdet-context-banner">{plantation.icon} Conseils adaptés : {plantation.label}</div>}
+            {plantation && <div className="pdet-context-banner">Conseils adaptés : {plantation.label}</div>}
             <div className="pdet-subsection"><div className="pdet-subsection-title">Besoins</div><TagList items={r.nutriments.besoins_principaux} color="green" /></div>
             <div className="pdet-info-grid" style={{ marginTop: 14 }}>
               <InfoCard icon={IconFlask} label="Engrais recommandé" value={r.nutriments.engrais_recommande} />
@@ -495,7 +495,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
         {activeTab === "arrosage" && r.arrosage && (
           <div>
             <div className="pdet-section-title"><IconDroplet size={17} /> Arrosage</div>
-            {plantation && <div className="pdet-context-banner">{plantation.icon} Conseils adaptés : {plantation.label}</div>}
+            {plantation && <div className="pdet-context-banner">Conseils adaptés : {plantation.label}</div>}
             <div className="pdet-info-grid">
               <InfoCard icon={IconSun} label="Été" value={r.arrosage.frequence_ete} />
               <InfoCard label="Hiver" value={r.arrosage.frequence_hiver} />
@@ -806,7 +806,7 @@ function IdentifierTab({ addPlant }) {
                 <IconSearch size={16} /> Analyser
               </Button>
 
-              {error && <div className="error-box pi-error">⚠️ {error}</div>}
+              {error && <div className="error-box pi-error"><IconAlertCircle size={14} /> {error}</div>}
             </Card>
 
             <Card className="pi-tips-card">
@@ -835,7 +835,7 @@ function IdentifierTab({ addPlant }) {
         <div className="pi-result-wrap">
           <div className="pi-reset-row"><button type="button" className="pi-reset-btn" onClick={reset}>← Nouvelle analyse</button></div>
           <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} identificationStatus={identificationStatus} identificationActions={identificationActions} />
-          {saveError && <div className="error-box pi-error" style={{marginTop:12}}>⚠️ {saveError}</div>}
+          {saveError && <div className="error-box pi-error" style={{marginTop:12}}><IconAlertCircle size={14} /> {saveError}</div>}
         </div>
       )}
     </div>
@@ -1117,7 +1117,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
         <style>{MJ_DETAIL_STYLES}</style>
         <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>← Mon Jardin</button>
         <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} />
-        {deleteError && <div className="error-box mj-detail-error">⚠️ {deleteError}</div>}
+        {deleteError && <div className="error-box mj-detail-error"><IconAlertCircle size={14} /> {deleteError}</div>}
         <div className="mj-detail-delete-row">
           <button type="button" className="mj-detail-delete-btn" onClick={() => handleDelete(selectedPlant.id)}>
             <IconTrash size={15} /> Retirer du jardin
@@ -1134,9 +1134,9 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   return (
     <div className="mj-page">
       <style>{GARDEN_STYLES}</style>
-      {migrating && <div className="context-banner">🔄 Synchronisation de votre jardin avec votre compte...</div>}
-      {error && <div className="error-box">⚠️ {error}</div>}
-      {deleteError && <div className="error-box">⚠️ {deleteError}</div>}
+      {migrating && <div className="context-banner">Synchronisation de votre jardin avec votre compte...</div>}
+      {error && <div className="error-box"><IconAlertCircle size={14} /> {error}</div>}
+      {deleteError && <div className="error-box"><IconAlertCircle size={14} /> {deleteError}</div>}
 
       <header className="mj-header">
         <div>
