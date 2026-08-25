@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/useAuth";
+import { IconLeaf, IconAlertCircle, IconCheck } from "@/components/ui/icons";
+import Button from "@/components/ui/Button";
 
 function urlAuthError() {
   if (typeof window === "undefined") return null;
@@ -69,104 +71,106 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="app">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        :root { --ink:#0f1f0f;--forest:#1e3a1e;--moss:#3a6b3a;--sage:#7aad7a;--mist:#e8f0e8;--paper:#f4f2ed;--cream:#faf8f3;--gold:#c4962a;--rust:#8b3a1e;--r:14px;--shadow:0 4px 20px rgba(15,31,15,0.1); }
-        body { font-family:'Outfit',sans-serif;background:var(--paper);color:var(--ink); }
-        .app { min-height:100vh;padding-bottom:40px; }
-        .header { background:var(--forest);padding:24px 20px 16px; }
-        .header h1 { font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:700;color:white; }
-        .header h1 em { color:var(--sage);font-style:normal; }
-        .header p { color:rgba(255,255,255,0.45);font-size:12px;margin-top:3px; }
-        .tab-page { padding:16px 16px 20px;max-width:420px;margin:0 auto; }
-        .reset-panel { background:white;border-radius:var(--r);box-shadow:var(--shadow);padding:24px 20px;margin-top:20px; }
-        .modal-title { font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--forest);font-weight:700;margin-bottom:4px; }
-        .modal-sub { color:#999;font-size:13px;margin-bottom:20px; }
-        .auth-field { margin-bottom:12px; }
-        .auth-field .plant-input { width:100%; }
-        .auth-label { font-size:11px;font-weight:600;color:var(--forest);margin-bottom:5px;display:block; }
-        .plant-input { border:1.5px solid rgba(0,0,0,0.12);border-radius:10px;padding:11px 14px;font-family:'Outfit',sans-serif;font-size:15px;outline:none;background:var(--cream); }
-        .plant-input:focus { border-color:var(--moss); }
-        .error-box { background:#fff5f5;border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:12px 14px;color:var(--rust);font-size:14px;margin:0 0 16px; }
-        .auth-success-box { background:var(--mist);border-radius:8px;padding:12px 14px;color:var(--forest);font-size:13px;margin-bottom:16px;line-height:1.5; }
-        .btn-modal-confirm { background:var(--forest);color:white;border:none;border-radius:12px;padding:14px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;width:100%;text-align:center;text-decoration:none;display:block; }
-        .btn-modal-confirm:disabled { opacity:0.4;cursor:not-allowed; }
-        .loading-state { text-align:center;padding:40px 20px; }
-        .leaf-spin { font-size:48px;display:inline-block;animation:spin 2s linear infinite;margin-bottom:14px; }
-        @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
-        .loading-title { font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--forest); }
-      `}</style>
+    <div className="rp-page">
+      <style>{RP_STYLES}</style>
+      <div className="rp-brand"><IconLeaf size={20} /> <span>Plant Expert</span></div>
 
-      <div className="header">
-        <h1>Plante <em>Expert</em></h1>
-        <p>Réinitialisation du mot de passe</p>
-      </div>
+      <div className="rp-card">
+        {status === "loading" && (
+          <div className="rp-loading">
+            <div className="rp-spinner" aria-hidden="true" />
+            <div className="rp-loading-title">Vérification du lien...</div>
+          </div>
+        )}
 
-      <div className="tab-page">
-        <div className="reset-panel">
-          {status === "loading" && (
-            <div className="loading-state">
-              <div className="leaf-spin">🌿</div>
-              <div className="loading-title">Vérification du lien...</div>
+        {status === "invalid" && (
+          <>
+            <div className="rp-status-icon rp-status-icon-warn"><IconAlertCircle size={22} /></div>
+            <div className="rp-title">Lien invalide</div>
+            <div className="error-box">Ce lien de réinitialisation est invalide ou a expiré.</div>
+            <Button href="/" className="rp-cta">Retour à Plant Expert</Button>
+          </>
+        )}
+
+        {status === "ready" && (
+          <form onSubmit={handleSubmit}>
+            <div className="rp-title">Nouveau mot de passe</div>
+            <div className="rp-sub">Choisissez un nouveau mot de passe pour votre compte.</div>
+            <div className="rp-field">
+              <label className="rp-label" htmlFor="new-password">Nouveau mot de passe</label>
+              <input
+                id="new-password"
+                className="rp-input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
             </div>
-          )}
+            <div className="rp-field">
+              <label className="rp-label" htmlFor="confirm-password">Confirmer le mot de passe</label>
+              <input
+                id="confirm-password"
+                className="rp-input"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </div>
+            {formError && <div className="error-box">{formError}</div>}
+            <Button type="submit" disabled={submitting} className="rp-cta">
+              {submitting ? "Veuillez patienter..." : "Changer le mot de passe"}
+            </Button>
+          </form>
+        )}
 
-          {status === "invalid" && (
-            <>
-              <div className="modal-title">Lien invalide</div>
-              <div className="error-box">Ce lien de réinitialisation est invalide ou a expiré.</div>
-              <a href="/" className="btn-modal-confirm">Retour à Plant Expert</a>
-            </>
-          )}
-
-          {status === "ready" && (
-            <form onSubmit={handleSubmit}>
-              <div className="modal-title">Nouveau mot de passe</div>
-              <div className="modal-sub">Choisissez un nouveau mot de passe pour votre compte.</div>
-              <div className="auth-field">
-                <label className="auth-label" htmlFor="new-password">Nouveau mot de passe</label>
-                <input
-                  id="new-password"
-                  className="plant-input"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="new-password"
-                  minLength={8}
-                  required
-                />
-              </div>
-              <div className="auth-field">
-                <label className="auth-label" htmlFor="confirm-password">Confirmer le mot de passe</label>
-                <input
-                  id="confirm-password"
-                  className="plant-input"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  autoComplete="new-password"
-                  minLength={8}
-                  required
-                />
-              </div>
-              {formError && <div className="error-box">{formError}</div>}
-              <button type="submit" className="btn-modal-confirm" disabled={submitting}>
-                {submitting ? "Veuillez patienter..." : "Changer le mot de passe"}
-              </button>
-            </form>
-          )}
-
-          {status === "success" && (
-            <>
-              <div className="modal-title">Mot de passe modifié avec succès</div>
-              <div className="auth-success-box">Vous pouvez maintenant vous reconnecter avec votre nouveau mot de passe.</div>
-              <a href="/" className="btn-modal-confirm">Retour à Plant Expert</a>
-            </>
-          )}
-        </div>
+        {status === "success" && (
+          <>
+            <div className="rp-status-icon rp-status-icon-success"><IconCheck size={22} /></div>
+            <div className="rp-title">Mot de passe modifié avec succès</div>
+            <div className="rp-success">Vous pouvez maintenant vous reconnecter avec votre nouveau mot de passe.</div>
+            <Button href="/" className="rp-cta">Retour à Plant Expert</Button>
+          </>
+        )}
       </div>
     </div>
   );
 }
+
+const RP_STYLES = `
+  .rp-page { min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px; }
+
+  .rp-brand { display:flex;align-items:center;gap:8px;color:var(--pe-accent);font-family:var(--pe-font-display);font-weight:600;font-size:19px;margin-bottom:24px; }
+  .rp-brand svg { flex-shrink:0; }
+
+  .rp-card { width:100%;max-width:420px;background:var(--pe-surface);border:1px solid var(--pe-border);border-radius:var(--pe-radius-lg);box-shadow:var(--pe-shadow-sm);padding:32px 28px; }
+
+  .rp-title { font-family:var(--pe-font-display);font-weight:600;font-size:22px;color:var(--pe-text);margin-bottom:6px; }
+  .rp-sub { color:var(--pe-text-muted);font-size:13.5px;margin-bottom:20px; }
+
+  .rp-field { margin-bottom:16px; }
+  .rp-label { display:block;font-size:13px;font-weight:600;color:var(--pe-text);margin-bottom:7px; }
+  .rp-input { width:100%;min-height:44px;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);padding:10px 14px;font-family:var(--pe-font-body);font-size:14px;color:var(--pe-text);background:var(--pe-surface);outline:none;transition:border-color .15s; }
+  .rp-input:focus { border-color:var(--pe-accent); }
+
+  .rp-cta { width:100%;justify-content:center;margin-top:6px; }
+
+  .rp-status-icon { width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:16px; }
+  .rp-status-icon-warn { background:#fff0ec;color:var(--pe-terracotta,#8b3a1e); }
+  .rp-status-icon-success { background:var(--pe-sand);color:var(--pe-accent); }
+
+  .rp-success { padding:12px 14px;border-radius:var(--pe-radius-sm);background:var(--pe-sand);color:var(--pe-accent);font-size:13.5px;line-height:1.5;margin-bottom:20px; }
+
+  .rp-loading { text-align:center;padding:20px 0; }
+  .rp-spinner { width:44px;height:44px;margin:0 auto 16px;border-radius:50%;border:3px solid var(--pe-sand);border-top-color:var(--pe-accent);animation:rp-spin .85s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .rp-spinner { animation:none; } }
+  @keyframes rp-spin { to { transform:rotate(360deg); } }
+  .rp-loading-title { font-family:var(--pe-font-display);font-weight:600;font-size:17px;color:var(--pe-text); }
+
+  @media (max-width:480px) { .rp-card { padding:24px 20px; } }
+`;
