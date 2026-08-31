@@ -46,10 +46,14 @@ function printReport(report) {
     return;
   }
   for (const [table, step] of Object.entries(report.steps)) {
+    if (step.status === "skipped") {
+      console.log(`  ${table}: SKIPPED (reason=${step.reason})`);
+      continue;
+    }
     console.log(`  ${table}: created=${step.created} updated=${step.updated ?? 0} unchanged=${step.unchanged} errors=${step.errors.length}`);
     for (const e of step.errors) console.error(`    ! ${e}`);
   }
-  console.log(`  TOTAL: created=${report.totals.created} updated=${report.totals.updated} unchanged=${report.totals.unchanged} errors=${report.totals.errors}`);
+  console.log(`  TOTAL: created=${report.totals.created} updated=${report.totals.updated} unchanged=${report.totals.unchanged} errors=${report.totals.errors} skipped=${report.totals.skipped}`);
 }
 
 async function run() {

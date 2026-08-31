@@ -1,17 +1,27 @@
 // Layer C, table 6: plant_trait_selections.
 //
 // Natural key: (plant_catalog_id, trait) — real unique constraint
-// plant_trait_selections_one_per_catalog_trait.
+// plant_trait_selections_one_per_catalog_trait. decision_method's allowed
+// values, per the real CHECK constraint (plant_trait_selections_
+// decision_method_check): 'provider_observation' | 'editorial' |
+// 'manual_resolution'.
 //
-// CRITICAL safety rule: once a selection row exists for a (catalog, trait)
-// pair, Layer C NEVER updates it, under any circumstance — not even if the
-// plan's recommended observation differs from what's stored. decision_method
-// can be "manual_resolution", meaning a curator overrode the automatic
-// provider-observation pick by hand; blindly re-syncing to the plan's
-// recommendation on every re-apply would silently clobber that human
-// decision. So: insert when missing, otherwise always report "unchanged"
-// and leave the row exactly as it is — this file has no update code path
-// at all, by design, not as an oversight.
+// CRITICAL safety rule: a row whose STORED decision_method is
+// "manual_resolution" is NEVER touched again, under any circumstance — a
+// curator overrode the automatic pick by hand, and blindly re-syncing to
+// the plan's recommendation on every re-apply would silently clobber that
+// human decision. The protection is keyed on what is actually in the DB,
+// not on what the plan says (the plan itself can never even produce
+// "manual_resolution" — see Layer B's compileSelections.js — so checking
+// the plan's own decision_method would never catch this case).
+//
+// A row whose stored decision_method is automatic (provider_observation or
+// editorial) IS allowed to be updated when the plan's recommendation
+// genuinely differs — e.g. a re-ingestion run picked a different
+// observation, or the automatic method itself changed. If it is already
+// identical to the plan, it is reported "unchanged" (no write issued).
+const COMPARE_FIELDS = ["selected_observation_id", "decision_method", "decided_by", "note"];
+
 function selectionRowFromPlan(sel, catalogId, observationId) {
   return {
     plant_catalog_id: catalogId,
@@ -23,14 +33,17 @@ function selectionRowFromPlan(sel, catalogId, observationId) {
   };
 }
 
+function fieldsDiffer(existingRow, planRow) {
+  return COMPARE_FIELDS.some((field) => JSON.stringify(existingRow[field] ?? null) !== JSON.stringify(planRow[field] ?? null));
+}
+
 // upsertSelections({ client, selections, catalogIdByRef, observationIdByRef, dryRun })
 //   -> { created, updated, unchanged, errors }
-// `updated` is always 0 — see the file-level comment above. No idByRef is
-// returned: nothing downstream references a selection by *_ref.
+// No idByRef is returned: nothing downstream references a selection by
+// *_ref.
 export async function upsertSelections({ client, selections, catalogIdByRef, observationIdByRef, dryRun }) {
   const errors = [];
-  let created = 0, unchanged = 0;
-  const updated = 0;
+  let created = 0, updated = 0, unchanged = 0;
 
   for (const sel of selections) {
     const catalogId = catalogIdByRef.get(sel.catalog_ref);
@@ -45,7 +58,7 @@ export async function upsertSelections({ client, selections, catalogIdByRef, obs
 
     const { data: existing, error: selectError } = await client
       .from("plant_trait_selections")
-      .select("id")
+      .select(["id", ...COMPARE_FIELDS].join(", "))
       .eq("plant_catalog_id", catalogId)
       .eq("trait", sel.trait)
       .maybeSingle();
@@ -55,17 +68,31 @@ export async function upsertSelections({ client, selections, catalogIdByRef, obs
       continue;
     }
 
-    if (existing) {
-      // Already decided — never touched again, manual_resolution or not.
+    if (!existing) {
+      created += 1;
+      if (dryRun) continue;
+      const row = selectionRowFromPlan(sel, catalogId, observationId);
+      const { error: insertError } = await client.from("plant_trait_selections").insert(row);
+      if (insertError) errors.push(`plant_trait_selections insert failed for ${sel.catalog_ref}/${sel.trait}: ${insertError.message}`);
+      continue;
+    }
+
+    if (existing.decision_method === "manual_resolution") {
+      // Curator override — never touched, regardless of what the plan says.
       unchanged += 1;
       continue;
     }
 
-    created += 1;
-    if (dryRun) continue;
     const row = selectionRowFromPlan(sel, catalogId, observationId);
-    const { error: insertError } = await client.from("plant_trait_selections").insert(row);
-    if (insertError) errors.push(`plant_trait_selections insert failed for ${sel.catalog_ref}/${sel.trait}: ${insertError.message}`);
+    if (!fieldsDiffer(existing, row)) {
+      unchanged += 1;
+      continue;
+    }
+
+    updated += 1;
+    if (dryRun) continue;
+    const { error: updateError } = await client.from("plant_trait_selections").update(row).eq("id", existing.id);
+    if (updateError) errors.push(`plant_trait_selections update failed for ${sel.catalog_ref}/${sel.trait}: ${updateError.message}`);
   }
 
   return { created, updated, unchanged, errors };

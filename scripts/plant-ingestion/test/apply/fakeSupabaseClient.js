@@ -23,15 +23,25 @@ function pickColumns(row, colsSpec) {
   return out;
 }
 
-// createFakeSupabaseClient(seed = {}) -> { client, tables }
+// createFakeSupabaseClient(seed = {}, options = {}) -> { client, tables }
 // `seed` maps table name -> initial array of rows (each row must include
 // `id`). `tables` is the live in-memory store — read it directly in
 // assertions after exercising the code under test.
-export function createFakeSupabaseClient(seed = {}) {
+//
+// `options.failOn` optionally forces specific operations to return a
+// Supabase-shaped error instead of touching the in-memory store — this is
+// how the applyPlan dependency-skip tests simulate a parent-step DB
+// failure without a real network. Shape:
+//   { [tableName]: { select?: string | true, insert?: string | true, update?: string | true } }
+// A `true` value uses a generic message; a string is used verbatim. Absent
+// entirely by default, so every existing test (no options passed) behaves
+// exactly as before.
+export function createFakeSupabaseClient(seed = {}, options = {}) {
   const tables = {};
   for (const [name, rows] of Object.entries(seed)) {
     tables[name] = rows.map((r) => ({ ...r }));
   }
+  const failOn = options.failOn ?? {};
 
   function from(tableName) {
     if (!tables[tableName]) tables[tableName] = [];
@@ -87,7 +97,17 @@ export function createFakeSupabaseClient(seed = {}) {
       },
     };
 
+    function forcedError() {
+      const cfg = failOn[tableName]?.[mode];
+      if (!cfg) return null;
+      const message = typeof cfg === "string" ? cfg : `${tableName} ${mode} forced failure (test)`;
+      return { data: null, error: { message } };
+    }
+
     function execute() {
+      const forced = forcedError();
+      if (forced) return forced;
+
       if (mode === "insert") {
         const row = { id: insertRow.id ?? nextFakeId(), ...insertRow };
         if (!("id" in insertRow)) row.id = insertRow.id ?? nextFakeId();
