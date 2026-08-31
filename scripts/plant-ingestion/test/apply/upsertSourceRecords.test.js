@@ -55,3 +55,93 @@ test("dry-run never supersedes or inserts", async () => {
   assert.equal(tables.plant_source_records.length, 1);
   assert.equal(tables.plant_source_records[0].provider_status, "matched");
 });
+
+// ===========================================================================
+// idByRef correctness on a dry-run "would update" — the fix for the
+// cascade bug found against real production data: a genuine change in
+// dry-run must NOT null out idByRef, because nothing was actually
+// superseded — the existing row is still the real current row.
+// ===========================================================================
+test("CRITICAL: a genuine change in dry-run reports updated=1 with zero writes, and idByRef still points at the existing row's real id", async () => {
+  const { client, tables } = createFakeSupabaseClient();
+  const seeded = await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ provider_status: "matched" })], catalogIdByRef, dryRun: false });
+  const existingId = seeded.idByRef.get("acer_palmatum_species:perenual:current");
+  assert.ok(existingId);
+
+  const result = await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ provider_status: "updated" })], catalogIdByRef, dryRun: true });
+
+  assert.equal(result.created, 0);
+  assert.equal(result.updated, 1);
+  assert.equal(result.unchanged, 0);
+  assert.deepEqual(result.errors, []);
+  // Zero writes: still exactly the one row from the seed, untouched.
+  assert.equal(tables.plant_source_records.length, 1);
+  assert.equal(tables.plant_source_records[0].provider_status, "matched");
+  assert.equal(tables.plant_source_records[0].superseded_at ?? null, null);
+  // The fix: idByRef points at the existing row's real id, not null.
+  assert.equal(result.idByRef.get("acer_palmatum_species:perenual:current"), existingId);
+});
+
+// ===========================================================================
+// retrieved_at is provenance/audit, not content — it must never by itself
+// turn an otherwise-identical source record into a "genuine change".
+// ===========================================================================
+
+// A. DB and plan identical except retrieved_at -> unchanged
+test("A: retrieved_at alone differing between DB and plan is reported unchanged", async () => {
+  const { client, tables } = createFakeSupabaseClient();
+  await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ retrieved_at: "2026-01-01T00:00:00.000Z" })], catalogIdByRef, dryRun: false });
+
+  const result = await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ retrieved_at: "2026-06-15T12:30:00.000Z" })], catalogIdByRef, dryRun: false });
+  assert.equal(result.updated, 0);
+  assert.equal(result.unchanged, 1);
+  assert.equal(tables.plant_source_records.length, 1); // no supersession
+});
+
+// B. provider_record_id different -> updated
+test("B: a genuinely different provider_record_id triggers an update", async () => {
+  const { client } = createFakeSupabaseClient();
+  await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ provider_record_id: "320245" })], catalogIdByRef, dryRun: false });
+  const result = await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ provider_record_id: "999999" })], catalogIdByRef, dryRun: false });
+  assert.equal(result.updated, 1);
+});
+
+// C. metadata genuinely different -> updated
+test("C: a genuinely different metadata payload triggers an update", async () => {
+  const { client } = createFakeSupabaseClient();
+  await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ metadata: { candidates: 1 } })], catalogIdByRef, dryRun: false });
+  const result = await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ metadata: { candidates: 4 } })], catalogIdByRef, dryRun: false });
+  assert.equal(result.updated, 1);
+});
+
+// D. source_url different -> updated
+test("D: a genuinely different source_url triggers an update", async () => {
+  const { client } = createFakeSupabaseClient();
+  await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ source_url: "https://perenual.com/species/320245" })], catalogIdByRef, dryRun: false });
+  const result = await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ source_url: "https://perenual.com/species/999999" })], catalogIdByRef, dryRun: false });
+  assert.equal(result.updated, 1);
+});
+
+// E. retrieved_at different AND another business field different -> still updated (retrieved_at doesn't mask a real change)
+test("E: retrieved_at differing alongside a genuine business-field change still reports updated", async () => {
+  const { client } = createFakeSupabaseClient();
+  await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord({ retrieved_at: "2026-01-01T00:00:00.000Z", provider_status: "matched" })], catalogIdByRef, dryRun: false });
+  const result = await upsertSourceRecords({
+    client,
+    sourceRecords: [buildSourceRecord({ retrieved_at: "2026-06-15T12:30:00.000Z", provider_status: "updated" })],
+    catalogIdByRef,
+    dryRun: false,
+  });
+  assert.equal(result.updated, 1);
+});
+
+// F. exact re-application -> unchanged
+test("F: re-applying the exact same plan is unchanged", async () => {
+  const { client, tables } = createFakeSupabaseClient();
+  await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord()], catalogIdByRef, dryRun: false });
+  const result = await upsertSourceRecords({ client, sourceRecords: [buildSourceRecord()], catalogIdByRef, dryRun: false });
+  assert.equal(result.created, 0);
+  assert.equal(result.updated, 0);
+  assert.equal(result.unchanged, 1);
+  assert.equal(tables.plant_source_records.length, 1);
+});

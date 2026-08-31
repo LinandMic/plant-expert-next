@@ -13,7 +13,20 @@
 // always "unchanged", and supersession only fires when the plan really
 // does carry new data (e.g. a fresh ingestion run fetched an updated
 // record).
-const COMPARE_FIELDS = ["provider_record_id", "provider_name", "provider_status", "selection_reason", "taxonomy_match_type", "candidate_count", "retrieved_at", "source_url", "metadata"];
+//
+// retrieved_at is deliberately EXCLUDED from COMPARE_FIELDS. It records
+// provenance/audit information — the moment this provider was queried —
+// not the content of the answer. A fresh Layer A/B run re-stamps
+// retrieved_at to "now" on every regeneration even when the provider
+// returns byte-identical data (same provider_record_id, same metadata,
+// same taxonomy match, same source_url) — so comparing it would make
+// re-running the same, unchanged ingestion look like a genuine content
+// change forever, defeating idempotence and creating supersession churn
+// with no real new information. retrieved_at is still written on every
+// INSERT (the row created by insert/re-insert keeps its own real
+// collection timestamp, see sourceRecordRowFromPlan below) — only the
+// decision of "is this a genuine change" ignores it.
+const COMPARE_FIELDS = ["provider_record_id", "provider_name", "provider_status", "selection_reason", "taxonomy_match_type", "candidate_count", "source_url", "metadata"];
 
 function sourceRecordRowFromPlan(s, catalogId) {
   return {
@@ -92,9 +105,14 @@ export async function upsertSourceRecords({ client, sourceRecords, catalogIdByRe
     // Genuine change: supersede the old current row, insert a new one.
     updated += 1;
     if (dryRun) {
-      // Nothing new exists yet to point observations at — treat as
-      // "would exist" without a fabricated id, same convention as above.
-      idByRef.set(s.source_record_ref, null);
+      // Nothing is actually written in dry-run — the existing row is
+      // NOT superseded, it is still the real current row in the DB right
+      // now. Point idByRef at it (not a fabricated/null id) so downstream
+      // steps (observations, selections) can still perform their own real
+      // DB lookup/dedup against it, instead of falling into their own
+      // "parent doesn't exist yet" cascade and misreporting themselves as
+      // "created" for data that already exists unchanged.
+      idByRef.set(s.source_record_ref, existing.id);
       continue;
     }
     const { error: supersedeError } = await client

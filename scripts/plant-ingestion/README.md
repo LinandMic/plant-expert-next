@@ -85,6 +85,66 @@ base), jamais via un UUID fabriqué par le plan :
 | `plant_trait_observations` | pas de contrainte unique réelle — dédoublonnage applicatif sur `(plant_catalog_id, trait, provider, field_path, plant_source_record_id)` + égalité profonde de `raw_value` | insert uniquement si aucune ligne équivalente n'existe déjà — jamais d'update (table append-only par conception) |
 | `plant_trait_selections` | `(plant_catalog_id, trait)` | insert si absente ; si elle existe déjà, comportement différent selon le `decision_method` **réellement stocké en DB** — voir §4bis |
 
+### Provenance vs contenu (`plant_source_records.retrieved_at`)
+
+`retrieved_at` (et son équivalent au niveau observation,
+`plant_trait_observations.source_retrieved_at`) enregistre **une
+information de provenance/audit** — le moment où ce fournisseur a été
+interrogé — pas une information sur le contenu de la réponse. À chaque
+régénération de Layer A/B, `retrieved_at` est re-timbré à l'heure de
+collecte, même quand le fournisseur renvoie une donnée strictement
+identique (même `provider_record_id`, même `metadata`, même
+`taxonomy_match_type`, même `source_url`).
+
+**`retrieved_at` seul ne déclenche donc jamais une supersession.** Il est
+exclu de `COMPARE_FIELDS` dans `upsertSourceRecords.js` — seule une
+véritable différence de contenu (`provider_record_id`, `provider_name`,
+`provider_status`, `selection_reason`, `taxonomy_match_type`,
+`candidate_count`, `source_url`, `metadata`) déclenche un `update`
+(supersession). Une nouvelle ligne réellement créée ou supersédée
+conserve bien entendu son propre `retrieved_at` réel dans la ligne
+insérée — seul le **critère de décision** "même donnée vs donnée
+différente" ignore ce champ.
+
+`metadata` reste volontairement dans `COMPARE_FIELDS` pour l'instant : la
+comparaison actuelle (`JSON.stringify`) est sensible à l'ordre des clés,
+ce qui peut produire un faux `updated` si une donnée historique a été
+sérialisée avec un ordre de clés différent. Ce point n'a pas encore été
+tranché — voir la note dans le code et ne pas le corriger sans decision
+explicite, le temps de confirmer sur des données réelles si ce cas se
+présente.
+
+### Résolution des IDs en dry-run ("would update")
+
+Un dry-run n'écrit jamais rien — donc quand `upsertSourceRecords`
+détermine qu'une ligne existante *serait* mise à jour (supersédée), cette
+ligne existante **reste réellement la ligne courante en base** pendant
+toute la durée du dry-run. `idByRef` doit donc continuer à pointer vers
+`existing.id` (l'id réel de la ligne actuelle), jamais vers `null`.
+
+C'est un point critique : les tables filles (`plant_trait_observations`,
+`plant_trait_selections`) résolvent leurs propres identifiants parents via
+ces mêmes `idByRef`. Si un `idByRef` de source record est mis à `null` à
+tort pendant un dry-run "would update", chaque observation qui en dépend
+tombe dans la branche "le parent n'existe pas encore" et est comptée
+`created` **sans jamais effectuer sa propre comparaison DB** — et chaque
+sélection qui dépend d'une de ces observations subit la même cascade. Un
+seul faux `updated` sur `plant_source_records` peut ainsi faire
+apparaître des dizaines de fausses créations en aval, alors que les
+données existent déjà et sont strictement identiques.
+
+Ce comportement a été trouvé lors du premier dry-run réel contre la
+production (6 `source_records` réellement matchés mais rapportés
+`updated`, provoquant en cascade 33 `trait_observations` et 7
+`trait_selections` faussement rapportées `created` alors qu'elles
+existaient déjà) — corrigé dans `upsertSourceRecords.js` : la branche
+dry-run de "genuine change" pointe désormais `idByRef` vers `existing.id`.
+Le comportement du vrai apply (non-dry-run) était déjà correct et n'a pas
+changé : après une supersession réelle, `idByRef` pointe vers le
+`id` de la nouvelle ligne insérée. Couvert par
+`test/apply/upsertSourceRecords.test.js` (test "CRITICAL") et
+`test/apply/applyPlan.test.js` (test "REGRESSION").
+
 ### Champs curateur protégés (`plant_catalog`)
 
 `plant_catalog.publication_status` / `review_status` / `published_at`

@@ -241,6 +241,52 @@ test("I: re-running after the parent failure is resolved completes the previousl
   assert.equal(second.tables.plant_trait_selections.length, 1);
 });
 
+// ===========================================================================
+// Regression test for the real-production cascade bug: a source_records
+// "would update" in dry-run must NOT cascade into child tables falsely
+// reporting "created" for rows that already exist unchanged in the DB.
+// This reproduces the exact scenario found against production (6 source
+// records genuinely differing on a business field -> 33 observations and 7
+// selections incorrectly reported "created" despite already existing).
+// ===========================================================================
+test("REGRESSION: a source_records 'would update' in dry-run no longer cascades into false 'created' for existing, unchanged observations and selections", async () => {
+  const seeded = createFakeSupabaseClient();
+  const plan = buildMiniPlan();
+  // First, a real apply fully ingests the plan — this is production's
+  // "already ingested" state.
+  const firstApply = await applyPlan({ client: seeded.client, plan, dryRun: false });
+  assert.equal(firstApply.ok, true);
+  assert.equal(seeded.tables.plant_trait_observations.length, 2);
+  assert.equal(seeded.tables.plant_trait_selections.length, 1);
+
+  // Now simulate a genuine (business-field) change on the source record —
+  // e.g. a re-collection run found a different provider_status. This alone
+  // must cause source_records to report "updated" on the next dry-run.
+  seeded.tables.plant_source_records[0].provider_status = "provider_status_changed";
+
+  const dryRunReport = await applyPlan({ client: seeded.client, plan, dryRun: true });
+
+  assert.equal(dryRunReport.steps.source_records.updated, 1);
+  assert.equal(dryRunReport.steps.source_records.created, 0);
+
+  // THE FIX: observations that already exist, unchanged, must be reported
+  // "unchanged" — never "created" just because their parent source record
+  // would be updated.
+  assert.equal(dryRunReport.steps.trait_observations.created, 0, "observations must NOT cascade into false creates");
+  assert.equal(dryRunReport.steps.trait_observations.unchanged, 2);
+
+  // Same for the selection referencing one of those observations.
+  assert.equal(dryRunReport.steps.trait_selections.created, 0, "selections must NOT cascade into false creates");
+  assert.equal(dryRunReport.steps.trait_selections.unchanged, 1);
+
+  // Zero mutation: dry-run never wrote anything, the mutated provider_status
+  // set above is still exactly what's in the fake DB, no new rows anywhere.
+  assert.equal(seeded.tables.plant_source_records.length, 1);
+  assert.equal(seeded.tables.plant_source_records[0].provider_status, "provider_status_changed");
+  assert.equal(seeded.tables.plant_trait_observations.length, 2);
+  assert.equal(seeded.tables.plant_trait_selections.length, 1);
+});
+
 // dry-run must apply the exact same dependency-skip logic — it never
 // pretends downstream tables could safely be applied when a parent read
 // itself already failed.
