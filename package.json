@@ -11,7 +11,9 @@
     "plant:benchmark:test": "node --test scripts/plant-benchmark/test/*.test.js",
     "plant:ingestion:dry-run": "node scripts/plant-ingestion/src/index.js",
     "plant:ingestion:plan": "node scripts/plant-ingestion/src/planCli.js",
-    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js scripts/plant-ingestion/test/plan/*.test.js"
+    "plant:ingestion:apply": "node scripts/plant-ingestion/src/applyCli.js",
+    "plant:ingestion:verify": "node scripts/plant-ingestion/src/verifyCli.js",
+    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js scripts/plant-ingestion/test/plan/*.test.js scripts/plant-ingestion/test/apply/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

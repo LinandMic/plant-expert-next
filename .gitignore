@@ -49,5 +49,7 @@ next-env.d.ts
 
 # plant ingestion dry-run tool (scripts/plant-ingestion): dry-run JSON
 # bundles and raw provider dumps are local audit artifacts only, never
-# committed.
+# committed. The checked-in example env file is allowed despite the .env*
+# rule above.
 /scripts/plant-ingestion/output/
+!/scripts/plant-ingestion/.env.ingestion.example
