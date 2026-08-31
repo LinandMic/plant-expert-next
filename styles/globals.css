@@ -1,25 +1,26 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "./design-tokens.css";
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: var(--pe-ivory);
+  --foreground: var(--pe-ink);
 }
 
 html,
 body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* overflow-x: hidden (not clip) implicitly forces overflow-y into a
+     scrolling context too (CSS overflow spec: one non-"visible" axis pulls
+     the other out of "visible"), which silently breaks position:sticky for
+     every descendant — including .pe-sidebar (styles/ui-shell.css). clip
+     prevents the same horizontal bleed without creating that scroll
+     container, so sticky keeps working. */
+  overflow-x: clip;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--pe-font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -35,8 +36,7 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+:focus-visible {
+  outline: 2px solid var(--pe-forest-800);
+  outline-offset: 2px;
 }

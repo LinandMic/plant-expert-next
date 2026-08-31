@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# plant benchmark tool (scripts/plant-benchmark): keep raw provider dumps
+# and generated outputs out of the repo, but allow the checked-in example
+# env file despite the .env* rule above
+/scripts/plant-benchmark/raw/
+/scripts/plant-benchmark/output/
+!/scripts/plant-benchmark/.env.benchmark.example
+
+# plant ingestion dry-run tool (scripts/plant-ingestion): dry-run JSON
+# bundles and raw provider dumps are local audit artifacts only, never
+# committed.
+/scripts/plant-ingestion/output/

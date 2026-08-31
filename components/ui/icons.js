@@ -1,0 +1,248 @@
+// Minimal inline-SVG line-icon set for Plant Expert's new UI. No external
+// icon library dependency (spec §6) — every icon is a tiny stroke-based
+// functional component sharing the same visual language (1.75 stroke,
+// rounded joins, 20-24px default box).
+
+function Svg({ size = 20, children, ...rest }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      {...rest}
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function IconLeaf(props) {
+  return (
+    <Svg {...props}>
+      <path d="M5 19c0-8 5-14 14-14 0 9-6 14-14 14Z" />
+      <path d="M5 19c2-4 5-7 9-9" />
+    </Svg>
+  );
+}
+
+export function IconHome(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6 10v9a1 1 0 0 0 1 1h3v-5a2 2 0 0 1 4 0v5h3a1 1 0 0 0 1-1v-9" />
+    </Svg>
+  );
+}
+
+export function IconCamera(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z" />
+      <circle cx="12" cy="12.5" r="3.4" />
+    </Svg>
+  );
+}
+
+export function IconSprout(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 21v-8" />
+      <path d="M12 13c0-3.5-2.5-6-7-6 0 3.5 2.5 6 7 6Z" />
+      <path d="M12 11c0-4 2.8-7 8-7 0 4-2.8 7-8 7Z" />
+    </Svg>
+  );
+}
+
+export function IconSearch(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m20 20-4.35-4.35" />
+    </Svg>
+  );
+}
+
+export function IconUser(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" />
+    </Svg>
+  );
+}
+
+export function IconSun(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+    </Svg>
+  );
+}
+
+export function IconBell(props) {
+  return (
+    <Svg {...props}>
+      <path d="M6 10a6 6 0 1 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10Z" />
+      <path d="M10 18.5a2 2 0 0 0 4 0" />
+    </Svg>
+  );
+}
+
+export function IconAlertCircle(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 8v5" />
+      <path d="M12 16.2v.1" />
+    </Svg>
+  );
+}
+
+export function IconArrowRight(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 12h15" />
+      <path d="m13 6 6 6-6 6" />
+    </Svg>
+  );
+}
+
+export function IconChevronRight(props) {
+  return (
+    <Svg {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </Svg>
+  );
+}
+
+export function IconInfo(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5" />
+      <path d="M12 7.9v.1" />
+    </Svg>
+  );
+}
+
+// A small decorative sprig — used for botanical photo placeholders and the
+// hero mark, never a stand-in for a real plant photo or invented data.
+export function IconSprig(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 20V9" />
+      <path d="M12 9c-3.6 0-6.2-2-6.2-6.2C9.6 2.8 12.3 4.7 12 9Z" />
+      <path d="M12 13.2c3.3 0 5.7-1.8 5.7-5.6-3.5 0-5.9 1.6-5.7 5.6Z" />
+    </Svg>
+  );
+}
+
+export function IconMapPin(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 21s7-6.4 7-11.5A7 7 0 0 0 5 9.5C5 14.6 12 21 12 21Z" />
+      <circle cx="12" cy="9.5" r="2.3" />
+    </Svg>
+  );
+}
+
+export function IconCalendar(props) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="5.5" width="16" height="14.5" rx="2" />
+      <path d="M4 9.5h16" />
+      <path d="M8 3.5v3.5M16 3.5v3.5" />
+    </Svg>
+  );
+}
+
+export function IconTrash(props) {
+  return (
+    <Svg {...props}>
+      <path d="M5 7h14" />
+      <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+      <path d="M6.5 7 7.3 19a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8L17.5 7" />
+      <path d="M10 11v6M14 11v6" />
+    </Svg>
+  );
+}
+
+export function IconX(props) {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </Svg>
+  );
+}
+
+// A simple sliders/equalizer glyph — used for the Plant Finder's "Filtres"
+// toggle. Deliberately generic (three lines + handles), not a funnel, so it
+// doesn't read as a data-table filter icon.
+export function IconFilter(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+      <circle cx="9" cy="6" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="18" r="1.6" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function IconCheck(props) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </Svg>
+  );
+}
+
+// Circle + question mark — same visual family as IconInfo/IconAlertCircle
+// (circle plus a small mark), used where a result is genuinely uncertain
+// rather than wrong or informational.
+export function IconHelpCircle(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.5 9.3c.3-1.6 1.7-2.6 3.3-2.3 1.5.3 2.4 1.5 2.1 2.9-.2 1-1 1.5-1.7 2-.7.4-1.2.8-1.2 1.6" />
+      <path d="M12 16.9v.1" />
+    </Svg>
+  );
+}
+
+export function IconScissors(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="7" cy="6.5" r="2.3" />
+      <circle cx="7" cy="17.5" r="2.3" />
+      <path d="M9 8l11 8" />
+      <path d="M9 16l11-8" />
+    </Svg>
+  );
+}
+
+export function IconDroplet(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3.5c3.5 4.3 6 7.8 6 10.8a6 6 0 1 1-12 0c0-3 2.5-6.5 6-10.8Z" />
+    </Svg>
+  );
+}
+
+export function IconFlask(props) {
+  return (
+    <Svg {...props}>
+      <path d="M9.5 3.5h5" />
+      <path d="M10.5 3.5v5.2L6 17a2 2 0 0 0 1.8 3h8.4a2 2 0 0 0 1.8-3l-4.5-8.3V3.5" />
+      <path d="M8 14.5h8" />
+    </Svg>
+  );
+}
