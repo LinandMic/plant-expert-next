@@ -106,13 +106,51 @@ conserve bien entendu son propre `retrieved_at` réel dans la ligne
 insérée — seul le **critère de décision** "même donnée vs donnée
 différente" ignore ce champ.
 
-`metadata` reste volontairement dans `COMPARE_FIELDS` pour l'instant : la
-comparaison actuelle (`JSON.stringify`) est sensible à l'ordre des clés,
-ce qui peut produire un faux `updated` si une donnée historique a été
-sérialisée avec un ordre de clés différent. Ce point n'a pas encore été
-tranché — voir la note dans le code et ne pas le corriger sans decision
-explicite, le temps de confirmer sur des données réelles si ce cas se
-présente.
+`metadata` reste dans `COMPARE_FIELDS`, mais n'est plus comparé avec un
+`JSON.stringify` naïf — voir `### Comparaison JSON stable` ci-dessous.
+
+### Comparaison JSON stable (`src/apply/stableEqual.js`)
+
+Trouvé sur des données réelles de production : le même objet `metadata`
+Perenual, et la même valeur `raw_value` du trait `edible`
+(`{edible_leaf, edible_fruit}`), stockés en base avec un **ordre de clés
+différent** de celui du plan — bien que le contenu soit strictement
+identique. Une comparaison `JSON.stringify(a) !== JSON.stringify(b)` est
+sensible à cet ordre et déclenchait donc un faux `updated`/`created`.
+
+`stableEqual(a, b)` (`src/apply/stableEqual.js`) corrige ceci avec une
+égalité profonde qui :
+- **ignore l'ordre des clés** d'un objet (`{a:1,b:2}` === `{b:2,a:1}`) —
+  un objet jsonb est une map, pas une séquence ;
+- **conserve l'ordre des éléments** d'un tableau
+  (`["sun","shade"]` !== `["shade","sun"]`) — un tableau comme `sun` est
+  une donnée ordonnée signifiante, pas un ensemble.
+
+Utilisé pour : `plant_source_records.metadata`
+(`upsertSourceRecords.js`), `plant_trait_observations.raw_value`
+(`upsertObservations.js` et `verifyPlan.js`). Volontairement **pas**
+utilisé pour les champs qui n'en ont pas besoin : les `DEDUP_FIELDS`
+d'observation (`plant_catalog_id`, `trait`, `provider`, `field_path`,
+`plant_source_record_id`) sont de simples scalaires texte/uuid, sans
+risque d'ordre — comparés tels quels pour ne pas complexifier
+inutilement ; de même pour tous les champs de `plant_taxa`,
+`plant_taxon_names`, `plant_trait_selections` (aucun n'est un objet) et
+les champs `sun`/`flowering_months` de `plant_catalog` (des tableaux,
+déjà correctement comparés dans l'ordre par `JSON.stringify`).
+
+### Invariant de comptabilité (`upsertObservations.js`)
+
+Chaque ligne d'entrée doit finir dans **exactement une** catégorie :
+`created`, `unchanged`, ou `failed` (jamais `updated` pour cette table
+append-only). `upsertObservations` vérifie explicitement en fin
+d'exécution que `created + updated + unchanged + failed` égale bien le
+nombre de lignes reçues — si ce n'est pas le cas, un message
+`accounting mismatch: input=N accounted=M` est ajouté à `errors`, jamais
+masqué en forçant les totaux à correspondre. Une ligne dont le lookup DB
+échoue est comptée `failed`, jamais fabriquée comme `created` (avant
+correction, un échec de lookup faisait silencieusement retomber le code
+sur un tableau vide, ce qui faisait passer chaque ligne de ce lot pour
+une "création" légitime — jamais vérifiée en réalité contre la DB).
 
 ### Résolution des IDs en dry-run ("would update")
 

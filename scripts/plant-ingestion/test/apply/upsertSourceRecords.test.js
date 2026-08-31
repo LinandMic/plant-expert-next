@@ -145,3 +145,28 @@ test("F: re-applying the exact same plan is unchanged", async () => {
   assert.equal(result.unchanged, 1);
   assert.equal(tables.plant_source_records.length, 1);
 });
+
+// ===========================================================================
+// Real production regression: a metadata object with a different key order
+// between DB and plan must never be reported "updated" on its own.
+// ===========================================================================
+test("REGRESSION: a metadata object with a different key order than the plan is unchanged, no supersession", async () => {
+  const { client, tables } = createFakeSupabaseClient();
+  await upsertSourceRecords({
+    client,
+    sourceRecords: [buildSourceRecord({ metadata: { hybrid_field: null, variety_field: null, cultivar_field: null, subspecies_field: null } })],
+    catalogIdByRef,
+    dryRun: false,
+  });
+
+  const result = await upsertSourceRecords({
+    client,
+    sourceRecords: [buildSourceRecord({ metadata: { cultivar_field: null, variety_field: null, subspecies_field: null, hybrid_field: null } })],
+    catalogIdByRef,
+    dryRun: false,
+  });
+
+  assert.equal(result.updated, 0);
+  assert.equal(result.unchanged, 1);
+  assert.equal(tables.plant_source_records.length, 1); // no supersession
+});

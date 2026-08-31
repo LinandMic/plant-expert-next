@@ -1,3 +1,5 @@
+import { stableEqual } from "./stableEqual.js";
+
 // Layer C, table 4: plant_source_records.
 //
 // Natural key for "the current record": (plant_catalog_id, provider) where
@@ -26,6 +28,13 @@
 // INSERT (the row created by insert/re-insert keeps its own real
 // collection timestamp, see sourceRecordRowFromPlan below) — only the
 // decision of "is this a genuine change" ignores it.
+//
+// metadata is jsonb and compared with stableEqual (key order ignored),
+// not a naive JSON.stringify — found against real production data: the
+// same Perenual metadata object round-tripped through Postgres with a
+// different key order than the plan literal, producing a false "updated".
+// The other COMPARE_FIELDS are plain scalars (text/integer), for which
+// stableEqual behaves identically to a straight equality check.
 const COMPARE_FIELDS = ["provider_record_id", "provider_name", "provider_status", "selection_reason", "taxonomy_match_type", "candidate_count", "source_url", "metadata"];
 
 function sourceRecordRowFromPlan(s, catalogId) {
@@ -45,7 +54,7 @@ function sourceRecordRowFromPlan(s, catalogId) {
 }
 
 function fieldsDiffer(existingRow, planRow) {
-  return COMPARE_FIELDS.some((field) => JSON.stringify(existingRow[field] ?? null) !== JSON.stringify(planRow[field] ?? null));
+  return COMPARE_FIELDS.some((field) => !stableEqual(existingRow[field], planRow[field]));
 }
 
 // upsertSourceRecords({ client, sourceRecords, catalogIdByRef, dryRun }) -> { idByRef, created, updated, unchanged, errors }

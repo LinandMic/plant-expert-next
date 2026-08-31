@@ -1,3 +1,5 @@
+import { stableEqual } from "./stableEqual.js";
+
 // Layer C, table 5: plant_trait_observations.
 //
 // This table has NO real natural-key uniqueness constraint (only a
@@ -14,6 +16,15 @@
 // observation and is inserted — never updated, there is no update path for
 // this table (matches its "individual raw observations" role: history is
 // additive, not overwritten).
+//
+// raw_value is compared with stableEqual (jsonb key order ignored), not a
+// naive JSON.stringify — found against real production data: the "edible"
+// trait's raw_value ({edible_leaf, edible_fruit}) round-tripped through
+// Postgres with a different key order than the plan literal, which would
+// have made findDuplicate miss a real match. DEDUP_FIELDS themselves stay
+// on the simple JSON.stringify-based normalizeForCompare — they are all
+// plain scalars (uuid/text strings), never objects or arrays, so there is
+// no key-order risk there and no reason to complicate that comparison.
 const DEDUP_FIELDS = ["plant_catalog_id", "trait", "provider", "field_path", "plant_source_record_id"];
 
 function normalizeForCompare(value) {
@@ -44,18 +55,36 @@ function observationRowFromPlan(o, catalogId, sourceRecordId) {
 function findDuplicate(existingRows, row) {
   return existingRows.find((existing) => {
     const sameKey = DEDUP_FIELDS.every((field) => normalizeForCompare(existing[field]) === normalizeForCompare(row[field]));
-    return sameKey && normalizeForCompare(existing.raw_value) === normalizeForCompare(row.raw_value);
+    return sameKey && stableEqual(existing.raw_value, row.raw_value);
   });
 }
 
+// A sentinel distinct from a real (possibly empty) result array — an empty
+// array means "this catalog genuinely has zero existing observations",
+// which must still run findDuplicate normally (finding nothing, correctly
+// reporting "created"). A failed lookup must NEVER be treated the same way
+// — silently falling back to an empty array previously made every row
+// under a failed catalog lookup look like a legitimate "created", masking
+// a real read failure as if it were new data.
+const LOOKUP_FAILED = Symbol("lookup_failed");
+
 // upsertObservations({ client, observations, catalogIdByRef, sourceRecordIdByRef, dryRun })
-//   -> { idByRef, created, updated, unchanged, errors }
+//   -> { idByRef, created, updated, unchanged, failed, errors }
 // `updated` is always 0 here — there is no update path, kept only so the
 // return shape matches every other upsert*/report aggregation code.
+//
+// Accounting invariant: every single input row ends in EXACTLY ONE of
+// created / updated(never, for this table) / unchanged / failed — never
+// silently unaccounted for. This is enforced structurally (every loop
+// iteration takes exactly one bucket-incrementing branch, then
+// `continue`s) AND verified explicitly at the end: if
+// created+updated+unchanged+failed does not equal the number of input
+// rows, that is itself reported as an error — never silently masked by
+// forcing the totals to match.
 export async function upsertObservations({ client, observations, catalogIdByRef, sourceRecordIdByRef, dryRun }) {
   const idByRef = new Map();
   const errors = [];
-  let created = 0, unchanged = 0;
+  let created = 0, unchanged = 0, failed = 0;
   const updated = 0;
 
   // Cache existing rows per catalogId so repeated observations for the same
@@ -86,14 +115,24 @@ export async function upsertObservations({ client, observations, catalogIdByRef,
         .eq("plant_catalog_id", catalogId);
       if (error) {
         errors.push(`plant_trait_observations lookup failed for catalog id ${catalogId}: ${error.message}`);
-        existingByCatalogId.set(catalogId, []);
+        existingByCatalogId.set(catalogId, LOOKUP_FAILED);
       } else {
         existingByCatalogId.set(catalogId, data ?? []);
       }
     }
 
+    const cached = existingByCatalogId.get(catalogId);
+    if (cached === LOOKUP_FAILED) {
+      // The lookup itself failed — this row's true state is unknown, it
+      // must NEVER be reported as "created" (that would fabricate a
+      // decision Layer C never actually verified against the DB).
+      failed += 1;
+      idByRef.set(o.observation_ref, null);
+      continue;
+    }
+
     const row = observationRowFromPlan(o, catalogId, sourceRecordId);
-    const duplicate = findDuplicate(existingByCatalogId.get(catalogId), row);
+    const duplicate = findDuplicate(cached, row);
 
     if (duplicate) {
       unchanged += 1;
@@ -108,6 +147,11 @@ export async function upsertObservations({ client, observations, catalogIdByRef,
     }
     const { data: inserted, error: insertError } = await client.from("plant_trait_observations").insert(row).select("id").single();
     if (insertError) {
+      // Reclassify: this row was tentatively counted "created" above, but
+      // the write itself failed — move it to "failed" so every row still
+      // lands in exactly one bucket, never double-booked.
+      created -= 1;
+      failed += 1;
       errors.push(`plant_trait_observations insert failed for ${o.observation_ref}: ${insertError.message}`);
       idByRef.set(o.observation_ref, null);
       continue;
@@ -118,5 +162,10 @@ export async function upsertObservations({ client, observations, catalogIdByRef,
     existingByCatalogId.get(catalogId).push({ id: inserted.id, ...row });
   }
 
-  return { idByRef, created, updated, unchanged, errors };
+  const accounted = created + updated + unchanged + failed;
+  if (accounted !== observations.length) {
+    errors.push(`accounting mismatch: input=${observations.length} accounted=${accounted} (created=${created} updated=${updated} unchanged=${unchanged} failed=${failed})`);
+  }
+
+  return { idByRef, created, updated, unchanged, failed, errors, inputCount: observations.length, accountedCount: accounted };
 }

@@ -4,6 +4,7 @@
 // so a bug in the upsert bookkeeping can't silently mark itself "ok". Read
 // only: verifyPlan never writes anything.
 import { guardPlan } from "./planGuard.js";
+import { stableEqual } from "./stableEqual.js";
 
 function addCheck(checks, ok, message) {
   checks.push({ ok, message });
@@ -123,7 +124,7 @@ export async function verifyPlan({ client, plan }) {
       addCheck(checks, false, `plant_trait_observations lookup failed for ${o.observation_ref}: ${error.message}`);
       continue;
     }
-    const match = (data ?? []).find((row) => JSON.stringify(row.raw_value ?? null) === JSON.stringify(o.raw_value ?? null));
+    const match = (data ?? []).find((row) => stableEqual(row.raw_value, o.raw_value));
     if (!match) {
       addCheck(checks, false, `plant_trait_observations: no matching row found for ${o.observation_ref} (trait=${o.trait}, provider=${o.provider})`);
       continue;
