@@ -351,49 +351,123 @@ source de l'observation qu'elle pointe (provider ou éditoriale).
   existants. S'auto-valide via `guardEditorialPlan()` avant de retourner
   (même principe que `filterPlan.js` avec `guardPlan()`).
 - `checkEditorialAgainstDb.js` — vérifications **lecture seule** contre
-  Supabase (aucun write) : le `catalog_ref` existe-t-il réellement (via
+  Supabase (aucun write), utilisées par le CLI en mode preview sans
+  `--apply`/`--verify` : le `catalog_ref` existe-t-il réellement (via
   `--catalog-map`, voir plus bas), une observation éditoriale identique
   existe-t-elle déjà (no-op) ou en conflit (valeur différente), une
   sélection `manual_resolution` existe-t-elle déjà (conflit protégé,
   jamais résolu automatiquement).
+- `promoteCatalogTrait.js` — le SEUL endroit où une curation éditoriale
+  écrit dans `plant_catalog`. Émet un `UPDATE` portant sur **une seule
+  colonne** (`.update({ [trait]: value })`) — jamais une réutilisation de
+  `apply/upsertCatalogEntries.js`, qui fait un `UPDATE` pleine ligne sur
+  les 17 `CATALOG_INGESTION_FIELDS` à partir d'un `catalog_entries` complet
+  que l'overlay éditorial n'a jamais (et ne doit jamais avoir). Réutiliser
+  ce helper existant tel quel aurait silencieusement écrasé toutes les
+  autres colonnes trait avec des valeurs absentes/nulles — c'est
+  structurellement impossible ici, pas seulement évité par convention.
+- `applyEditorialPlan.js` — l'orchestrateur `--apply`/dry-run. Traite
+  chaque paire `(observation, selection)` **indépendamment** (pas de
+  cascade table par table comme `apply/applyPlan.js` — une entrée
+  éditoriale ne dépend d'aucune autre) : `catalog_ref -> plant_catalog.id`
+  → `upsertObservations` (réutilisé tel quel) → vérification d'un éventuel
+  conflit `manual_resolution` existant (lecture seule, comparaison par
+  **valeur**, pas seulement par id d'observation) → `upsertSelections`
+  (réutilisé tel quel) → `promoteCatalogTrait`. Une observation en échec
+  bloque la sélection ET la promotion ; une sélection en échec ou en
+  conflit bloque seulement la promotion — jamais masqué, toujours reporté
+  explicitement par entrée.
+- `verifyEditorialPlan.js` — vérification **lecture seule**, indépendante
+  de la comptabilité de `applyEditorialPlan()` (même principe que
+  `apply/verifyPlan.js` vis-à-vis de `applyPlan()`) : observation présente
+  avec la bonne `normalized_value`, `review_status="accepted"`, sélection
+  `manual_resolution` qui pointe bien dessus, `plant_catalog[trait]` qui
+  correspond. `publication_status` est rapporté informationnellement, ou
+  comparé réellement si l'appelant fournit un instantané "avant" via
+  `expectedPublicationStatusByCatalogRef`.
 
 ### CLI (`src/editorialCli.js`)
 
 ```
 node scripts/plant-ingestion/src/editorialCli.js \
   --input <editorial.json> \
-  [--catalog-map <transaction-plan.json>]
+  [--catalog-map <transaction-plan.json>] \
+  [--apply] [--verify]
 ```
 
-**DRY-RUN / VALIDATION ONLY par défaut — aucun write, dans ce tour ou par
-conception de cette version du CLI.** `--catalog-map` est optionnel : donne
-un transaction plan Layer B déjà produit (`output/*.json`) dont sont
-extraites uniquement les paires `(catalog_ref, slug)` (`buildCatalogSlugMap`)
-— c'est la seule façon fiable de résoudre un `catalog_ref` symbolique vers
-une vraie ligne `plant_catalog` (le `slug` réel dépend du texte exact de
-`display_name`, qu'une entrée éditoriale ne porte jamais et ne doit jamais
-re-deviner). Sans `--catalog-map`, le CLI valide et prévisualise le plan
-complet, sans jamais contacter Supabase.
+Sans `--apply` ni `--verify` : **DRY-RUN** — toutes les lectures qu'un
+`--apply` ferait sont réellement exécutées (aperçu fidèle : créations,
+mises à jour, inchangés, conflits, échecs — table par table :
+`editorial_observations`, `manual_selections`, `catalog_promotions`, puis
+un `TOTAL`), mais **aucun write**. `--catalog-map` est optionnel pour ce
+mode : sans lui, le CLI valide et prévisualise le plan local sans jamais
+contacter Supabase.
 
-`--apply` est reconnu mais **volontairement non implémenté** dans cette
-version — il échoue avec un message explicite plutôt que d'échouer
-silencieusement ou de tenter un write partiel. Un futur `--apply`
-réutiliserait tel quel `apply/upsertObservations.js` et
-`apply/upsertSelections.js` (déjà compatibles avec `provider="editorial"`
-et `decision_method="manual_resolution"` sans aucune modification), jamais
-une nouvelle route d'écriture ni un contournement des protections Layer C
-existantes.
+`--apply` et `--verify` sont mutuellement exclusifs et exigent tous deux
+`--catalog-map` (nécessaire pour résoudre `catalog_ref -> plant_catalog.id`).
+`--apply` affiche `"Mode: APPLY — editorial observations + protected manual
+selections + catalog promotion"` avant toute écriture. **Aucun `--apply`
+réel n'a été exécuté pendant ce chantier** — le chemin est implémenté et
+testé exclusivement via le faux client Supabase en mémoire
+(`test/apply/fakeSupabaseClient.js`), jamais invoqué contre un vrai projet.
 
 ### Garanties absolues (par construction, pas par convention)
 
-- Ne modifie/supprime jamais une observation provider.
+- Ne modifie/supprime jamais une observation provider (`test 24`).
 - Ne transforme jamais une observation provider en éditoriale.
-- Ne crée jamais de `plant_source_records` pour une observation éditoriale.
-- Ne modifie jamais `publication_status` (le plan éditorial ne touche même
-  pas `plant_catalog`).
-- Ne remplace jamais automatiquement une `manual_resolution` existante —
-  `checkEditorialAgainstDb.js` la signale comme conflit, ne la résout
-  jamais.
+- Ne crée jamais de `plant_source_records` pour une observation éditoriale
+  (`test 3`).
+- Ne modifie jamais `publication_status` ni `review_status` de
+  `plant_catalog` — `promoteCatalogTrait.js` n'écrit **jamais** qu'une
+  seule colonne trait, structurellement (`test 23`).
+- Ne remplace jamais automatiquement une `manual_resolution` existante
+  pointant vers une valeur différente — conflit explicite, aucune
+  écriture de sélection, aucune promotion catalog (`test 13`, `test 14`).
+- N'écrase jamais silencieusement une observation provider existante :
+  `upsertObservations.js` (réutilisé tel quel) est append-only par
+  construction, aucune ligne n'est jamais mise à jour, seulement créée ou
+  reconnue identique.
+- Ne masque jamais un échec partiel : observation échouée → sélection et
+  promotion jamais tentées ; sélection échouée → promotion jamais tentée ;
+  chaque étape échouée est reportée explicitement, jamais absorbée dans un
+  compte "réussi" (`test 20`, `test 21`, `test 22`).
+
+### Séquence complète pour une nouvelle fiche HOLD (future, pas exécutée ici)
+
+```
+1. provider sub-plan draft   (Layer A/B, --plants/--out puis --plan —
+                               produit un transaction plan "draft", jamais
+                               publié)
+2. editorial overlay          (curation manuelle des traits manquants —
+                               editorialCli.js sans --apply, puis --apply
+                               une fois validé — jamais avant que le sub-plan
+                               provider ci-dessus existe déjà, l'overlay
+                               référence un catalog_ref déjà créé)
+3. editorial verify            (editorialCli.js --verify — confirme
+                               observation + sélection + promotion catalog,
+                               lecture seule)
+4. READY check                 (relire plant_catalog contre les critères
+                               CRITICAL du Finder réel — plant_type, sun,
+                               height_min/max_cm, spread_max_cm — voir
+                               l'audit architecture éditoriale de ce
+                               chantier pour le détail)
+5. publication séparée          (acte humain distinct, hors périmètre de
+                               cet outil — jamais automatique, jamais
+                               déclenché par editorialCli.js)
+```
+
+**Important** : une entrée HOLD n'est jamais appliquée seule, en laissant
+une fiche provider incomplète en attente d'une curation future. La
+recherche/validation du contenu éditorial (sourcing, `source.url`/
+`title`/`publisher`/`license`) doit être **prête avant** de créer et
+d'appliquer le sub-plan provider — on ne crée le draft (étape 1) qu'une
+fois l'overlay éditorial (étape 2) prêt à le compléter dans la foulée,
+jamais un draft appliqué isolément en espérant une curation ultérieure.
+Contrainte technique dans l'autre sens : l'overlay ne peut résoudre son
+`catalog_ref` qu'une fois la ligne `plant_catalog` du draft réellement
+écrite (il ne crée jamais de `catalog_entries` lui-même) — les étapes 1 et
+2 se suivent donc immédiatement, jamais séparées par un intervalle où la
+fiche reste incomplète et visible en base.
 
 ## 5. Idempotence
 
@@ -496,12 +570,14 @@ Si `npm run plant:ingestion:apply -- --apply` échoue en cours de route
 ## 9. Tests
 
 `npm run plant:ingestion:test` exécute tous les tests Layer A + B + C, plus
-la curation éditoriale (`test/editorial.test.js`). Les tests Layer C
-(`test/apply/*.test.js`) et éditoriaux qui touchent Supabase n'ont **aucune
-dépendance à un vrai Supabase** — ils utilisent un faux client en mémoire
-(`test/apply/fakeSupabaseClient.js`) qui reproduit le sous-ensemble de
-l'API `supabase-js` réellement utilisé (`from().select()/insert()/update()`,
-`.eq()`/`.is()`, `.single()`/`.maybeSingle()`).
+la curation éditoriale (`test/editorial.test.js` — validation/construction
+pures ; `test/editorialApply.test.js` — apply/promotion/verify, 25
+scénarios). Les tests Layer C (`test/apply/*.test.js`) et éditoriaux qui
+touchent Supabase n'ont **aucune dépendance à un vrai Supabase** — ils
+utilisent un faux client en mémoire (`test/apply/fakeSupabaseClient.js`)
+qui reproduit le sous-ensemble de l'API `supabase-js` réellement utilisé
+(`from().select()/insert()/update()`, `.eq()`/`.is()`, `.single()`/
+`.maybeSingle()`).
 
 Un test d'intégration réel contre un vrai projet Supabase n'est exécuté
 que si des identifiants sont disponibles dans l'environnement — jamais

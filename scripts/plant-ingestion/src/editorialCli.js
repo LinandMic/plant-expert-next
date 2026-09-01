@@ -1,50 +1,50 @@
 #!/usr/bin/env node
 // Editorial curation CLI — a controlled overlay on top of the existing
 // Layer A/B/C pipeline, never a replacement for it. Reads one or more
-// editorial curation inputs, validates them, and reports EXACTLY what
-// editorial observation(s) and manual_resolution selection(s) WOULD be
-// created. DRY-RUN / VALIDATION ONLY: this CLI has no write path in this
-// round, by design — see the "Apply futur" note below and README.md's
-// "Curation éditoriale contrôlée" section for what a future --apply would
-// reuse (unchanged Layer C helpers, never a new write path).
+// editorial curation inputs, validates them, and either previews (default)
+// or actually applies (--apply) the resulting editorial observation(s) and
+// manual_resolution selection(s), including promotion into plant_catalog.
 //
 // Usage:
 //   node scripts/plant-ingestion/src/editorialCli.js \
 //     --input <editorial.json> \
-//     [--catalog-map <transaction-plan.json>]
+//     [--catalog-map <transaction-plan.json>] \
+//     [--apply] [--verify]
 //
 // --input accepts either a single editorial curation object or a JSON
 // array of them (see README.md for the exact input format).
 //
-// --catalog-map is optional: pass an existing Layer B transaction plan
-// (e.g. anything under scripts/plant-ingestion/output/*.json produced by
-// planCli.js) so this CLI can resolve each catalog_ref to a real
-// plant_catalog row and run the read-only Supabase checks. Without it, the
-// CLI still validates and previews the plan fully — it just cannot check
-// it against the live DB (no Supabase client is even created).
+// --catalog-map: an existing Layer B transaction plan (e.g. anything under
+// scripts/plant-ingestion/output/*.json produced by planCli.js), used only
+// to extract (catalog_ref, slug) pairs — the ONLY faithful way to resolve
+// a symbolic catalog_ref to a real plant_catalog row without ever
+// re-deriving a slug from scratch (see editorial/checkEditorialAgainstDb.js).
+// Required for DB checks, --apply, and --verify; without it, the CLI still
+// validates and previews the local plan, but performs no Supabase read.
 //
-// Apply futur (spec §8): a future `--apply` would reuse
-// apply/upsertObservations.js and apply/upsertSelections.js EXACTLY as they
-// are today — both already handle provider="editorial" /
-// decision_method="manual_resolution" correctly (upsertObservations.js
-// already special-cases provider==="editorial" for its source_record
-// lookup; upsertSelections.js already refuses to ever touch an existing
-// manual_resolution row). No Layer C protection would need to be
-// bypassed or modified. This round deliberately stops short of wiring that
-// up — see the spec this file implements, Étape 8: "NE PAS implémenter le
-// write". --apply is recognized below only so a future caller gets an
-// honest message, never a silent no-op.
+// Without --apply: DRY-RUN. Every read that --apply would perform still
+// runs (an accurate preview), nothing is ever written.
+// With --apply: writes editorial observations, manual_resolution
+// selections, and promotes into plant_catalog — see
+// editorial/applyEditorialPlan.js for the exact per-entry pipeline and
+// its protections. Requires --catalog-map.
+//
+// With --verify: read-only cross-check against the live DB (never writes),
+// independent of applyEditorialPlan()'s own bookkeeping. Requires
+// --catalog-map. Mutually exclusive with --apply.
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { validateEditorialInput } from "./editorial/validateEditorialInput.js";
 import { buildEditorialPlan } from "./editorial/buildEditorialPlan.js";
-import { checkEditorialPlanAgainstDb, buildCatalogSlugMap } from "./editorial/checkEditorialAgainstDb.js";
+import { buildCatalogSlugMap } from "./editorial/checkEditorialAgainstDb.js";
+import { applyEditorialPlan } from "./editorial/applyEditorialPlan.js";
+import { verifyEditorialPlan } from "./editorial/verifyEditorialPlan.js";
 import { getSupabaseConfig } from "./apply/supabaseConfig.js";
 import { createSupabaseAdminClient } from "./apply/supabaseAdminClient.js";
 
 function parseArgs(argv) {
-  const args = { inputPath: null, catalogMapPath: null, apply: false };
+  const args = { inputPath: null, catalogMapPath: null, apply: false, verify: false };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--input") {
       args.inputPath = argv[i + 1];
@@ -54,6 +54,8 @@ function parseArgs(argv) {
       i += 1;
     } else if (argv[i] === "--apply") {
       args.apply = true;
+    } else if (argv[i] === "--verify") {
+      args.verify = true;
     }
   }
   return args;
@@ -81,20 +83,48 @@ function printSelectionPreview(sel) {
   if (sel.note) console.log(`    note: ${sel.note}`);
 }
 
+function printApplyReport(report) {
+  console.log(`\n${report.dryRun ? "DRY-RUN report (nothing written)" : "APPLY report (writes performed)"}:\n`);
+  for (const entry of report.entries) {
+    console.log(`${entry.catalog_ref} / ${entry.trait}`);
+    if (entry.errors.length > 0) {
+      for (const e of entry.errors) console.log(`  ! ${e}`);
+    }
+    if (entry.observation) {
+      console.log(`  observation: ${entry.observation.status}${entry.observation.errors.length ? ` — ${entry.observation.errors.join("; ")}` : ""}`);
+    }
+    if (entry.selection) {
+      console.log(`  selection:   ${entry.selection.status}${entry.selection.errors.length ? ` — ${entry.selection.errors.join("; ")}` : ""}`);
+    }
+    if (entry.promotion) {
+      console.log(`  promotion:   ${entry.promotion.status}${entry.promotion.errors.length ? ` — ${entry.promotion.errors.join("; ")}` : ""}`);
+    } else {
+      console.log("  promotion:   skipped");
+    }
+  }
+
+  const t = report.totals;
+  console.log("\nTOTAL");
+  console.log(`  editorial_observations: created=${t.editorial_observations.created} unchanged=${t.editorial_observations.unchanged} failed=${t.editorial_observations.failed}`);
+  console.log(`  manual_selections:      created=${t.manual_selections.created} updated=${t.manual_selections.updated} unchanged=${t.manual_selections.unchanged} conflicts=${t.manual_selections.conflicts} failed=${t.manual_selections.failed}`);
+  console.log(`  catalog_promotions:     updated=${t.catalog_promotions.updated} unchanged=${t.catalog_promotions.unchanged} skipped=${t.catalog_promotions.skipped} failed=${t.catalog_promotions.failed}`);
+}
+
 async function run() {
   const args = parseArgs(process.argv.slice(2));
 
   if (!args.inputPath) {
-    console.error("editorialCli — usage: node editorialCli.js --input <editorial.json> [--catalog-map <transaction-plan.json>]");
+    console.error("editorialCli — usage: node editorialCli.js --input <editorial.json> [--catalog-map <transaction-plan.json>] [--apply] [--verify]");
     process.exitCode = 1;
     return;
   }
-
-  if (args.apply) {
-    console.error(
-      "editorialCli — --apply is not implemented in this round. This CLI is DRY-RUN / VALIDATION ONLY. " +
-        "See README.md 'Curation éditoriale contrôlée' for the reuse plan (apply/upsertObservations.js + apply/upsertSelections.js, unchanged)."
-    );
+  if (args.apply && args.verify) {
+    console.error("editorialCli — --apply and --verify are mutually exclusive.");
+    process.exitCode = 1;
+    return;
+  }
+  if ((args.apply || args.verify) && !args.catalogMapPath) {
+    console.error("editorialCli — --apply and --verify both require --catalog-map (to resolve catalog_ref -> plant_catalog.id).");
     process.exitCode = 1;
     return;
   }
@@ -109,7 +139,7 @@ async function run() {
   }
   const inputs = Array.isArray(raw) ? raw : [raw];
 
-  console.log(`Editorial Curation CLI — DRY-RUN / VALIDATION ONLY — ${new Date().toISOString()}`);
+  console.log(`Editorial Curation CLI — ${args.apply ? "APPLY" : args.verify ? "VERIFY (read-only)" : "DRY-RUN / VALIDATION ONLY"} — ${new Date().toISOString()}`);
   console.log(`${inputs.length} editorial input(s) read from ${args.inputPath}\n`);
 
   let hasErrors = false;
@@ -141,15 +171,15 @@ async function run() {
   console.log(`Plan valid — ${plan.summary.editorial_observations} editorial observation(s), ${plan.summary.manual_selections} manual_resolution selection(s):\n`);
   for (let i = 0; i < plan.editorial_observations.length; i += 1) {
     const obs = plan.editorial_observations[i];
-    const sel = plan.manual_selections[i];
+    const sel = plan.manual_selections.find((s) => s.selected_observation_ref === obs.observation_ref);
     console.log(`${obs.catalog_ref} / ${obs.trait}`);
     printObservationPreview(obs);
-    printSelectionPreview(sel);
+    if (sel) printSelectionPreview(sel);
     console.log("");
   }
 
   if (!args.catalogMapPath) {
-    console.log("No --catalog-map provided — skipping read-only DB checks (Supabase was never contacted). Preview above is the local plan only.");
+    console.log("No --catalog-map provided — local plan preview only, nothing was checked against Supabase.");
     return;
   }
 
@@ -173,20 +203,30 @@ async function run() {
   }
   const client = createSupabaseAdminClient({ url: config.url, serviceRoleKey: config.serviceRoleKey });
 
-  console.log("\nRead-only DB checks (no write issued):");
-  const checks = await checkEditorialPlanAgainstDb({ client, plan, catalogSlugByRef });
-  let hasConflict = false;
-  for (const check of checks) {
-    const marker = check.ok ? "OK" : "CONFLICT";
-    if (!check.ok) hasConflict = true;
-    console.log(`  [${marker}] ${check.catalog_ref}/${check.trait} — ${check.code}: ${check.message}`);
+  if (args.verify) {
+    console.log("\nVerify (read-only, independent of any apply bookkeeping):");
+    const result = await verifyEditorialPlan({ client, plan, catalogSlugByRef });
+    for (const check of result.checks) console.log(`  [${check.ok ? "OK" : "FAIL"}] ${check.message}`);
+    console.log(`\n${result.summary.passed}/${result.summary.total} checks passed.`);
+    if (!result.ok) process.exitCode = 1;
+    return;
   }
 
-  if (hasConflict) {
-    console.log("\nAt least one conflict was found above — resolve it by hand before any future --apply. Nothing was written.");
+  if (args.apply) {
+    console.log("\nMode: APPLY — editorial observations + protected manual selections + catalog promotion");
   } else {
-    console.log("\nNo conflicts found. Nothing was written (dry-run only).");
+    console.log("\nMode: DRY-RUN — every read below is real, nothing will be written");
   }
+
+  const report = await applyEditorialPlan({ client, plan, catalogSlugByRef, dryRun: !args.apply });
+  if (report.guardErrors.length > 0) {
+    console.error("Plan REJECTED by guardEditorialPlan:");
+    for (const e of report.guardErrors) console.error(`  - ${e}`);
+    process.exitCode = 1;
+    return;
+  }
+  printApplyReport(report);
+  if (!report.ok) process.exitCode = 1;
 }
 
 run().catch((err) => {
