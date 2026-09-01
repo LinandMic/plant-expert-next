@@ -14,6 +14,43 @@ l'application. Aucune de ces couches ne modifie `pages/`, `components/`,
 - **Layer C** (`src/applyCli.js`, `src/verifyCli.js`, `src/apply/*.js`) —
   **la seule couche qui écrit réellement dans Supabase**, documentée ici.
 
+### Sélection automatique déterministe (`src/selections.js`)
+
+Layer A ne propose une `trait_selection` automatique que pour un nombre
+volontairement restreint de traits — un `trait_selection` promeut une
+valeur vers une colonne réelle de `plant_catalog`
+(`PROMOTABLE_CATALOG_COLUMNS`), donc chaque trait doit avoir une règle de
+sélection déterministe et documentée avant d'y entrer :
+
+- `height_min_cm`
+- `height_max_cm`
+- `plant_type`
+- `growth_form`
+- `spread_max_cm`
+- `evergreen`
+- `flowering_months`
+- `sun` reste un cas à part (`proposeSun`) : il copie verbatim le
+  `normalized_value` déjà crosswalké par `normalization.js`, jamais un
+  second calcul indépendant.
+
+**Provider-neutre par construction** : aucune priorité Perenual/Trefle
+n'est codée nulle part. Une sélection n'est proposée que si **toutes** les
+observations non-`uncertain` de ce trait, tous fournisseurs confondus,
+s'accordent sur la même valeur normalisée — une vraie divergence entre
+fournisseurs bloque la proposition entière (un avertissement explicite est
+émis), jamais un arbitrage "Perenual gagne". C'est ce qui permet à Trefle
+seul de faire aboutir une sélection quand Perenual est indisponible
+(`plan_restricted`/`unresolved_under_plan`/`not_found`), sans code
+spécifique à un fournisseur.
+
+Tout autre trait peut avoir des `trait_observations` (donc rester
+consultable/traçable), mais n'aura jamais de `trait_selection` tant
+qu'aucune règle déterministe n'est ajoutée ici — notamment
+`water_need`, `edible`/`edible_fruit`/`edible_leaf`,
+`hardiness_min_rank`/`hardiness_max_rank`, `container_suitable` :
+aucun de ces mappings n'existe aujourd'hui et aucun ne doit être deviné
+depuis des connaissances horticoles générales.
+
 ## 1. Où créer le fichier local de variables d'environnement
 
 ```bash

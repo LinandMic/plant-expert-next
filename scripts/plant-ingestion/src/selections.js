@@ -3,7 +3,18 @@ import { isInformative } from "./informative.js";
 // Traits this dry-run may ever PROPOSE a selection for — a deterministic
 // mapping rule exists for each. Every other trait may have observations,
 // but never a proposed selection (spec §13).
-const DETERMINISTIC_TRAITS = new Set(["height_min_cm", "height_max_cm", "plant_type"]);
+//
+// growth_form (string), spread_max_cm (number), evergreen (boolean), and
+// flowering_months (array, already in canonical order by the time it
+// reaches here — see normalization.js/trefle.js's normalizeMonthCodes)
+// reuse proposeDeterministicNumericOrPassthrough exactly as-is: no new
+// resolver, no trait-specific logic, no crosswalk. Provider-neutral by the
+// same construction as the traits already here — a trait is proposed only
+// when every non-uncertain observation for it (any provider) agrees; any
+// genuine disagreement still blocks the proposal entirely (see
+// proposeDeterministicNumericOrPassthrough below), never a Perenual-wins
+// or Trefle-wins tiebreak.
+const DETERMINISTIC_TRAITS = new Set(["height_min_cm", "height_max_cm", "plant_type", "growth_form", "spread_max_cm", "evergreen", "flowering_months"]);
 
 // An observation flagged `uncertain` is never eligible for an automatic
 // proposal — this is the same `uncertain` flag used for genuine
@@ -94,8 +105,7 @@ export function proposeSelections({ observations }) {
   const selections = [];
   const warnings = [];
 
-  for (const trait of ["height_min_cm", "height_max_cm", "plant_type"]) {
-    if (!DETERMINISTIC_TRAITS.has(trait)) continue;
+  for (const trait of DETERMINISTIC_TRAITS) {
     const { selection, warnings: w } = proposeDeterministicNumericOrPassthrough(trait, observations);
     if (selection) selections.push(selection);
     warnings.push(...w);
