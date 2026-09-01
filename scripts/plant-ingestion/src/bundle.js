@@ -8,7 +8,7 @@ import { queryPerenual } from "../../plant-benchmark/src/providers/perenual.js";
 import { queryTrefle } from "../../plant-benchmark/src/providers/trefle.js";
 import { parseCultivarName } from "../../plant-benchmark/src/taxonomyMatch.js";
 
-import { taxonRef, catalogRef } from "./refs.js";
+import { planBatchGrouping } from "./batchGrouping.js";
 import { buildTaxonDryRun, buildTaxonNames } from "./taxonomy.js";
 import { buildSpeciesCatalogEntry, buildCultivarCatalogEntry } from "./catalog.js";
 import { buildSourceRecord, buildObservations } from "./provenance.js";
@@ -146,42 +146,43 @@ async function buildPlantEntry({ inputName, inputType, sharedTaxon, catalogRefVa
   };
 }
 
-// buildAcerMiniBatch({ config, rawRoot }) — builds the full 2-plant dry-run
-// bundle. Exactly the 2 target plants, in this exact order (species first,
-// so the cultivar can reuse its resolved taxon).
-export async function buildAcerMiniBatch({ speciesInput, cultivarInput, config, rawRoot }) {
-  const { parentName: speciesParentName } = parseCultivarName(speciesInput.input_name);
-  const { cultivarName } = parseCultivarName(cultivarInput.input_name);
+// buildPlantBatch({ plants, config, rawRoot }) — builds the dry-run bundle
+// for an arbitrary list of { input_name, type } inputs (one or many taxon
+// families, each with zero or more cultivars). Output order matches input
+// order exactly. Each taxon family (species + its cultivars, grouped by
+// parsed parent name via planBatchGrouping) gets exactly ONE WCVP lookup,
+// shared across every entry in that family — never one call per input —
+// so entries sharing a parent are structurally guaranteed to share the
+// same taxon_ref, and a cultivar's parent_catalog_ref is always the real
+// catalog_ref of its species sibling elsewhere in this same batch (spec
+// §6). This generalizes the original Acer/Bloodgood pair (still exactly
+// reproduced when `plants` has just those 2 entries) to any batch size.
+export async function buildPlantBatch({ plants, config, rawRoot }) {
+  const { plan } = planBatchGrouping(plants);
 
-  const sharedTaxon = await resolveSharedTaxon(speciesParentName, { rawRoot });
+  const sharedTaxonByParent = new Map();
+  for (const parentName of new Set(plan.map((p) => p.parentName))) {
+    sharedTaxonByParent.set(parentName, await resolveSharedTaxon(parentName, { rawRoot }));
+  }
 
-  const taxonSlug = taxonRef(speciesParentName);
-  const speciesCatalogRef = catalogRef({ taxonSlug });
-  const cultivarCatalogRef = catalogRef({ taxonSlug, cultivarName });
-
-  const speciesEntry = await buildPlantEntry({
-    inputName: speciesInput.input_name,
-    inputType: speciesInput.type,
-    sharedTaxon,
-    catalogRefValue: speciesCatalogRef,
-    parentCatalogRef: null,
-    config,
-    rawRoot,
-  });
-
-  const cultivarEntry = await buildPlantEntry({
-    inputName: cultivarInput.input_name,
-    inputType: cultivarInput.type,
-    sharedTaxon,
-    catalogRefValue: cultivarCatalogRef,
-    parentCatalogRef: speciesCatalogRef,
-    config,
-    rawRoot,
-  });
+  const entries = [];
+  for (const p of plan) {
+    entries.push(
+      await buildPlantEntry({
+        inputName: p.input_name,
+        inputType: p.type,
+        sharedTaxon: sharedTaxonByParent.get(p.parentName),
+        catalogRefValue: p.catalogRef,
+        parentCatalogRef: p.parentCatalogRef,
+        config,
+        rawRoot,
+      })
+    );
+  }
 
   return {
     generated_at: new Date().toISOString(),
     mode: "dry_run",
-    plants: [speciesEntry, cultivarEntry],
+    plants: entries,
   };
 }

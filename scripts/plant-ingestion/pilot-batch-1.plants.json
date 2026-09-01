@@ -1,0 +1,8 @@
+[
+  { "input_name": "Lavandula angustifolia", "type": "species" },
+  { "input_name": "Hydrangea macrophylla", "type": "species" },
+  { "input_name": "Camellia japonica", "type": "species" },
+  { "input_name": "Rhododendron simsii", "type": "species" },
+  { "input_name": "Malus domestica", "type": "species" },
+  { "input_name": "Hydrangea macrophylla 'Endless Summer'", "type": "cultivar" }
+]

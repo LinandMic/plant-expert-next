@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 // Layer B (compilation/validation) CLI. Reads the layer-A collection
 // bundle and writes a transaction PLAN — never touches Supabase, never
-// imports a Supabase client, never issues SQL (spec §2/§17). Layer C
-// (real DB write) does not exist yet.
+// imports a Supabase client, never issues SQL (spec §2/§17).
+//
+// Accepts any batch size via --bundle/--plan (defaults to the exact
+// original Acer/Bloodgood bundle/plan paths, so `npm run
+// plant:ingestion:plan` with no arguments is byte-for-byte unchanged from
+// before batch support existed).
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -13,8 +17,22 @@ import { compileTransactionPlan } from "./plan/compiler.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const OUTPUT_ROOT = path.join(ROOT, "output");
-const BUNDLE_PATH = path.join(OUTPUT_ROOT, "acer-mini-batch.json");
-const PLAN_PATH = path.join(OUTPUT_ROOT, "acer-transaction-plan.json");
+const DEFAULT_BUNDLE_PATH = path.join(OUTPUT_ROOT, "acer-mini-batch.json");
+const DEFAULT_PLAN_PATH = path.join(OUTPUT_ROOT, "acer-transaction-plan.json");
+
+function parseArgs(argv) {
+  const args = { bundlePath: DEFAULT_BUNDLE_PATH, planPath: DEFAULT_PLAN_PATH };
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "--bundle") {
+      args.bundlePath = path.resolve(process.cwd(), argv[i + 1]);
+      i += 1;
+    } else if (argv[i] === "--plan") {
+      args.planPath = path.resolve(process.cwd(), argv[i + 1]);
+      i += 1;
+    }
+  }
+  return args;
+}
 
 function fail(message) {
   console.error(`plant:ingestion:plan — ${message}`);
@@ -22,16 +40,18 @@ function fail(message) {
 }
 
 function run() {
-  if (!existsSync(BUNDLE_PATH)) {
-    fail(`source bundle not found at ${path.relative(process.cwd(), BUNDLE_PATH)}. Run "npm run plant:ingestion:dry-run" first.`);
+  const args = parseArgs(process.argv.slice(2));
+
+  if (!existsSync(args.bundlePath)) {
+    fail(`source bundle not found at ${path.relative(process.cwd(), args.bundlePath)}. Run "npm run plant:ingestion:dry-run" first.`);
     return;
   }
 
   let bundle;
   try {
-    bundle = JSON.parse(readFileSync(BUNDLE_PATH, "utf8"));
+    bundle = JSON.parse(readFileSync(args.bundlePath, "utf8"));
   } catch (err) {
-    fail(`could not parse ${path.relative(process.cwd(), BUNDLE_PATH)} as JSON: ${err.message}`);
+    fail(`could not parse ${path.relative(process.cwd(), args.bundlePath)} as JSON: ${err.message}`);
     return;
   }
 
@@ -46,13 +66,13 @@ function run() {
     return;
   }
 
-  mkdirSync(OUTPUT_ROOT, { recursive: true });
-  writeFileSync(PLAN_PATH, JSON.stringify(result.plan, null, 2), "utf8");
+  mkdirSync(path.dirname(args.planPath), { recursive: true });
+  writeFileSync(args.planPath, JSON.stringify(result.plan, null, 2), "utf8");
 
   console.log(`plant:ingestion:plan — compiled OK. approval_required=true (no data written anywhere).`);
   console.log(`  taxa=${result.plan.summary.taxa} taxon_names=${result.plan.summary.taxon_names} catalog_entries=${result.plan.summary.catalog_entries}`);
   console.log(`  source_records=${result.plan.summary.source_records} trait_observations=${result.plan.summary.trait_observations} trait_selections=${result.plan.summary.trait_selections}`);
-  console.log(`Output written to ${path.relative(process.cwd(), PLAN_PATH)}`);
+  console.log(`Output written to ${path.relative(process.cwd(), args.planPath)}`);
 }
 
 run();

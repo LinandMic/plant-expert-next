@@ -71,6 +71,33 @@ mêmes lectures qu'un apply réel (pour un rapport fiable), mais aucun
 `insert`/`update` n'est jamais exécuté. Le flag `--apply` est la seule
 façon de déclencher une écriture réelle.
 
+### Traiter un autre lot que Acer (`--plants`/`--out`, `--bundle`/`--plan`)
+
+Layer A et Layer B acceptent n'importe quelle taille de lot — un ou
+plusieurs `input_name`/`type`, un ou plusieurs cultivars par espèce.
+Sans arguments, les deux CLIs se comportent exactement comme avant
+(fichiers `plants.json`/`output/acer-mini-batch.json`/
+`output/acer-transaction-plan.json` inchangés) :
+
+```bash
+# Lot pilote (6 plantes, voir pilot-batch-1.plants.json) :
+node scripts/plant-ingestion/src/index.js \
+  --plants scripts/plant-ingestion/pilot-batch-1.plants.json \
+  --out scripts/plant-ingestion/output/pilot-batch-1-bundle.json
+
+node scripts/plant-ingestion/src/planCli.js \
+  --bundle scripts/plant-ingestion/output/pilot-batch-1-bundle.json \
+  --plan scripts/plant-ingestion/output/pilot-batch-1-transaction-plan.json
+```
+
+Chaque famille de taxon (une espèce et tous ses cultivars présents dans
+le même fichier `--plants`) ne déclenche qu'**un seul** appel WCVP,
+partagé — jamais un appel par plante (`src/batchGrouping.js`, testé
+unitairement). Un cultivar dont l'espèce parente n'est pas présente dans
+le même fichier fait échouer le chargement explicitement, avant tout
+appel réseau — jamais une hypothèse silencieuse sur son
+`parent_catalog_ref`.
+
 ## 4. Stratégie d'écriture (upsert sur clés naturelles)
 
 Chaque table est écrite via une clé naturelle réelle (contrainte unique en
