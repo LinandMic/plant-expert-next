@@ -267,8 +267,8 @@ une décision explicite du curateur produit.
 `provider_observation`, `editorial`, ou `manual_resolution`. Layer B ne
 produit jamais `manual_resolution` dans un plan (voir
 `src/plan/compileSelections.js`) — cette valeur n'apparaît en DB que si un
-curateur a modifié la ligne à la main, après ingestion, via un outil de
-curation (hors périmètre de Layer C).
+curateur a modifié la ligne à la main, après ingestion, via l'outil de
+curation éditoriale (§4ter ci-dessous).
 
 - **Aucune sélection existante** → `INSERT` avec les valeurs du plan.
 - **Sélection existante avec `decision_method = "manual_resolution"` en
@@ -288,6 +288,112 @@ Ce comportement est couvert par `test/apply/upsertSelections.test.js`
 (9 scénarios numérotés dont le test 6, anti-clobber, qui vérifie qu'une
 `manual_resolution` n'est jamais écrasée même quand le plan recommande
 autre chose).
+
+## 4ter. Curation éditoriale contrôlée (`src/editorial/`, `src/editorialCli.js`)
+
+Un outil séparé pour compléter, à la main et de façon traçable, les traits
+qu'aucun provider ne fournit (ou fournit en conflit non résolu) — jamais un
+remplacement de Layer A/B/C, un **overlay**. Quatre notions distinctes, à ne
+jamais confondre :
+
+```
+provider ingestion  ≠  editorial observation  ≠  manual selection  ≠  publication
+(Layer A/B/C,           (un fait constaté,        (une décision parmi        (plant_catalog.
+ wcvp/perenual/trefle)   avec sa provenance —       les observations           publication_status,
+                         jamais une décision)       existantes — jamais        toujours séparée,
+                                                     une nouvelle donnée)       jamais automatique)
+```
+
+**`manual_resolution` est la SEULE décision humaine protégée.** Une
+sélection `decision_method="editorial"` resterait re-synchronisable
+automatiquement par un futur re-run (voir §4bis) — seule
+`manual_resolution` est jamais ré-écrasée par Layer C, quelle que soit la
+source de l'observation qu'elle pointe (provider ou éditoriale).
+
+### Format d'entrée
+
+```json
+{
+  "catalog_ref": "lavandula_angustifolia_species",
+  "trait": "sun",
+  "raw_value": ["full_sun"],
+  "normalized_value": ["full_sun"],
+  "source": { "title": "...", "publisher": "...", "url": "...", "license": "..." },
+  "review": { "note": "...", "decided_by": null }
+}
+```
+
+`--input` accepte un objet unique ou un tableau de plusieurs.
+
+### Modules purs (`src/editorial/`)
+
+- `editorialVocab.js` — vocabulaire dupliqué (jamais importé) de
+  `lib/plantFinderFormat.js` (`SUN_VALUES`, `PLANT_TYPE_VALUES`) + la forme
+  attendue de chaque trait promouvable (`TRAIT_KINDS`).
+- `validateEditorialInput.js` — validation pure, aucun accès DB : `trait`
+  doit être un des 13 `PROMOTABLE_CATALOG_COLUMNS` (`soil` explicitement
+  rejeté — cette colonne n'existe pas dans `plant_catalog`), valeur
+  conforme à `TRAIT_KINDS`, `source.url`/`title`/`publisher`/`license`
+  obligatoires, `license: "unknown"` explicitement interdit.
+- `buildEditorialObservation.js` — transforme une entrée validée en objet
+  `plant_trait_observation`-like avec `provider="editorial"`,
+  `source_scope="editorial"`, `plant_source_record_id=null`,
+  `source_retrieved_at=null`, `review_status="accepted"` — tous ces champs
+  sont **codés en dur**, jamais lus depuis l'entrée, pour qu'une entrée de
+  curation ne puisse jamais produire une ligne non conforme à la contrainte
+  réelle `plant_trait_observations_editorial_coherence_check`.
+- `buildManualSelection.js` — `decision_method="manual_resolution"` codé en
+  dur, jamais `"editorial"`.
+- `buildEditorialPlan.js` — combine plusieurs entrées en un petit plan
+  `{ mode: "editorial_plan", editorial_observations, manual_selections }` —
+  **ne crée jamais** de `taxa`/`taxon_names`/`source_records`/
+  `catalog_entries` ; référence uniquement des `catalog_ref` déjà
+  existants. S'auto-valide via `guardEditorialPlan()` avant de retourner
+  (même principe que `filterPlan.js` avec `guardPlan()`).
+- `checkEditorialAgainstDb.js` — vérifications **lecture seule** contre
+  Supabase (aucun write) : le `catalog_ref` existe-t-il réellement (via
+  `--catalog-map`, voir plus bas), une observation éditoriale identique
+  existe-t-elle déjà (no-op) ou en conflit (valeur différente), une
+  sélection `manual_resolution` existe-t-elle déjà (conflit protégé,
+  jamais résolu automatiquement).
+
+### CLI (`src/editorialCli.js`)
+
+```
+node scripts/plant-ingestion/src/editorialCli.js \
+  --input <editorial.json> \
+  [--catalog-map <transaction-plan.json>]
+```
+
+**DRY-RUN / VALIDATION ONLY par défaut — aucun write, dans ce tour ou par
+conception de cette version du CLI.** `--catalog-map` est optionnel : donne
+un transaction plan Layer B déjà produit (`output/*.json`) dont sont
+extraites uniquement les paires `(catalog_ref, slug)` (`buildCatalogSlugMap`)
+— c'est la seule façon fiable de résoudre un `catalog_ref` symbolique vers
+une vraie ligne `plant_catalog` (le `slug` réel dépend du texte exact de
+`display_name`, qu'une entrée éditoriale ne porte jamais et ne doit jamais
+re-deviner). Sans `--catalog-map`, le CLI valide et prévisualise le plan
+complet, sans jamais contacter Supabase.
+
+`--apply` est reconnu mais **volontairement non implémenté** dans cette
+version — il échoue avec un message explicite plutôt que d'échouer
+silencieusement ou de tenter un write partiel. Un futur `--apply`
+réutiliserait tel quel `apply/upsertObservations.js` et
+`apply/upsertSelections.js` (déjà compatibles avec `provider="editorial"`
+et `decision_method="manual_resolution"` sans aucune modification), jamais
+une nouvelle route d'écriture ni un contournement des protections Layer C
+existantes.
+
+### Garanties absolues (par construction, pas par convention)
+
+- Ne modifie/supprime jamais une observation provider.
+- Ne transforme jamais une observation provider en éditoriale.
+- Ne crée jamais de `plant_source_records` pour une observation éditoriale.
+- Ne modifie jamais `publication_status` (le plan éditorial ne touche même
+  pas `plant_catalog`).
+- Ne remplace jamais automatiquement une `manual_resolution` existante —
+  `checkEditorialAgainstDb.js` la signale comme conflit, ne la résout
+  jamais.
 
 ## 5. Idempotence
 
@@ -389,9 +495,10 @@ Si `npm run plant:ingestion:apply -- --apply` échoue en cours de route
 
 ## 9. Tests
 
-`npm run plant:ingestion:test` exécute tous les tests Layer A + B + C.
-Les tests Layer C (`test/apply/*.test.js`) n'ont **aucune dépendance à un
-vrai Supabase** — ils utilisent un faux client en mémoire
+`npm run plant:ingestion:test` exécute tous les tests Layer A + B + C, plus
+la curation éditoriale (`test/editorial.test.js`). Les tests Layer C
+(`test/apply/*.test.js`) et éditoriaux qui touchent Supabase n'ont **aucune
+dépendance à un vrai Supabase** — ils utilisent un faux client en mémoire
 (`test/apply/fakeSupabaseClient.js`) qui reproduit le sous-ensemble de
 l'API `supabase-js` réellement utilisé (`from().select()/insert()/update()`,
 `.eq()`/`.is()`, `.single()`/`.maybeSingle()`).
