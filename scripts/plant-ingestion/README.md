@@ -529,11 +529,11 @@ testé exclusivement via le faux client Supabase en mémoire
 3. editorial verify            (editorialCli.js --verify — confirme
                                observation + sélection + promotion catalog,
                                lecture seule)
-4. READY check                 (relire plant_catalog contre les critères
-                               CRITICAL du Finder réel — plant_type, sun,
-                               height_min/max_cm, spread_max_cm — voir
-                               l'audit architecture éditoriale de ce
-                               chantier pour le détail)
+4. quality check                (relire plant_catalog via
+                               `lib/plantQuality.js`'s
+                               `computePlantCompleteness()` — `draft` /
+                               `ready_searchable` / `ready_complete`, voir
+                               §4quater ci-dessous pour le détail)
 5. publication séparée          (acte humain distinct, hors périmètre de
                                cet outil — jamais automatique, jamais
                                déclenché par editorialCli.js)
@@ -551,6 +551,90 @@ Contrainte technique dans l'autre sens : l'overlay ne peut résoudre son
 écrite (il ne crée jamais de `catalog_entries` lui-même) — les étapes 1 et
 2 se suivent donc immédiatement, jamais séparées par un intervalle où la
 fiche reste incomplète et visible en base.
+
+## 4quater. Niveaux de qualité (`lib/plantQuality.js`)
+
+`quality_status` (`draft` | `ready_searchable` | `ready_complete`) **≠**
+`plant_catalog.publication_status` (`draft` | `published` | `archived`).
+Ne jamais les confondre :
+
+- **`publication_status`** — colonne réelle en DB, workflow curateur
+  existant (voir §"Champs curateur protégés" plus haut). Contrôle si une
+  fiche est **réellement visible** publiquement (`plant_catalog_published_select`,
+  RLS). Change uniquement via une décision humaine explicite.
+- **`quality_status`** — **jamais stocké en DB**, toujours **calculé** à la
+  volée par `computePlantCompleteness()` à partir des colonnes déjà
+  présentes. Une **aide à décision**, jamais un déclencheur automatique de
+  publication — `computePlantCompleteness()` ne lit ni n'écrit jamais
+  `publication_status`, et rien dans ce chantier ne publie automatiquement
+  une fiche parce qu'elle devient `ready_searchable`.
+
+### Les 3 niveaux
+
+- **`draft`** — soit la taxonomie n'est pas encore résolue/acceptée
+  (`taxonomyResolved: false`, voir plus bas), soit aucun des 4 blocs
+  CRITICAL n'est renseigné.
+- **`ready_searchable`** — taxonomie résolue **et** au moins 1 des 4 blocs
+  CRITICAL renseigné. C'est déjà, aujourd'hui, tout ce que le code du
+  Finder exige réellement pour qu'une fiche publiée s'affiche et se
+  recherche honnêtement (`CoreField` affiche "Non renseigné", `Field` se
+  masque si absent, aucun filtre n'exclut la liste par défaut) — voir
+  l'audit produit de ce chantier pour le détail ligne à ligne du code
+  `lib/plantFinderApi.js`/`pages/plant-finder/*`.
+- **`ready_complete`** — les 4 blocs CRITICAL **et** les 3 blocs IMPORTANT
+  du score (`evergreen`, `water_need`, `flowering_months`) tous renseignés.
+
+Les 4 blocs CRITICAL : `plant_type`, `sun`, `height` (fusion de
+`height_min_cm`/`height_max_cm` — **un seul bloc**, présent dès que l'un
+des deux l'est), `spread` (`spread_max_cm`). `container_suitable` et
+`edible` sont délibérément **hors score** (pas universellement pertinents
+pour toute plante) ; `growth_form`/`hardiness_min_rank`/`hardiness_max_rank`
+aussi (confirmé sans aucun effet sur l'UI Finder actuelle — colonnes
+mortes côté affichage).
+
+### `computePlantCompleteness(entry, { taxonomyResolved })`
+
+Pure, sans DB, sans React/Next — importable depuis l'ingestion, un futur
+backoffice, ou (délibérément pas encore) l'UI publique. `entry` est un
+objet à la forme `plant_catalog` (colonnes réelles, `snake_case`) : la
+forme la moins transformée, déjà utilisée partout dans l'ingestion
+(`catalog.js`, `compileSelections.js`).
+
+`taxonomyResolved` vaut `true` par défaut : pour une ligne `plant_catalog`
+**réellement existante**, la taxonomie est déjà garantie résolue par le
+schéma lui-même (`plant_taxa.taxonomic_status` n'accepte que `'accepted'`
+via CHECK ; Layer B refuse de compiler un plan dont la taxonomie n'est pas
+`accepted`) — une ligne ne peut structurellement pas exister sinon. Le
+paramètre n'est utile que pour un **candidat qui n'est jamais devenu une
+ligne catalog** (ex. un cultivar `not_found` chez WCVP, comme
+Hydrangea macrophylla 'Endless Summer') — un appelant qui raisonne sur un
+tel candidat passe `{ taxonomyResolved: false }` explicitement, jamais
+deviné automatiquement.
+
+`isPresent(value)` : `null`/`undefined`/`""`/`[]`/`{}` = absent ;
+**`false` et `0` restent des valeurs renseignées**, jamais confondus avec
+une absence.
+
+Retour :
+```js
+{
+  quality_status: "draft" | "ready_searchable" | "ready_complete",
+  critical: { completed, total: 4, missing: [...] },
+  important: { completed, total: 3, missing: [...] },
+  completeness_percent, // sur 7 blocs (4 CRITICAL + 3 IMPORTANT)
+}
+```
+
+### Réutilisation future (non implémentée dans ce chantier)
+
+- **Backoffice curateur** : lister les fiches `draft`/`ready_searchable`
+  restant à compléter, trier par `completeness_percent`.
+- **Indicateur de complétude** : afficher `critical.missing`/
+  `important.missing` comme check-list actionnable pour un curateur.
+- **Contrôle de publication** : avertir (jamais bloquer automatiquement)
+  si un curateur tente de publier une fiche encore `draft`.
+- **Badges publics éventuels** : aucun aujourd'hui — `pages/plant-finder/*`
+  n'importe pas ce module, délibérément, dans ce chantier.
 
 ## 5. Idempotence
 
