@@ -25,6 +25,28 @@ export const PLANT_TYPE_VALUES = [
 // app-level whitelist anywhere in this codebase (confirmed: growth_form is
 // not rendered by any Finder UI code today) — a vocabulary is never
 // invented here for them, only a non-empty-string shape is enforced.
+// Format version for editorial curation inputs. Bumped to 2 by the
+// provenance model migration (schema_version 1 = no `curation` object, a
+// single conflated `source.license` implicitly read as the source's own
+// license — see validateEditorialInput.js). A v1 input is REJECTED, never
+// silently reinterpreted: an old input's `source.license` must never be
+// guessed into `curation.license`, that is exactly the conflation this
+// migration exists to prevent.
+export const EDITORIAL_SCHEMA_VERSION = 2;
+
+// Full DB-level vocabulary for plant_trait_observations.curation_method
+// (matches the real CHECK constraint,
+// plant_trait_observations_curation_method_check, added by
+// supabase/migrations/20260902100000_add_editorial_provenance_v1.sql).
+export const CURATION_METHODS_SCHEMA = ["expert_knowledge", "open_source_synthesis", "restricted_source_paraphrase"];
+
+// Product-level allowlist: what the editorial CLI/validator accepts TODAY.
+// "restricted_source_paraphrase" is deliberately schema-ready (the DB
+// already accepts it) but NOT product-enabled — a curation input naming it
+// is rejected explicitly (CURATION_METHOD_NOT_ENABLED), never silently
+// downgraded to another method and never silently accepted.
+export const CURATION_METHODS_ENABLED = ["expert_knowledge", "open_source_synthesis"];
+
 export const TRAIT_KINDS = {
   plant_type: { kind: "enum", values: PLANT_TYPE_VALUES },
   growth_form: { kind: "string" },

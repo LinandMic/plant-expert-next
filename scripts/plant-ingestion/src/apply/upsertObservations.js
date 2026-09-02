@@ -43,12 +43,25 @@ function observationRowFromPlan(o, catalogId, sourceRecordId) {
     normalized_unit: o.normalized_unit ?? null,
     plant_source_record_id: sourceRecordId,
     source_url: o.source_url ?? null,
+    // source_title/source_publisher/curation_license/curated_by/
+    // curation_method/reviewed_by/reviewed_at: added by the editorial
+    // provenance migration (2026-09-02). A provider observation (trefle/
+    // perenual/wcvp) never sets these on its plan entry, so `?? null`
+    // keeps every existing provider row's shape byte-for-byte unchanged —
+    // this is purely additive for the editorial path.
+    source_title: o.source_title ?? null,
+    source_publisher: o.source_publisher ?? null,
     attribution: o.attribution ?? null,
     license: o.license ?? null,
+    curation_license: o.curation_license ?? null,
+    curated_by: o.curated_by ?? null,
+    curation_method: o.curation_method ?? null,
     source_retrieved_at: o.source_retrieved_at ?? null,
     uncertain: o.uncertain ?? false,
     source_scope: o.source_scope,
     review_status: o.review_status ?? "unreviewed",
+    reviewed_by: o.reviewed_by ?? null,
+    reviewed_at: o.reviewed_at ?? null,
   };
 }
 

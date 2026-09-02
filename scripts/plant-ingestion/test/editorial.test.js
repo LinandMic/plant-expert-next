@@ -11,21 +11,48 @@ import { createFakeSupabaseClient } from "./apply/fakeSupabaseClient.js";
 // Structural test fixtures only — no real horticultural claim is made or
 // implied by any value below (spec: "AUCUNE DONNÉE HORTICOLE RÉELLE").
 // catalog_ref reuses the same placeholder already established by
-// test/apply/fixtures.js elsewhere in this suite.
+// test/apply/fixtures.js elsewhere in this suite. schema_version=2 format
+// (curation object + restructured source) — see editorialVocab.js.
 function validInput(overrides = {}) {
   return {
+    schema_version: 2,
     catalog_ref: "acer_palmatum_species",
     trait: "sun",
     raw_value: ["full_sun"],
     normalized_value: ["full_sun"],
+    curation: {
+      method: "open_source_synthesis",
+      license: "proprietary_internal_curation_v1",
+    },
     source: {
       title: "Example Horticultural Reference",
       publisher: "Example Publisher",
       url: "https://example.invalid/reference",
       license: "CC-BY-4.0",
+      retrieved_at: "2026-01-01T00:00:00.000Z",
     },
     review: {
       note: "Structural test fixture, not a real curation decision.",
+      decided_by: null,
+    },
+    ...overrides,
+  };
+}
+
+function expertKnowledgeInput(overrides = {}) {
+  return {
+    schema_version: 2,
+    catalog_ref: "acer_palmatum_species",
+    trait: "sun",
+    raw_value: ["full_sun"],
+    normalized_value: ["full_sun"],
+    curation: {
+      method: "expert_knowledge",
+      license: "proprietary_internal_curation_v1",
+    },
+    source: null,
+    review: {
+      note: "Structural test fixture — expert judgement, not a real curation decision.",
       decided_by: null,
     },
     ...overrides,
@@ -37,7 +64,7 @@ function hasErrorCode(errors, code) {
 }
 
 // 1. sun valide
-test("1: a valid sun input produces zero validation errors", () => {
+test("1: a valid open_source_synthesis sun input produces zero validation errors", () => {
   const errors = validateEditorialInput(validInput());
   assert.deepEqual(errors, []);
 });
@@ -86,8 +113,8 @@ test("7: flowering_months accepts integers 1-12 and rejects out-of-range values"
   assert.ok(hasErrorCode(bad, "NORMALIZED_VALUE_INVALID"));
 });
 
-// 8. source_url manquante
-test("8: a missing source.url is rejected", () => {
+// 8. source_url manquante (open_source_synthesis)
+test("8: a missing source.url is rejected for curation.method=open_source_synthesis", () => {
   const input = validInput();
   delete input.source.url;
   const errors = validateEditorialInput(input);
@@ -95,7 +122,7 @@ test("8: a missing source.url is rejected", () => {
 });
 
 // 9. attribution/title manquant
-test("9: a missing source.title or source.publisher is rejected", () => {
+test("9: a missing source.title or source.publisher is rejected for open_source_synthesis", () => {
   const noTitle = validInput();
   delete noTitle.source.title;
   assert.ok(hasErrorCode(validateEditorialInput(noTitle), "SOURCE_TITLE_MISSING"));
@@ -211,6 +238,117 @@ test("18: checkEditorialPlanAgainstDb flags a catalog_ref with no known slug, an
   assert.equal(checks2[0].ok, false);
 });
 
+// ==================================================================
+// Provenance model v2: curation.method branching (this round's spec).
+// ==================================================================
+
+// expert_knowledge sans source accepté
+test("19: expert_knowledge with source=null is accepted", () => {
+  const errors = validateEditorialInput(expertKnowledgeInput());
+  assert.deepEqual(errors, []);
+});
+
+// expert_knowledge avec curation_license obligatoire
+test("20: expert_knowledge without curation.license is rejected", () => {
+  const input = expertKnowledgeInput();
+  delete input.curation.license;
+  const errors = validateEditorialInput(input);
+  assert.ok(hasErrorCode(errors, "CURATION_LICENSE_MISSING"));
+});
+
+test("20b: expert_knowledge with a source object present is rejected — never fabricate a source", () => {
+  const input = expertKnowledgeInput({ source: { title: "t", publisher: "p", url: "u", license: "l", retrieved_at: "2026-01-01T00:00:00.000Z" } });
+  const errors = validateEditorialInput(input);
+  assert.ok(hasErrorCode(errors, "SOURCE_MUST_BE_NULL_FOR_EXPERT_KNOWLEDGE"));
+});
+
+test("20c: expert_knowledge without review.note is rejected", () => {
+  const input = expertKnowledgeInput({ review: { note: "", decided_by: null } });
+  const errors = validateEditorialInput(input);
+  assert.ok(hasErrorCode(errors, "REVIEW_NOTE_MISSING"));
+});
+
+// open_source_synthesis source obligatoire
+test("21: open_source_synthesis with source=null is rejected", () => {
+  const input = validInput({ source: null });
+  const errors = validateEditorialInput(input);
+  assert.ok(hasErrorCode(errors, "SOURCE_URL_MISSING"));
+  assert.ok(hasErrorCode(errors, "SOURCE_TITLE_MISSING"));
+  assert.ok(hasErrorCode(errors, "SOURCE_PUBLISHER_MISSING"));
+  assert.ok(hasErrorCode(errors, "SOURCE_LICENSE_MISSING"));
+});
+
+// open_source_synthesis source_license obligatoire
+test("22: open_source_synthesis without source.license is rejected, and \"unknown\" is never accepted", () => {
+  const missing = validInput();
+  delete missing.source.license;
+  assert.ok(hasErrorCode(validateEditorialInput(missing), "SOURCE_LICENSE_MISSING"));
+
+  const placeholder = validInput({ source: { ...validInput().source, license: "unknown" } });
+  assert.ok(hasErrorCode(validateEditorialInput(placeholder), "SOURCE_LICENSE_UNKNOWN_NOT_ALLOWED"));
+});
+
+// source_retrieved_at obligatoire
+test("23: open_source_synthesis without source.retrieved_at is rejected", () => {
+  const input = validInput();
+  delete input.source.retrieved_at;
+  const errors = validateEditorialInput(input);
+  assert.ok(hasErrorCode(errors, "SOURCE_RETRIEVED_AT_MISSING"));
+});
+
+// source_title/source_publisher écrits séparément
+test("24: buildEditorialObservation writes source_title and source_publisher as separate fields, not just folded into attribution", () => {
+  const obs = buildEditorialObservation(validInput());
+  assert.equal(obs.source_title, "Example Horticultural Reference");
+  assert.equal(obs.source_publisher, "Example Publisher");
+  assert.equal(obs.attribution, "Example Horticultural Reference — Example Publisher");
+});
+
+// curation_license séparé de license
+test("25: curation_license and license (source license) are independent fields, never conflated", () => {
+  const obs = buildEditorialObservation(validInput());
+  assert.equal(obs.license, "CC-BY-4.0"); // source license, unchanged semantics
+  assert.equal(obs.curation_license, "proprietary_internal_curation_v1"); // our own synthesis's license
+  assert.notEqual(obs.license, obs.curation_license);
+
+  const expertObs = buildEditorialObservation(expertKnowledgeInput());
+  assert.equal(expertObs.license, null); // no source consulted
+  assert.equal(expertObs.curation_license, "proprietary_internal_curation_v1"); // still required and set
+});
+
+// restricted_source_paraphrase rejeté par validator
+test("26: curation.method=\"restricted_source_paraphrase\" is rejected explicitly, not silently accepted or downgraded", () => {
+  const input = validInput({ curation: { method: "restricted_source_paraphrase", license: "proprietary_internal_curation_v1" } });
+  const errors = validateEditorialInput(input);
+  assert.ok(hasErrorCode(errors, "CURATION_METHOD_NOT_ENABLED"));
+});
+
+// schema_version enforcement — old (v1-shaped, no schema_version/curation) inputs are rejected, never silently reinterpreted
+test("27: an old (pre-v2) input without schema_version/curation is rejected with SCHEMA_VERSION_UNSUPPORTED, never silently accepted", () => {
+  const oldShapedInput = {
+    catalog_ref: "acer_palmatum_species",
+    trait: "sun",
+    raw_value: ["full_sun"],
+    normalized_value: ["full_sun"],
+    source: { title: "t", publisher: "p", url: "u", license: "CC-BY-4.0" },
+    review: { note: "n", decided_by: null },
+  };
+  const errors = validateEditorialInput(oldShapedInput);
+  assert.ok(hasErrorCode(errors, "SCHEMA_VERSION_UNSUPPORTED"));
+});
+
+test("28: buildEditorialPlan (guardEditorialPlan) rejects an expert_knowledge entry that carries source fields", () => {
+  const obs = buildEditorialObservation(expertKnowledgeInput());
+  const tamperedPlan = {
+    mode: "editorial_plan",
+    approval_required: true,
+    editorial_observations: [{ ...obs, source_url: "https://sneaky.invalid" }],
+    manual_selections: [buildManualSelection(expertKnowledgeInput(), obs.observation_ref)],
+  };
+  const errors = guardEditorialPlan(tamperedPlan);
+  assert.ok(errors.some((e) => e.includes('curation_method="expert_knowledge" but carries source fields')));
+});
+
 // Additional coverage: buildEditorialPlan itself (multi-input, duplicates,
 // overlay-only shape) and buildCatalogSlugMap.
 
@@ -229,6 +367,16 @@ test("buildEditorialPlan combines multiple inputs and never creates taxa/taxon_n
   assert.equal(plan.taxon_names, undefined);
   assert.equal(plan.source_records, undefined);
   assert.equal(plan.catalog_entries, undefined);
+});
+
+test("buildEditorialPlan combines expert_knowledge and open_source_synthesis entries in the same batch", () => {
+  const plan = buildEditorialPlan([
+    validInput({ trait: "sun" }),
+    expertKnowledgeInput({ trait: "water_need", raw_value: "moderate", normalized_value: "moderate" }),
+  ]);
+  assert.equal(plan.editorial_observations.length, 2);
+  assert.equal(plan.editorial_observations[0].curation_method, "open_source_synthesis");
+  assert.equal(plan.editorial_observations[1].curation_method, "expert_knowledge");
 });
 
 test("buildEditorialPlan throws on a duplicate (catalog_ref, trait) pair rather than silently picking one", () => {

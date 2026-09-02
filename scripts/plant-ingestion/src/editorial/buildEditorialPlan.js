@@ -1,5 +1,6 @@
 import { buildEditorialObservation } from "./buildEditorialObservation.js";
 import { buildManualSelection } from "./buildManualSelection.js";
+import { CURATION_METHODS_ENABLED } from "./editorialVocab.js";
 
 // guardEditorialPlan(plan) -> string[]
 // Pure, read-only self-check — same philosophy as apply/planGuard.js
@@ -24,6 +25,26 @@ export function guardEditorialPlan(plan) {
     if (o.source_scope !== "editorial") errors.push(`editorial_observations entry ${o.observation_ref} has source_scope "${o.source_scope}", expected "editorial"`);
     if (o.plant_source_record_id !== null || o.source_record_ref) {
       errors.push(`editorial_observations entry ${o.observation_ref} must never reference a source_record`);
+    }
+    if (!CURATION_METHODS_ENABLED.includes(o.curation_method)) {
+      errors.push(`editorial_observations entry ${o.observation_ref} has curation_method "${o.curation_method}", not one of the enabled methods (${CURATION_METHODS_ENABLED.join(", ")})`);
+    }
+    if (!o.curation_license) {
+      errors.push(`editorial_observations entry ${o.observation_ref} is missing curation_license`);
+    }
+    // Provenance duality (spec: curation_license must never mask
+    // source/license) — defense-in-depth mirror of the per-method rules
+    // already enforced by validateEditorialInput()/buildEditorialObservation():
+    // expert_knowledge never carries a source, open_source_synthesis
+    // always does (with a real source_retrieved_at).
+    if (o.curation_method === "expert_knowledge") {
+      if (o.source_url || o.source_title || o.source_publisher || o.license || o.source_retrieved_at) {
+        errors.push(`editorial_observations entry ${o.observation_ref} has curation_method="expert_knowledge" but carries source fields — no source was supposed to be consulted`);
+      }
+    } else if (o.curation_method === "open_source_synthesis") {
+      if (!o.source_url || !o.source_title || !o.source_publisher || !o.license || !o.source_retrieved_at) {
+        errors.push(`editorial_observations entry ${o.observation_ref} has curation_method="open_source_synthesis" but is missing a required source field`);
+      }
     }
   }
 

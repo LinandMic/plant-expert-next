@@ -5,23 +5,45 @@ import { buildEditorialPlan } from "../src/editorial/buildEditorialPlan.js";
 import { applyEditorialPlan } from "../src/editorial/applyEditorialPlan.js";
 import { promoteCatalogTrait } from "../src/editorial/promoteCatalogTrait.js";
 import { verifyEditorialPlan } from "../src/editorial/verifyEditorialPlan.js";
+import { upsertObservations } from "../src/apply/upsertObservations.js";
 import { createFakeSupabaseClient } from "./apply/fakeSupabaseClient.js";
 
 // Structural test fixtures only — no real horticultural claim is made or
 // implied by any value below (spec: "AUCUNE DONNÉE HORTICOLE RÉELLE").
+// schema_version=2 format (curation object + restructured source).
 function validInput(overrides = {}) {
   return {
+    schema_version: 2,
     catalog_ref: "acer_palmatum_species",
     trait: "sun",
     raw_value: ["full_sun"],
     normalized_value: ["full_sun"],
+    curation: {
+      method: "open_source_synthesis",
+      license: "proprietary_internal_curation_v1",
+    },
     source: {
       title: "Example Horticultural Reference",
       publisher: "Example Publisher",
       url: "https://example.invalid/reference",
       license: "CC-BY-4.0",
+      retrieved_at: "2026-01-01T00:00:00.000Z",
     },
     review: { note: "Structural test fixture, not a real curation decision.", decided_by: null },
+    ...overrides,
+  };
+}
+
+function expertKnowledgeInput(overrides = {}) {
+  return {
+    schema_version: 2,
+    catalog_ref: "acer_palmatum_species",
+    trait: "sun",
+    raw_value: ["full_sun"],
+    normalized_value: ["full_sun"],
+    curation: { method: "expert_knowledge", license: "proprietary_internal_curation_v1" },
+    source: null,
+    review: { note: "Structural test fixture — expert judgement, not a real curation decision.", decided_by: null },
     ...overrides,
   };
 }
@@ -363,4 +385,89 @@ test("verifyEditorialPlan: with a before-snapshot, genuinely proves publication_
     expectedPublicationStatusByCatalogRef: new Map([["acer_palmatum_species", "published"]]),
   });
   assert.equal(result.ok, true);
+});
+
+// ==================================================================
+// Provenance model v2: expert_knowledge apply path, backward
+// compatibility of the Layer C write helper, and verify() on the new
+// columns (this round's spec, §13).
+// ==================================================================
+
+test("expert_knowledge: apply writes an observation with no source fields at all, and still promotes correctly", async () => {
+  const plan = buildEditorialPlan([expertKnowledgeInput({ trait: "water_need", raw_value: "moderate", normalized_value: "moderate" })]);
+  const { client, tables } = createFakeSupabaseClient({ plant_catalog: [seedCatalog({ water_need: null })] });
+  const report = await applyEditorialPlan({ client, plan, catalogSlugByRef, dryRun: false });
+
+  assert.equal(report.ok, true);
+  const row = tables.plant_trait_observations[0];
+  assert.equal(row.curation_method, "expert_knowledge");
+  assert.equal(row.curation_license, "proprietary_internal_curation_v1");
+  assert.equal(row.source_url, null);
+  assert.equal(row.source_title, null);
+  assert.equal(row.source_publisher, null);
+  assert.equal(row.license, null); // no source consulted
+  assert.equal(row.source_retrieved_at, null);
+  assert.equal(tables.plant_catalog[0].water_need, "moderate");
+});
+
+test("open_source_synthesis: apply writes source_title/source_publisher/source_retrieved_at and curation_license, all independently of source license", async () => {
+  const plan = buildEditorialPlan([validInput()]);
+  const { client, tables } = createFakeSupabaseClient({ plant_catalog: [seedCatalog()] });
+  await applyEditorialPlan({ client, plan, catalogSlugByRef, dryRun: false });
+
+  const row = tables.plant_trait_observations[0];
+  assert.equal(row.source_title, "Example Horticultural Reference");
+  assert.equal(row.source_publisher, "Example Publisher");
+  assert.equal(row.source_retrieved_at, "2026-01-01T00:00:00.000Z");
+  assert.equal(row.license, "CC-BY-4.0");
+  assert.equal(row.curation_license, "proprietary_internal_curation_v1");
+  assert.notEqual(row.license, row.curation_license);
+});
+
+test("upsertObservations stays backward compatible with a plan observation object that lacks the new provenance fields (pre-migration shape)", async () => {
+  // Simulates a hand-built or pre-migration-shaped plan entry — none of the
+  // 7 new columns are present at all, not even as `undefined` keys.
+  const oldShapedObservation = {
+    observation_ref: "acer_palmatum_species:editorial:sun",
+    catalog_ref: "acer_palmatum_species",
+    trait: "sun",
+    provider: "editorial",
+    raw_value: ["full_sun"],
+    normalized_value: ["full_sun"],
+    source_url: "https://example.invalid/old",
+    attribution: "Old Source",
+    license: "CC-BY-4.0",
+    source_retrieved_at: null,
+    uncertain: false,
+    source_scope: "editorial",
+    review_status: "accepted",
+  };
+  const { client, tables } = createFakeSupabaseClient({ plant_catalog: [seedCatalog()] });
+  const result = await upsertObservations({
+    client,
+    observations: [oldShapedObservation],
+    catalogIdByRef: new Map([["acer_palmatum_species", "catalog-1"]]),
+    sourceRecordIdByRef: new Map(),
+    dryRun: false,
+  });
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.created, 1);
+  const row = tables.plant_trait_observations[0];
+  assert.equal(row.source_title, null);
+  assert.equal(row.curation_license, null);
+  assert.equal(row.curation_method, null);
+  assert.equal(row.reviewed_by, null);
+  assert.equal(row.reviewed_at, null);
+});
+
+test("verifyEditorialPlan: checks curation_method and curation_license independently of source license after apply", async () => {
+  const plan = buildEditorialPlan([validInput()]);
+  const { client } = createFakeSupabaseClient({ plant_catalog: [seedCatalog()] });
+  await applyEditorialPlan({ client, plan, catalogSlugByRef, dryRun: false });
+
+  const result = await verifyEditorialPlan({ client, plan, catalogSlugByRef });
+  assert.equal(result.ok, true);
+  assert.ok(result.checks.some((c) => c.message.includes("curation_method is \"open_source_synthesis\"")));
+  assert.ok(result.checks.some((c) => c.message.includes("curation_license matches the plan")));
+  assert.ok(result.checks.some((c) => c.message.includes("source license matches the plan")));
 });

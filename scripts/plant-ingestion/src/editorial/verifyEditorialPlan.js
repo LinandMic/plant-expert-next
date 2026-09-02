@@ -49,7 +49,7 @@ export async function verifyEditorialPlan({ client, plan, catalogSlugByRef, expe
 
     const { data: obsRows, error: obsError } = await client
       .from("plant_trait_observations")
-      .select("id, normalized_value, review_status")
+      .select("id, normalized_value, review_status, curation_method, curation_license, license")
       .eq("plant_catalog_id", catalogRow.id)
       .eq("trait", observation.trait)
       .eq("provider", "editorial");
@@ -64,6 +64,13 @@ export async function verifyEditorialPlan({ client, plan, catalogSlugByRef, expe
     }
     addCheck(checks, true, `${label}: editorial observation exists with matching normalized_value`);
     addCheck(checks, match.review_status === "accepted", `${label}: observation review_status is "${match.review_status}" (expected "accepted")`);
+    // Provenance duality (spec: curation_license must never mask source
+    // license) — verified as two INDEPENDENT equalities, never compared
+    // against each other, so a future regression that collapses the two
+    // into one value is caught here.
+    addCheck(checks, match.curation_method === observation.curation_method, `${label}: curation_method is "${match.curation_method}" (expected "${observation.curation_method}")`);
+    addCheck(checks, stableEqual(match.curation_license ?? null, observation.curation_license ?? null), `${label}: curation_license matches the plan`);
+    addCheck(checks, stableEqual(match.license ?? null, observation.license ?? null), `${label}: source license matches the plan (independent of curation_license)`);
 
     const { data: selRow, error: selError } = await client
       .from("plant_trait_selections")

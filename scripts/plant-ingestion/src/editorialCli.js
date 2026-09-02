@@ -72,9 +72,17 @@ function readJson(filePath, label) {
 function printObservationPreview(obs) {
   console.log(`  editorial observation ${obs.observation_ref}`);
   console.log(`    normalized_value: ${JSON.stringify(obs.normalized_value)}`);
-  console.log(`    source_url: ${obs.source_url}`);
-  console.log(`    attribution: ${obs.attribution}`);
-  console.log(`    license: ${obs.license}`);
+  console.log(`    curation_method: ${obs.curation_method}`);
+  console.log(`    curation_license: ${obs.curation_license}`);
+  if (obs.curation_method === "expert_knowledge") {
+    console.log("    source: none (expert_knowledge — no external source consulted)");
+  } else {
+    console.log(`    source_title: ${obs.source_title}`);
+    console.log(`    source_publisher: ${obs.source_publisher}`);
+    console.log(`    source_url: ${obs.source_url}`);
+    console.log(`    source license: ${obs.license}`);
+    console.log(`    source_retrieved_at: ${obs.source_retrieved_at}`);
+  }
 }
 
 function printSelectionPreview(sel) {

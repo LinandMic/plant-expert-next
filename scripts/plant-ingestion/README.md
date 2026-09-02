@@ -310,18 +310,78 @@ automatiquement par un futur re-run (voir §4bis) — seule
 `manual_resolution` est jamais ré-écrasée par Layer C, quelle que soit la
 source de l'observation qu'elle pointe (provider ou éditoriale).
 
-### Format d'entrée
+### Modèle de provenance (schema_version 2)
+
+Sémantique figée par `supabase/migrations/20260902100000_add_editorial_provenance_v1.sql` :
+
+- `plant_trait_observations.license` = licence/statut de la **SOURCE
+  CONSULTÉE** (sens inchangé depuis l'origine — en pratique jamais peuplé
+  par aucun provider réel, `null` pour les 3 providers ; seul le chemin
+  éditorial le peuple).
+- `plant_trait_observations.curation_license` = licence/statut de **NOTRE
+  PROPRE observation/synthèse** — un champ **distinct**, jamais dérivé de
+  `license`, jamais utilisé pour le masquer.
+
+`curation_license` ne doit **jamais** masquer `license`/`source_url`/
+`source_title`/`source_publisher` — les deux coexistent toujours,
+indépendamment, jamais comparées ni fusionnées (`buildEditorialObservation.js`
+les écrit séparément ; `verifyEditorialPlan.js` les vérifie séparément).
+
+`curation_method` (colonne + CHECK côté schéma : `expert_knowledge` |
+`open_source_synthesis` | `restricted_source_paraphrase`) — le schéma est
+**plus permissif que le produit aujourd'hui** : `restricted_source_paraphrase`
+est prévu côté DB pour ne jamais nécessiter de migration future, mais
+**rejeté explicitement** par `validateEditorialInput.js`
+(`CURATION_METHOD_NOT_ENABLED`) — jamais accepté ni rétrogradé
+silencieusement vers une autre méthode.
+
+### Format d'entrée (`schema_version: 2`)
+
+Un ancien format (sans `schema_version`/`curation`) est **rejeté
+explicitement** (`SCHEMA_VERSION_UNSUPPORTED`), jamais réinterprété — un
+ancien `source.license` ne devient jamais silencieusement une
+`curation_license` (spec : "ne jamais interpréter silencieusement un
+ancien source.license comme curation_license").
+
+**`curation.method = "open_source_synthesis"`** — source externe
+obligatoire, `retrieved_at` inclus (le schéma autorise maintenant un
+`source_retrieved_at` non-null pour l'éditorial) :
 
 ```json
 {
+  "schema_version": 2,
   "catalog_ref": "lavandula_angustifolia_species",
   "trait": "sun",
   "raw_value": ["full_sun"],
   "normalized_value": ["full_sun"],
-  "source": { "title": "...", "publisher": "...", "url": "...", "license": "..." },
+  "curation": { "method": "open_source_synthesis", "license": "proprietary_internal_curation_v1" },
+  "source": { "title": "...", "publisher": "...", "url": "...", "license": "...", "retrieved_at": "..." },
   "review": { "note": "...", "decided_by": null }
 }
 ```
+
+**`curation.method = "expert_knowledge"`** — pas de source externe
+(`source: null` obligatoire, jamais une source fabriquée), `review.note`
+obligatoire :
+
+```json
+{
+  "schema_version": 2,
+  "catalog_ref": "lavandula_angustifolia_species",
+  "trait": "water_need",
+  "raw_value": "moderate",
+  "normalized_value": "moderate",
+  "curation": { "method": "expert_knowledge", "license": "proprietary_internal_curation_v1" },
+  "source": null,
+  "review": { "note": "Justification obligatoire pour une décision sans source externe.", "decided_by": null }
+}
+```
+
+`curation.curated_by` (optionnel) alimente `plant_trait_observations.curated_by` ;
+`review.reviewed_by` (optionnel) alimente `plant_trait_observations.reviewed_by`.
+Deux champs **distincts** de `review.decided_by`, qui reste exclusivement
+`plant_trait_selections.decided_by` (niveau **sélection**, pas observation —
+spec : "Observation review ≠ selection decision").
 
 `--input` accepte un objet unique ou un tableau de plusieurs.
 
@@ -329,19 +389,33 @@ source de l'observation qu'elle pointe (provider ou éditoriale).
 
 - `editorialVocab.js` — vocabulaire dupliqué (jamais importé) de
   `lib/plantFinderFormat.js` (`SUN_VALUES`, `PLANT_TYPE_VALUES`) + la forme
-  attendue de chaque trait promouvable (`TRAIT_KINDS`).
-- `validateEditorialInput.js` — validation pure, aucun accès DB : `trait`
-  doit être un des 13 `PROMOTABLE_CATALOG_COLUMNS` (`soil` explicitement
-  rejeté — cette colonne n'existe pas dans `plant_catalog`), valeur
-  conforme à `TRAIT_KINDS`, `source.url`/`title`/`publisher`/`license`
-  obligatoires, `license: "unknown"` explicitement interdit.
+  attendue de chaque trait promouvable (`TRAIT_KINDS`) + `EDITORIAL_SCHEMA_VERSION`
+  (=2) + `CURATION_METHODS_SCHEMA` (les 3 valeurs DB) vs
+  `CURATION_METHODS_ENABLED` (les 2 valeurs produit).
+- `validateEditorialInput.js` — validation pure, aucun accès DB :
+  `schema_version` doit valoir 2 (sinon `SCHEMA_VERSION_UNSUPPORTED`,
+  jamais de réinterprétation silencieuse), `trait` doit être un des 13
+  `PROMOTABLE_CATALOG_COLUMNS` (`soil` explicitement rejeté), valeur
+  conforme à `TRAIT_KINDS`, `curation.method` doit être dans
+  `CURATION_METHODS_ENABLED` (`restricted_source_paraphrase` → rejet
+  explicite `CURATION_METHOD_NOT_ENABLED`), `curation.license` toujours
+  obligatoire (jamais `"unknown"`). Branche ensuite sur `curation.method` :
+  `expert_knowledge` exige `source: null` (jamais une source fabriquée) et
+  `review.note` obligatoire ; `open_source_synthesis` exige
+  `source.title`/`publisher`/`url`/`license`/`retrieved_at`, tous
+  obligatoires (`license: "unknown"` toujours interdit).
 - `buildEditorialObservation.js` — transforme une entrée validée en objet
   `plant_trait_observation`-like avec `provider="editorial"`,
   `source_scope="editorial"`, `plant_source_record_id=null`,
-  `source_retrieved_at=null`, `review_status="accepted"` — tous ces champs
-  sont **codés en dur**, jamais lus depuis l'entrée, pour qu'une entrée de
-  curation ne puisse jamais produire une ligne non conforme à la contrainte
-  réelle `plant_trait_observations_editorial_coherence_check`.
+  `review_status="accepted"`, `reviewed_at=now()` — tous ces champs sont
+  **codés en dur**, jamais lus depuis l'entrée. Écrit `source_title`/
+  `source_publisher` séparément (plus seulement fusionnés dans
+  `attribution`, conservé pour compatibilité), `license` = licence de la
+  source (`null` pour `expert_knowledge`), `curation_license` = licence de
+  notre synthèse (toujours renseignée, jamais copiée depuis `license`),
+  `curation_method`, `curated_by`, `reviewed_by`. `source_retrieved_at`
+  vaut `null` pour `expert_knowledge`, `input.source.retrieved_at` pour
+  `open_source_synthesis` — la contrainte DB ne le force plus à `null`.
 - `buildManualSelection.js` — `decision_method="manual_resolution"` codé en
   dur, jamais `"editorial"`.
 - `buildEditorialPlan.js` — combine plusieurs entrées en un petit plan
@@ -382,9 +456,18 @@ source de l'observation qu'elle pointe (provider ou éditoriale).
   `apply/verifyPlan.js` vis-à-vis de `applyPlan()`) : observation présente
   avec la bonne `normalized_value`, `review_status="accepted"`, sélection
   `manual_resolution` qui pointe bien dessus, `plant_catalog[trait]` qui
-  correspond. `publication_status` est rapporté informationnellement, ou
-  comparé réellement si l'appelant fournit un instantané "avant" via
+  correspond, **et** `curation_method`/`curation_license`/`license`
+  vérifiés comme **trois valeurs indépendantes** (jamais l'une comparée à
+  l'autre — une régression qui les confondrait serait détectée ici).
+  `publication_status` est rapporté informationnellement, ou comparé
+  réellement si l'appelant fournit un instantané "avant" via
   `expectedPublicationStatusByCatalogRef`.
+
+`apply/upsertObservations.js` (Layer C, réutilisé par `applyEditorialPlan.js`)
+a été étendu pour écrire les 7 nouvelles colonnes de provenance — une
+observation provider (qui ne les renseigne jamais) les reçoit toutes à
+`null` via `?? null`, forme strictement inchangée pour le chemin provider
+existant.
 
 ### CLI (`src/editorialCli.js`)
 
@@ -571,13 +654,26 @@ Si `npm run plant:ingestion:apply -- --apply` échoue en cours de route
 
 `npm run plant:ingestion:test` exécute tous les tests Layer A + B + C, plus
 la curation éditoriale (`test/editorial.test.js` — validation/construction
-pures ; `test/editorialApply.test.js` — apply/promotion/verify, 25
-scénarios). Les tests Layer C (`test/apply/*.test.js`) et éditoriaux qui
-touchent Supabase n'ont **aucune dépendance à un vrai Supabase** — ils
-utilisent un faux client en mémoire (`test/apply/fakeSupabaseClient.js`)
-qui reproduit le sous-ensemble de l'API `supabase-js` réellement utilisé
-(`from().select()/insert()/update()`, `.eq()`/`.is()`, `.single()`/
-`.maybeSingle()`).
+pures, format `schema_version: 2` inclus ; `test/editorialApply.test.js` —
+apply/promotion/verify, y compris `expert_knowledge`/`open_source_synthesis` ;
+`test/editorialMigration.test.js` — garde-fou textuel confirmant que la
+migration de provenance reste additive-only). Les tests Layer C
+(`test/apply/*.test.js`) et éditoriaux qui touchent Supabase n'ont
+**aucune dépendance à un vrai Supabase** — ils utilisent un faux client en
+mémoire (`test/apply/fakeSupabaseClient.js`) qui reproduit le sous-ensemble
+de l'API `supabase-js` réellement utilisé (`from().select()/insert()/update()`,
+`.eq()`/`.is()`, `.single()`/`.maybeSingle()`).
+
+La migration elle-même
+(`supabase/migrations/20260902100000_add_editorial_provenance_v1.sql`) a
+été validée une fois, manuellement, contre un PostgreSQL 16 local
+jetable (jamais Supabase) : les 2 migrations `plant_catalog` existantes
+appliquées, des lignes provider/éditoriales **pré-migration** insérées,
+cette migration appliquée par-dessus — les lignes pré-migration restent
+valides et inchangées, un nouveau `source_retrieved_at` non-null pour
+l'éditorial devient accepté (impossible avant), et un `curation_method`
+hors vocabulaire est rejeté par le `CHECK`. Base et rôles jetables
+supprimés immédiatement après.
 
 Un test d'intégration réel contre un vrai projet Supabase n'est exécuté
 que si des identifiants sont disponibles dans l'environnement — jamais
