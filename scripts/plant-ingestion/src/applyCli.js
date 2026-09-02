@@ -52,8 +52,11 @@ function printReport(report) {
     }
     console.log(`  ${table}: created=${step.created} updated=${step.updated ?? 0} unchanged=${step.unchanged} errors=${step.errors.length}`);
     for (const e of step.errors) console.error(`    ! ${e}`);
+    for (const p of step.protectedFields ?? []) {
+      console.log(`    protected: ${p.catalog_ref}/${p.trait} — provider proposed ${JSON.stringify(p.provider_value)}, kept curator value ${JSON.stringify(p.current_value)} (manual_resolution)`);
+    }
   }
-  console.log(`  TOTAL: created=${report.totals.created} updated=${report.totals.updated} unchanged=${report.totals.unchanged} errors=${report.totals.errors} skipped=${report.totals.skipped}`);
+  console.log(`  TOTAL: created=${report.totals.created} updated=${report.totals.updated} unchanged=${report.totals.unchanged} errors=${report.totals.errors} skipped=${report.totals.skipped} protected=${report.totals.protectedFields.length}`);
 }
 
 async function run() {
