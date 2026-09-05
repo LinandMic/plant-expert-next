@@ -4,17 +4,35 @@ import { isInformative } from "./informative.js";
 // mapping rule exists for each. Every other trait may have observations,
 // but never a proposed selection (spec §13).
 //
-// growth_form (string), spread_max_cm (number), evergreen (boolean), and
-// flowering_months (array, already in canonical order by the time it
-// reaches here — see normalization.js/trefle.js's normalizeMonthCodes)
-// reuse proposeDeterministicNumericOrPassthrough exactly as-is: no new
-// resolver, no trait-specific logic, no crosswalk. Provider-neutral by the
-// same construction as the traits already here — a trait is proposed only
-// when every non-uncertain observation for it (any provider) agrees; any
-// genuine disagreement still blocks the proposal entirely (see
-// proposeDeterministicNumericOrPassthrough below), never a Perenual-wins
-// or Trefle-wins tiebreak.
-const DETERMINISTIC_TRAITS = new Set(["height_min_cm", "height_max_cm", "plant_type", "growth_form", "spread_max_cm", "evergreen", "flowering_months"]);
+// spread_max_cm (number), evergreen (boolean), and flowering_months (array,
+// already in canonical order by the time it reaches here — see
+// normalization.js/trefle.js's normalizeMonthCodes) reuse
+// proposeDeterministicNumericOrPassthrough exactly as-is: no new resolver,
+// no trait-specific logic, no crosswalk needed — their raw provider value
+// already IS the canonical shape (a number, a boolean, or a pre-crosswalked
+// month-number array). plant_type ALSO reuses this same function, but only
+// after normalization.js's applyDeterministicNormalizations has already
+// crosswalked its raw provider string into the canonical
+// PLANT_TYPE_VALUES vocabulary (or null) — proposeDeterministicNumericOrPassthrough
+// itself still never sees or applies that crosswalk, it only ever copies
+// whatever normalized_value the observation already carries. A trait is
+// proposed only when every non-uncertain observation for it (any provider)
+// agrees; any genuine disagreement still blocks the proposal entirely (see
+// proposeDeterministicNumericOrPassthrough below), never a Perenual-wins or
+// Trefle-wins tiebreak.
+//
+// growth_form is deliberately EXCLUDED (removed after auditing mini-batch-2,
+// 2026-09): it has no DB CHECK constraint and no application-level
+// whitelist anywhere in this codebase (confirmed: not rendered by any
+// Finder UI code today — see editorial/editorialVocab.js's own note on the
+// same gap for editorial curation). Without a canonical vocabulary, a raw
+// provider string like Trefle's "Thicket Forming" or "Bunch" would have
+// been auto-selected verbatim, exactly the same class of bug plant_type
+// just had. Observations for growth_form are still collected normally
+// (buildObservations in provenance.js does not consult this set at all) —
+// only the automatic PROMOTION into a trait_selection is disabled, pending
+// a real crosswalk the same way sun/plant_type now have one.
+const DETERMINISTIC_TRAITS = new Set(["height_min_cm", "height_max_cm", "plant_type", "spread_max_cm", "evergreen", "flowering_months"]);
 
 // An observation flagged `uncertain` is never eligible for an automatic
 // proposal — this is the same `uncertain` flag used for genuine

@@ -93,6 +93,29 @@ test("no observations at all -> no selections, no crash", () => {
   assert.deepEqual(warnings, []);
 });
 
+// Regression: real mini-batch-2 case — Perenual returned a second candidate
+// for Miscanthus sinensis ("Miscanthus sinensis 'Autumn Light'") that was
+// correctly classified taxonomy_match_type=ambiguous/unresolved_under_plan
+// upstream (see taxonomyAmbiguity.js), which marks every observation from
+// that source record uncertain:true (see bundle.js's applyTaxonomyAmbiguity).
+// eligible() must exclude such observations from selection consideration
+// even when their normalized_value is otherwise perfectly well-formed — an
+// uncertain match is never eligible for an automatic proposal, whatever
+// trait it's for. This was previously only covered indirectly (at the
+// taxonomyAmbiguity.js unit level and via bundle.js wiring), never as a
+// direct proposeSelections()-level regression test.
+test("an uncertain (ambiguous-match) observation is never eligible for selection, even with a well-formed normalized_value", () => {
+  const observations = [obs({ observation_ref: "m1", trait: "growth_form", provider: "perenual", normalized_value: "Bunch", uncertain: true })];
+  const { selections } = proposeSelections({ observations });
+  assert.equal(selections.length, 0);
+});
+
+test("an uncertain plant_type observation is never selected, even after a valid crosswalk value", () => {
+  const observations = [obs({ observation_ref: "m2", trait: "plant_type", provider: "perenual", normalized_value: "tree", uncertain: true })];
+  const { selections } = proposeSelections({ observations });
+  assert.ok(!selections.some((s) => s.trait === "plant_type"));
+});
+
 // ===========================================================================
 // growth_form / spread_max_cm / evergreen / flowering_months — extended
 // DETERMINISTIC_TRAITS, reusing proposeDeterministicNumericOrPassthrough
@@ -101,36 +124,40 @@ test("no observations at all -> no selections, no crash", () => {
 // providers, differing values), D (no observation).
 // ===========================================================================
 
-// --- growth_form (string) ---------------------------------------------
+// --- growth_form (string) -----------------------------------------------
+// growth_form has NO canonical vocabulary anywhere in this codebase (no DB
+// CHECK, no application whitelist — confirmed by editorial/editorialVocab.js's
+// own note) — removed from DETERMINISTIC_TRAITS after auditing mini-batch-2
+// (Betula's Trefle "Thicket Forming" would otherwise have been auto-selected
+// verbatim). It must NEVER auto-select, regardless of how many providers
+// agree — this is a hard "never promote" rule, not a per-value crosswalk
+// gap like plant_type/sun, so there is no "unmapped value" warning either:
+// the trait is simply never a candidate for selection at all.
 
-test("growth_form A: a single observation produces a selection", () => {
-  const observations = [obs({ observation_ref: "gf1", trait: "growth_form", provider: "trefle", normalized_value: "shrub" })];
-  const { selections } = proposeSelections({ observations });
-  const sel = selections.find((s) => s.trait === "growth_form");
-  assert.ok(sel);
-  assert.equal(sel.normalized_value, "shrub");
-  assert.equal(sel.status, "proposed");
+test("growth_form A: a single observation NEVER produces a selection (no canonical vocabulary exists)", () => {
+  const observations = [obs({ observation_ref: "gf1", trait: "growth_form", provider: "trefle", normalized_value: "Thicket Forming" })];
+  const { selections, warnings } = proposeSelections({ observations });
+  assert.ok(!selections.some((s) => s.trait === "growth_form"));
+  assert.ok(!warnings.some((w) => w.includes("growth_form")), "growth_form should be silently never-proposed, not warned about — it isn't a crosswalk gap");
 });
 
-test("growth_form B: two different providers agreeing on the same value produce one selection", () => {
+test("growth_form B: two different providers agreeing on the same value STILL never produce a selection", () => {
   const observations = [
     obs({ observation_ref: "gf1", trait: "growth_form", provider: "trefle", normalized_value: "shrub" }),
     obs({ observation_ref: "gf2", trait: "growth_form", provider: "perenual", normalized_value: "shrub" }),
   ];
   const { selections } = proposeSelections({ observations });
-  const matches = selections.filter((s) => s.trait === "growth_form");
-  assert.equal(matches.length, 1);
-  assert.equal(matches[0].normalized_value, "shrub");
+  assert.ok(!selections.some((s) => s.trait === "growth_form"));
 });
 
-test("growth_form C: two providers with differing values produce no selection, only a warning", () => {
+test("growth_form C: two providers with differing values still never produce a selection or a conflict warning", () => {
   const observations = [
     obs({ observation_ref: "gf1", trait: "growth_form", provider: "trefle", normalized_value: "shrub" }),
     obs({ observation_ref: "gf2", trait: "growth_form", provider: "perenual", normalized_value: "tree" }),
   ];
   const { selections, warnings } = proposeSelections({ observations });
   assert.ok(!selections.some((s) => s.trait === "growth_form"));
-  assert.ok(warnings.some((w) => w.includes("growth_form") && w.includes("conflicting")));
+  assert.ok(!warnings.some((w) => w.includes("growth_form")));
 });
 
 test("growth_form D: no observation at all -> no selection", () => {
@@ -272,7 +299,7 @@ test("PILOT BATCH: Camellia-like fixture keeps its 2 existing selections (plant_
   assert.deepEqual(traits, ["height_max_cm", "plant_type", "sun"]);
 });
 
-test("PILOT BATCH: Hydrangea-like fixture (Perenual unavailable, only Trefle growth_form observed) now gets a growth_form selection, still nothing for plant_type/sun", () => {
+test("PILOT BATCH: Hydrangea-like fixture (Perenual unavailable, only Trefle growth_form observed) never gets a growth_form selection (no canonical vocabulary), still nothing for plant_type/sun", () => {
   const observations = [
     obs({ observation_ref: "h1", trait: "growth_form", provider: "trefle", normalized_value: "shrub" }),
     obs({ observation_ref: "h2", trait: "spread_max_cm", provider: "trefle", normalized_value: 180 }),
@@ -281,7 +308,9 @@ test("PILOT BATCH: Hydrangea-like fixture (Perenual unavailable, only Trefle gro
   ];
   const { selections } = proposeSelections({ observations });
   const traits = selections.map((s) => s.trait).sort();
-  assert.deepEqual(traits, ["evergreen", "flowering_months", "growth_form", "spread_max_cm"]);
+  assert.deepEqual(traits, ["evergreen", "flowering_months", "spread_max_cm"]);
+  // growth_form never promotes, regardless of provider agreement (see growth_form A/B/C above).
+  assert.ok(!traits.includes("growth_form"));
   // Structurally impossible without Perenual — confirmed still absent.
   assert.ok(!traits.includes("plant_type"));
   assert.ok(!traits.includes("sun"));
