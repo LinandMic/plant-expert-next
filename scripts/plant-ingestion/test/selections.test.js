@@ -280,6 +280,61 @@ test("flowering_months D: no observation at all -> no selection", () => {
   assert.ok(!selections.some((s) => s.trait === "flowering_months"));
 });
 
+// Regression: real mini-batch-5 Mac run — Dryopteris filix-mas (a fern)
+// correctly got plant_type="fern" from Perenual, but Trefle also proposed a
+// clean, unconflicting flowering_months=[6,7,8,9,10] that would have been
+// auto-selected verbatim despite ferns never flowering (they reproduce by
+// spores). The observation itself must survive (real provenance, not an
+// error) — only the trait_selection must never be created.
+test("flowering_months E: plant_type=fern blocks the flowering_months selection, even with a single clean provider observation", () => {
+  const observations = [
+    obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "fern" }),
+    obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [6, 7, 8, 9, 10] }),
+  ];
+  const { selections, warnings } = proposeSelections({ observations });
+
+  // plant_type itself must remain fully selectable — the guard only ever
+  // targets flowering_months, never plant_type's own promotion.
+  const plantTypeSel = selections.find((s) => s.trait === "plant_type");
+  assert.ok(plantTypeSel);
+  assert.equal(plantTypeSel.normalized_value, "fern");
+
+  assert.ok(!selections.some((s) => s.trait === "flowering_months"));
+  assert.ok(warnings.some((w) => w.includes('flowering_months: plant_type is "fern"')));
+
+  // The observation array itself is untouched by this — proposeSelections
+  // never mutates or drops observations, only decides what to select.
+  assert.ok(observations.some((o) => o.trait === "flowering_months" && o.provider === "trefle"));
+});
+
+test("flowering_months F: plant_type=perennial (a real flowering plant_type) still selects flowering_months normally", () => {
+  const observations = [
+    obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "perennial" }),
+    obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [6, 7, 8] }),
+  ];
+  const { selections } = proposeSelections({ observations });
+  const sel = selections.find((s) => s.trait === "flowering_months");
+  assert.ok(sel);
+  assert.deepEqual(sel.normalized_value, [6, 7, 8]);
+});
+
+test("flowering_months G: no plant_type observation at all -> flowering_months still selects normally (guard only fires on a confirmed fern)", () => {
+  const observations = [obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [4, 5] })];
+  const { selections } = proposeSelections({ observations });
+  assert.ok(selections.some((s) => s.trait === "flowering_months"));
+});
+
+test("flowering_months H: conflicting plant_type observations (no plant_type selection resolved) never trigger the fern guard — flowering_months still selects normally", () => {
+  const observations = [
+    obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "fern" }),
+    obs({ observation_ref: "pt2", trait: "plant_type", provider: "trefle", normalized_value: "perennial" }),
+    obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [4, 5] }),
+  ];
+  const { selections } = proposeSelections({ observations });
+  assert.ok(!selections.some((s) => s.trait === "plant_type"), "conflicting plant_type must not resolve to a selection");
+  assert.ok(selections.some((s) => s.trait === "flowering_months"), "an unresolved plant_type must never speculatively block flowering_months");
+});
+
 // ===========================================================================
 // Pilot batch regression: the 4 new traits must never interfere with the
 // existing height_min_cm/height_max_cm/plant_type/sun selections — a
