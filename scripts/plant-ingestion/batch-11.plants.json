@@ -1,0 +1,22 @@
+[
+  { "input_name": "Acer platanoides", "type": "species" },
+  { "input_name": "Amelanchier lamarckii", "type": "species" },
+  { "input_name": "Arbutus unedo", "type": "species" },
+  { "input_name": "Berberis vulgaris", "type": "species" },
+  { "input_name": "Buddleja davidii", "type": "species" },
+  { "input_name": "Calluna vulgaris", "type": "species" },
+  { "input_name": "Campanula persicifolia", "type": "species" },
+  { "input_name": "Convallaria majalis", "type": "species" },
+  { "input_name": "Corylus avellana", "type": "species" },
+  { "input_name": "Crataegus monogyna", "type": "species" },
+  { "input_name": "Delphinium elatum", "type": "species" },
+  { "input_name": "Erica carnea", "type": "species" },
+  { "input_name": "Ginkgo biloba", "type": "species" },
+  { "input_name": "Malva thuringiaca", "type": "species" },
+  { "input_name": "Berberis aquifolium", "type": "species" },
+  { "input_name": "Phlox paniculata", "type": "species" },
+  { "input_name": "Pulmonaria officinalis", "type": "species" },
+  { "input_name": "Rudbeckia hirta", "type": "species" },
+  { "input_name": "Spiraea japonica", "type": "species" },
+  { "input_name": "Verbena bonariensis", "type": "species" }
+]
