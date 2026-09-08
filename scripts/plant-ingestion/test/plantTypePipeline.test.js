@@ -22,19 +22,25 @@ function plantTypeObs(rawValue) {
 // values: "Tree" for Betula pendula, "Broadleaf evergreen" for Buxus
 // sempervirens — the latter is exactly the value that had already leaked,
 // unnormalized, into production for Camellia japonica before this fix).
+//
+// plant_type auto-selection itself was removed after auditing batch-12,
+// 2026-09 (trust-policy change, see selections.js's DETERMINISTIC_TRAITS
+// comment) — a syntactically canonical value from a single provider is no
+// longer sufficient evidence. Normalization (this file's real subject) is
+// completely unaffected: the crosswalk still runs exactly as before, still
+// produces a canonical normalized_value or null-plus-warning, only the
+// promotion into a trait_selection is now permanently withheld here.
 function runPlantTypePipeline(rawValue) {
   const { observations, warnings: normWarnings } = applyDeterministicNormalizations([plantTypeObs(rawValue)]);
   const { selections, warnings: selWarnings } = proposeSelections({ observations });
   return { observations, warnings: [...normWarnings, ...selWarnings], selections };
 }
 
-test('plant_type pipeline: Perenual "Tree" -> observation normalized to canonical "tree", selection proposed', () => {
+test('plant_type pipeline: Perenual "Tree" -> observation normalized to canonical "tree", but NO selection is auto-proposed (single-provider trust policy)', () => {
   const { observations, warnings, selections } = runPlantTypePipeline("Tree");
   assert.equal(observations[0].normalized_value, "tree");
   assert.deepEqual(warnings, []);
-  const sel = selections.find((s) => s.trait === "plant_type");
-  assert.ok(sel);
-  assert.equal(sel.normalized_value, "tree");
+  assert.ok(!selections.some((s) => s.trait === "plant_type"), "a syntactically canonical single-provider plant_type must never be auto-selected");
 });
 
 // The real mini-batch-2 Buxus case: no safe crosswalk exists for this
@@ -64,4 +70,35 @@ test("invariant: selection.normalized_value === referenced observation.normalize
   for (const selection of selections) {
     assert.deepEqual(selection.normalized_value, byRef[selection.observation_ref].normalized_value);
   }
+});
+
+// ===========================================================================
+// batch-12 regression: real Mac run flagged Perenual returning a
+// syntactically canonical but biologically unreliable plant_type for
+// herbaceous plants — "Shrub" for Alcea rosea (a biennial/short-lived
+// perennial) and for Brunnera macrophylla (a herbaceous perennial), and
+// "Tree" for Alnus glutinosa (correct in that instance, but from the same
+// single, unverified source). None of these were an unmapped-string case —
+// crosswalkPlantTypeValue matched exactly, so the pre-existing crosswalk
+// gate alone was never going to catch this. Fixed as a TRUST-policy change:
+// plant_type removed from DETERMINISTIC_TRAITS entirely (selections.js) —
+// never a family/genus/growth_form inference either.
+// ===========================================================================
+
+test('plant_type pipeline: Perenual "Shrub" -> observation normalized to canonical "shrub", but NO selection is auto-proposed (real Alcea rosea / Brunnera macrophylla regression)', () => {
+  const { observations, warnings, selections } = runPlantTypePipeline("Shrub");
+  assert.equal(observations[0].normalized_value, "shrub");
+  assert.deepEqual(warnings, []);
+  assert.ok(!selections.some((s) => s.trait === "plant_type"));
+});
+
+test("plant_type pipeline: even TWO providers agreeing on the same canonical value never produce a plant_type selection (single-provider trust policy applies regardless of agreement count)", () => {
+  const observations = applyDeterministicNormalizations([
+    plantTypeObs("Tree"),
+    { ...plantTypeObs("tree"), observation_ref: "acer_palmatum_species:trefle:plant_type", provider: "trefle" },
+  ]).observations;
+  const { selections } = proposeSelections({ observations });
+  assert.ok(!selections.some((s) => s.trait === "plant_type"));
+  // Both observations still exist, both still normalized.
+  assert.equal(observations.filter((o) => o.trait === "plant_type" && o.normalized_value === "tree").length, 2);
 });

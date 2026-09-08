@@ -284,26 +284,32 @@ test("flowering_months D: no observation at all -> no selection", () => {
 // correctly got plant_type="fern" from Perenual, but Trefle also proposed a
 // clean, unconflicting flowering_months=[6,7,8,9,10] that would have been
 // auto-selected verbatim despite ferns never flowering (they reproduce by
-// spores). The observation itself must survive (real provenance, not an
-// error) — only the trait_selection must never be created.
-test("flowering_months E: plant_type=fern blocks the flowering_months selection, even with a single clean provider observation", () => {
+// spores). CORRECTED after a first cut of the batch-12 trust-policy change
+// wrongly made this whole route dormant: "plant_type is never promoted
+// into a trait_selection" (test E in plantTypePipeline.test.js /
+// PILOT BATCH below) is NOT the same claim as "a plant_type observation
+// can never gate flowering_months" — proposeSelections still computes an
+// internal-only plantTypeGuard (never added to `selections`) from the
+// exact same eligibility/agreement rule a real selection would have used,
+// and that guard alone is what blocks flowering_months here — with NO
+// family passed at all, proving the family gate is not what's firing.
+test("flowering_months E: an exact, unconflicting plant_type=fern OBSERVATION blocks flowering_months even with no family known (case A)", () => {
   const observations = [
     obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "fern" }),
     obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [6, 7, 8, 9, 10] }),
   ];
   const { selections, warnings } = proposeSelections({ observations });
 
-  // plant_type itself must remain fully selectable — the guard only ever
-  // targets flowering_months, never plant_type's own promotion.
-  const plantTypeSel = selections.find((s) => s.trait === "plant_type");
-  assert.ok(plantTypeSel);
-  assert.equal(plantTypeSel.normalized_value, "fern");
+  // plant_type is never auto-selected any more (single-provider trust
+  // policy, batch-12) — the guard use below is entirely internal.
+  assert.ok(!selections.some((s) => s.trait === "plant_type"));
 
   assert.ok(!selections.some((s) => s.trait === "flowering_months"));
   assert.ok(warnings.some((w) => w.includes('flowering_months: plant_type is "fern"')));
 
-  // The observation array itself is untouched by this — proposeSelections
-  // never mutates or drops observations, only decides what to select.
+  // The plant_type AND flowering_months observations both survive
+  // untouched — real provenance, just never promoted to a selection.
+  assert.ok(observations.some((o) => o.trait === "plant_type" && o.normalized_value === "fern"));
   assert.ok(observations.some((o) => o.trait === "flowering_months" && o.provider === "trefle"));
 });
 
@@ -324,7 +330,7 @@ test("flowering_months G: no plant_type observation at all -> flowering_months s
   assert.ok(selections.some((s) => s.trait === "flowering_months"));
 });
 
-test("flowering_months H: conflicting plant_type observations (no plant_type selection resolved) never trigger the fern guard — flowering_months still selects normally", () => {
+test("flowering_months H: conflicting plant_type observations (no consistent guard value) never trigger the fern guard — flowering_months still selects normally", () => {
   const observations = [
     obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "fern" }),
     obs({ observation_ref: "pt2", trait: "plant_type", provider: "trefle", normalized_value: "perennial" }),
@@ -332,7 +338,7 @@ test("flowering_months H: conflicting plant_type observations (no plant_type sel
   ];
   const { selections } = proposeSelections({ observations });
   assert.ok(!selections.some((s) => s.trait === "plant_type"), "conflicting plant_type must not resolve to a selection");
-  assert.ok(selections.some((s) => s.trait === "flowering_months"), "an unresolved plant_type must never speculatively block flowering_months");
+  assert.ok(selections.some((s) => s.trait === "flowering_months"), "disagreeing providers must never speculatively block flowering_months");
 });
 
 // Regression: real mini-batch-10 Mac run — Osmunda regalis (WCVP family
@@ -361,18 +367,54 @@ test("flowering_months I: a taxonomically-confirmed fern family blocks flowering
   assert.ok(observations.some((o) => o.trait === "flowering_months" && o.provider === "trefle" && Array.isArray(o.normalized_value)));
 });
 
-test("flowering_months J: plant_type=fern (exact provider match) still blocks flowering_months even when family is also passed", () => {
+test("flowering_months J: plant_type=fern observation AND a confirmed fern family both present — still blocked, plant_type still never selected (case B)", () => {
   const observations = [
     obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "fern" }),
     obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [6, 7, 8, 9, 10] }),
   ];
   const { selections, warnings } = proposeSelections({ observations, family: "Polypodiaceae" });
 
-  const plantTypeSel = selections.find((s) => s.trait === "plant_type");
-  assert.ok(plantTypeSel);
-  assert.equal(plantTypeSel.normalized_value, "fern");
+  // plant_type is never auto-selected (batch-12 trust policy), regardless
+  // of which gate ends up blocking flowering_months.
+  assert.ok(!selections.some((s) => s.trait === "plant_type"));
   assert.ok(!selections.some((s) => s.trait === "flowering_months"));
-  assert.ok(warnings.some((w) => w.includes("flowering_months")));
+  // Either gate's warning is an acceptable outcome here — both are true —
+  // but the plant_type gate is evaluated first in proposeFloweringMonths.
+  assert.ok(warnings.some((w) => w.includes('flowering_months: plant_type is "fern"')));
+});
+
+// Case E from the spec: a normal, non-fern plant_type observation must
+// obviously never block flowering_months, and must never itself become a
+// selection either (single-provider trust policy applies to every
+// plant_type value, not just "fern").
+test("flowering_months (case E): plant_type=tree observation never blocks flowering_months, and is never selected", () => {
+  const observations = [
+    obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "tree" }),
+    obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [4, 5] }),
+  ];
+  const { selections } = proposeSelections({ observations });
+  assert.ok(!selections.some((s) => s.trait === "plant_type"));
+  const sel = selections.find((s) => s.trait === "flowering_months");
+  assert.ok(sel);
+  assert.deepEqual(sel.normalized_value, [4, 5]);
+});
+
+// Case F from the spec: an uncertain (ambiguous-match) plant_type="fern"
+// observation must NOT serve as a guard — it follows the same,
+// already-existing `uncertain` exclusion every other deterministic trait
+// obeys (eligible() in this file), never a new/separate confidence rule.
+// Documented choice: uncertain observations are treated as absent for
+// guard purposes, exactly as they are for selection purposes.
+test("flowering_months (case F): an uncertain plant_type=fern observation must not gate flowering_months (treated as absent, same as for selection)", () => {
+  const observations = [
+    obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "fern", uncertain: true }),
+    obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [6, 7] }),
+  ];
+  const { selections } = proposeSelections({ observations });
+  assert.ok(!selections.some((s) => s.trait === "plant_type"));
+  const sel = selections.find((s) => s.trait === "flowering_months");
+  assert.ok(sel, "an uncertain fern reading must never silently become a biological truth");
+  assert.deepEqual(sel.normalized_value, [6, 7]);
 });
 
 test("flowering_months K: a normal flowering family (not in NON_FLOWERING_FAMILIES) with no plant_type observation still selects flowering_months normally", () => {
@@ -391,13 +433,16 @@ test("flowering_months L: no family passed at all (undefined) behaves exactly as
 
 // ===========================================================================
 // Pilot batch regression: the 4 new traits must never interfere with the
-// existing height_min_cm/height_max_cm/plant_type/sun selections — a
-// Camellia-like fixture (plant_type + sun already selectable, matching the
-// real production 2-selection case) and a Hydrangea-like fixture (only
-// growth_form available, no plant_type/sun since Perenual was unavailable).
+// existing height_min_cm/height_max_cm/sun selections — a Camellia-like
+// fixture (sun already selectable, matching real production data) and a
+// Hydrangea-like fixture (only growth_form available, no sun since
+// Perenual was unavailable). plant_type is included in the Camellia
+// fixture too, but — after the batch-12 trust-policy change — it must now
+// stay an observation only, never a selection (previously this fixture
+// asserted plant_type WAS selected; updated to match the new policy).
 // ===========================================================================
 
-test("PILOT BATCH: Camellia-like fixture keeps its 2 existing selections (plant_type, sun) unchanged after adding the 4 new traits", () => {
+test("PILOT BATCH: Camellia-like fixture keeps its sun/height_max_cm selections, plant_type observation retained but never auto-selected", () => {
   const observations = [
     obs({ observation_ref: "c1", trait: "plant_type", provider: "perenual", normalized_value: "shrub" }),
     obs({ observation_ref: "c2", trait: "sun", provider: "perenual", raw_value: ["full sun"], normalized_value: ["full_sun"] }),
@@ -405,7 +450,8 @@ test("PILOT BATCH: Camellia-like fixture keeps its 2 existing selections (plant_
   ];
   const { selections } = proposeSelections({ observations });
   const traits = selections.map((s) => s.trait).sort();
-  assert.deepEqual(traits, ["height_max_cm", "plant_type", "sun"]);
+  assert.deepEqual(traits, ["height_max_cm", "sun"]);
+  assert.ok(observations.some((o) => o.trait === "plant_type" && o.normalized_value === "shrub"), "the plant_type observation itself must still be retained");
 });
 
 test("PILOT BATCH: Hydrangea-like fixture (Perenual unavailable, only Trefle growth_form observed) never gets a growth_form selection (no canonical vocabulary), still nothing for plant_type/sun", () => {

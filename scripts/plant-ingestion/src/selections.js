@@ -7,13 +7,7 @@ import { isInformative } from "./informative.js";
 // spread_max_cm (number) and evergreen (boolean) reuse
 // proposeDeterministicNumericOrPassthrough exactly as-is: no new resolver,
 // no trait-specific logic, no crosswalk needed — their raw provider value
-// already IS the canonical shape (a number or a boolean). plant_type ALSO
-// reuses this same function, but only after normalization.js's
-// applyDeterministicNormalizations has already crosswalked its raw
-// provider string into the canonical PLANT_TYPE_VALUES vocabulary (or
-// null) — proposeDeterministicNumericOrPassthrough
-// itself still never sees or applies that crosswalk, it only ever copies
-// whatever normalized_value the observation already carries. A trait is
+// already IS the canonical shape (a number or a boolean). A trait is
 // proposed only when every non-uncertain observation for it (any provider)
 // agrees; any genuine disagreement still blocks the proposal entirely (see
 // proposeDeterministicNumericOrPassthrough below), never a Perenual-wins or
@@ -29,13 +23,44 @@ import { isInformative } from "./informative.js";
 // just had. Observations for growth_form are still collected normally
 // (buildObservations in provenance.js does not consult this set at all) —
 // only the automatic PROMOTION into a trait_selection is disabled, pending
-// a real crosswalk the same way sun/plant_type now have one.
+// a real crosswalk the same way sun now has one.
+//
+// plant_type is deliberately EXCLUDED too (removed after auditing
+// batch-12, 2026-09) — this is a TRUST-policy change, not a taxonomy or
+// crosswalk change. Real regression: Perenual returned raw plant_type
+// "Shrub" for Alcea rosea (a herbaceous biennial/short-lived perennial)
+// and for Brunnera macrophylla (a herbaceous perennial), and "Tree" for
+// Alnus glutinosa (in fact correct, but from the same unreliable source) —
+// all three normalized to a syntactically canonical PLANT_TYPE_VALUES
+// entry via crosswalkPlantTypeValue, so the exact-match crosswalk gate
+// (which only ever guards against unmapped/garbage strings) passed clean
+// and the wrong values were auto-selected verbatim. A canonical string
+// from a single provider is no longer sufficient evidence — plant_type
+// observations are still collected and still crosswalked exactly as
+// before (see normalization.js), just never promoted into a
+// trait_selection here. It becomes selectable again only via (1) a real
+// future independent-corroboration mechanism (a second, distinct source
+// agreeing), or (2) editorial/manual curation — never via a biological
+// heuristic (family, genus, growth_form, Poaceae, woody habit, taxonomy).
+//
+// IMPORTANT — "never promoted into a trait_selection" is NOT the same as
+// "can never inform a biological-applicability guard" (correction after
+// the first cut of this change dormant-ed proposeFloweringMonths's
+// plant_type route entirely, which was wrong): a reliable, non-uncertain,
+// provider-agreed plant_type="fern" observation is still real evidence
+// that flowering_months cannot apply, even though it is never trusted
+// enough to become the catalog's plant_type itself. See
+// proposeSelections' plantTypeGuard below — it reuses this exact same
+// eligibility/agreement computation (proposeDeterministicNumericOrPassthrough)
+// purely as an internal signal into proposeFloweringMonths, never adding
+// anything to `selections`.
+//
 // flowering_months is deliberately NOT in this generic set (removed after
 // auditing mini-batch-5, 2026-09) — it needs the same catalog entry's
 // plant_type context before it can be safely proposed (see
 // proposeFloweringMonths below), so it is handled as its own step in
 // proposeSelections, the same way sun already is.
-const DETERMINISTIC_TRAITS = new Set(["height_min_cm", "height_max_cm", "plant_type", "spread_max_cm", "evergreen"]);
+const DETERMINISTIC_TRAITS = new Set(["height_min_cm", "height_max_cm", "spread_max_cm", "evergreen"]);
 
 // An observation flagged `uncertain` is never eligible for an automatic
 // proposal — this is the same `uncertain` flag used for genuine
@@ -113,10 +138,16 @@ export function isNonFloweringFamily(family) {
 // rules as every other deterministic trait), then applies two independent
 // gates, either of which withholds the selection even though the provider
 // data was otherwise clean:
-//   1. plant_type gate — if THIS SAME catalog entry's plant_type has
-//      already been resolved (in this same proposeSelections call, from
-//      this same observations array — never a second independent lookup)
-//      to a value in PLANT_TYPES_WITHOUT_FLOWERING_MONTHS.
+//   1. plant_type gate — if THIS SAME catalog entry's plant_type, computed
+//      by proposeSelections via the exact same eligibility/agreement rule
+//      as every other deterministic trait (non-uncertain observations,
+//      all agreeing — see plantTypeGuard below), resolves to a value in
+//      PLANT_TYPES_WITHOUT_FLOWERING_MONTHS. This is a read-only guard
+//      value, never a trait_selection — an uncertain or conflicting
+//      plant_type observation is excluded from it exactly as it would
+//      have been excluded from an actual selection (same helper, same
+//      rules), so an ambiguous "fern" reading can never silently gate a
+//      trait either.
 //   2. taxonomic-family gate — if the resolved WCVP family is a confirmed
 //      fern family (NON_FLOWERING_FAMILIES above), regardless of whether
 //      any provider ever returned a plant_type observation at all. This is
@@ -212,9 +243,17 @@ export function proposeSelections({ observations, family = null }) {
     warnings.push(...w);
   }
 
-  const plantTypeSelection = selections.find((s) => s.trait === "plant_type");
+  // plant_type is never pushed into `selections` (see DETERMINISTIC_TRAITS
+  // comment above) — but proposeFloweringMonths still needs a reliable
+  // signal for its plant_type gate. plantTypeGuard reuses the exact same
+  // computation a real plant_type selection would have used (eligible()
+  // excludes uncertain observations; a conflict across providers yields
+  // null, never a guess) — it is discarded immediately after this call,
+  // never added to `selections`, never surfaced as a warning, never used
+  // to infer or score plant_type itself.
+  const plantTypeGuard = proposeDeterministicNumericOrPassthrough("plant_type", observations).selection;
   const { selection: floweringSelection, warnings: floweringWarnings } = proposeFloweringMonths(observations, {
-    plantTypeValue: plantTypeSelection ? plantTypeSelection.normalized_value : null,
+    plantTypeValue: plantTypeGuard ? plantTypeGuard.normalized_value : null,
     family,
   });
   if (floweringSelection) selections.push(floweringSelection);
