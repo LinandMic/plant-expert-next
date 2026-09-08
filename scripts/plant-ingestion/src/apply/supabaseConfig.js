@@ -41,17 +41,17 @@ function loadEnvFile(filePath) {
 
 const fileValues = loadEnvFile(ENV_FILE);
 
-function readKey(name) {
-  const value = (process.env[name] ?? fileValues[name] ?? "").trim();
-  return value || null;
-}
-
-// getSupabaseConfig() -> { url, serviceRoleKey, hasUrl, hasServiceRoleKey }
-// `url`/`serviceRoleKey` are the raw values (null if absent) — pass them
-// straight to supabaseAdminClient.js, never to a log/console call. Every
-// other caller (CLI status lines, reports) must use hasUrl/hasServiceRoleKey
-// only.
-export function getSupabaseConfig() {
+// resolveSupabaseConfig({ env, fileValues }) -> { url, serviceRoleKey,
+// hasUrl, hasServiceRoleKey } — the actual precedence logic, injectable so
+// it can be unit tested hermetically (no real process.env, no real
+// .env.ingestion file involved). `env`/`fileValues` are plain lookup
+// objects, never mutated. Precedence, unchanged from before this refactor:
+// 1. env[name] if present, 2. fileValues[name] if present, 3. null.
+export function resolveSupabaseConfig({ env, fileValues }) {
+  function readKey(name) {
+    const value = (env[name] ?? fileValues[name] ?? "").trim();
+    return value || null;
+  }
   const url = readKey("SUPABASE_URL");
   const serviceRoleKey = readKey("SUPABASE_SERVICE_ROLE_KEY");
   return {
@@ -60,4 +60,16 @@ export function getSupabaseConfig() {
     hasUrl: Boolean(url),
     hasServiceRoleKey: Boolean(serviceRoleKey),
   };
+}
+
+// getSupabaseConfig() -> { url, serviceRoleKey, hasUrl, hasServiceRoleKey }
+// `url`/`serviceRoleKey` are the raw values (null if absent) — pass them
+// straight to supabaseAdminClient.js, never to a log/console call. Every
+// other caller (CLI status lines, reports) must use hasUrl/hasServiceRoleKey
+// only. Production behavior is exactly resolveSupabaseConfig against the
+// real process environment and the real local .env.ingestion fallback —
+// this thin wrapper is the only place either of those two real sources is
+// ever touched.
+export function getSupabaseConfig() {
+  return resolveSupabaseConfig({ env: process.env, fileValues });
 }
