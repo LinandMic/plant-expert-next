@@ -27,8 +27,11 @@ export function isPlanRestrictedBody(body) {
 }
 
 // Strips anything that looks like a credential from a URL before it is ever
-// logged or written to an output/raw file.
-function redactUrl(url) {
+// logged or written to an output/raw file. Exported so providerCache.js can
+// reuse the exact same redaction list to derive cache keys / persisted URLs
+// — never a second, independently-maintained list that could drift and
+// under-redact.
+export function redactUrl(url) {
   try {
     const u = new URL(url);
     for (const key of ["key", "token", "api_key", "apikey"]) {

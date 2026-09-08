@@ -18,11 +18,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const OUTPUT_ROOT = path.join(ROOT, "output");
 const RAW_ROOT = path.join(OUTPUT_ROOT, "raw");
+const CACHE_ROOT = path.join(ROOT, "cache");
 const DEFAULT_PLANTS_PATH = path.join(ROOT, "plants.json");
 const DEFAULT_BUNDLE_PATH = path.join(OUTPUT_ROOT, "acer-mini-batch.json");
 
 function parseArgs(argv) {
-  const args = { plantsPath: DEFAULT_PLANTS_PATH, outPath: DEFAULT_BUNDLE_PATH };
+  const args = { plantsPath: DEFAULT_PLANTS_PATH, outPath: DEFAULT_BUNDLE_PATH, refresh: false };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--plants") {
       args.plantsPath = path.resolve(process.cwd(), argv[i + 1]);
@@ -30,6 +31,13 @@ function parseArgs(argv) {
     } else if (argv[i] === "--out") {
       args.outPath = path.resolve(process.cwd(), argv[i + 1]);
       i += 1;
+    } else if (argv[i] === "--refresh") {
+      // Forces a real network call for every provider/taxon in this run,
+      // bypassing the local cache — normal behavior (no flag) is
+      // cache-first, reusing any already-retrieved provider response so a
+      // rerun (e.g. after a selection-logic fix) never re-spends a
+      // rate/plan-limited quota for data already on disk.
+      args.refresh = true;
     }
   }
   return args;
@@ -63,12 +71,14 @@ async function run() {
   console.log(`Perenual key: ${config.hasPerenualKey ? "present" : "MISSING (perenual skipped)"}`);
   console.log(`Trefle key:   ${config.hasTrefleKey ? "present" : "MISSING (trefle skipped)"}`);
   console.log(`Plants file:  ${path.relative(process.cwd(), args.plantsPath)}`);
+  console.log(`Provider cache: ${path.relative(process.cwd(), CACHE_ROOT)} (${args.refresh ? "REFRESH — bypassing cache, real network calls" : "cache-first"})`);
 
   mkdirSync(OUTPUT_ROOT, { recursive: true });
   mkdirSync(RAW_ROOT, { recursive: true });
+  mkdirSync(CACHE_ROOT, { recursive: true });
 
   const plants = loadPlants(args.plantsPath);
-  const bundle = await buildPlantBatch({ plants, config, rawRoot: RAW_ROOT });
+  const bundle = await buildPlantBatch({ plants, config, rawRoot: RAW_ROOT, cacheDir: CACHE_ROOT, refresh: args.refresh });
 
   mkdirSync(path.dirname(args.outPath), { recursive: true });
   writeFileSync(args.outPath, JSON.stringify(bundle, null, 2), "utf8");

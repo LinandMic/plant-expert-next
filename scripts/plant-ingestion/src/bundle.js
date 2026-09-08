@@ -7,6 +7,8 @@ import { queryWcvp } from "../../plant-benchmark/src/providers/wcvp.js";
 import { queryPerenual } from "../../plant-benchmark/src/providers/perenual.js";
 import { queryTrefle } from "../../plant-benchmark/src/providers/trefle.js";
 import { parseCultivarName } from "../../plant-benchmark/src/taxonomyMatch.js";
+import { fetchJson } from "../../plant-benchmark/src/httpClient.js";
+import { createCachedFetch } from "../../plant-benchmark/src/providerCache.js";
 
 import { planBatchGrouping } from "./batchGrouping.js";
 import { buildTaxonDryRun, buildTaxonNames } from "./taxonomy.js";
@@ -21,8 +23,8 @@ import { checkAcerSpeciesDrift, checkBloodgoodDrift } from "./drift.js";
 // reused for the cultivar too, so the two catalog entries are structurally
 // guaranteed to share the same taxon_ref (spec §6) rather than merely
 // hoping two separate network calls agree.
-async function resolveSharedTaxon(parentName, { rawRoot }) {
-  const wcvpResult = await queryWcvp({ inputName: parentName, rawRoot });
+async function resolveSharedTaxon(parentName, { rawRoot, fetchImpl }) {
+  const wcvpResult = await queryWcvp({ inputName: parentName, rawRoot, fetchImpl });
   const wcvpTaxonomy = wcvpResult.taxonomy;
   const built = buildTaxonDryRun(wcvpTaxonomy);
   const names = built.blocked ? [] : buildTaxonNames(wcvpTaxonomy, built.taxon_ref);
@@ -55,11 +57,11 @@ function applyTaxonomyAmbiguity(sourceRecord, observations, warnings) {
   return observations.map((o) => ({ ...o, uncertain: true }));
 }
 
-async function fetchHorticultural(inputName, { rawRoot, config }) {
+async function fetchHorticultural(inputName, { rawRoot, config, fetchImpl }) {
   const retrievedAt = new Date().toISOString();
   const [perenualResult, trefleResult] = await Promise.all([
-    queryPerenual({ inputName, rawRoot, apiKey: config.perenualApiKey, accessTier: config.perenualAccessTier }),
-    queryTrefle({ inputName, rawRoot, apiKey: config.trefleApiKey }),
+    queryPerenual({ inputName, rawRoot, apiKey: config.perenualApiKey, accessTier: config.perenualAccessTier, fetchImpl }),
+    queryTrefle({ inputName, rawRoot, apiKey: config.trefleApiKey, fetchImpl }),
   ]);
   return { perenualResult, trefleResult, retrievedAt };
 }
@@ -67,11 +69,11 @@ async function fetchHorticultural(inputName, { rawRoot, config }) {
 // buildPlantEntry — builds one `plants[]` entry of the dry-run bundle for
 // either the species or the cultivar, given the ALREADY-RESOLVED shared
 // taxon (from resolveSharedTaxon, called once by buildAcerMiniBatch below).
-async function buildPlantEntry({ inputName, inputType, sharedTaxon, catalogRefValue, parentCatalogRef, config, rawRoot }) {
+async function buildPlantEntry({ inputName, inputType, sharedTaxon, catalogRefValue, parentCatalogRef, config, rawRoot, fetchImpl }) {
   const warnings = [...sharedTaxon.warnings];
   const { cultivarName } = parseCultivarName(inputName);
 
-  const { perenualResult, trefleResult, retrievedAt } = await fetchHorticultural(inputName, { rawRoot, config });
+  const { perenualResult, trefleResult, retrievedAt } = await fetchHorticultural(inputName, { rawRoot, config, fetchImpl });
 
   let catalog = null;
   if (!sharedTaxon.blocked) {
@@ -146,23 +148,35 @@ async function buildPlantEntry({ inputName, inputType, sharedTaxon, catalogRefVa
   };
 }
 
-// buildPlantBatch({ plants, config, rawRoot }) — builds the dry-run bundle
-// for an arbitrary list of { input_name, type } inputs (one or many taxon
-// families, each with zero or more cultivars). Output order matches input
-// order exactly. Each taxon family (species + its cultivars, grouped by
-// parsed parent name via planBatchGrouping) gets exactly ONE WCVP lookup,
-// shared across every entry in that family — never one call per input —
-// so entries sharing a parent are structurally guaranteed to share the
-// same taxon_ref, and a cultivar's parent_catalog_ref is always the real
-// catalog_ref of its species sibling elsewhere in this same batch (spec
-// §6). This generalizes the original Acer/Bloodgood pair (still exactly
-// reproduced when `plants` has just those 2 entries) to any batch size.
-export async function buildPlantBatch({ plants, config, rawRoot }) {
+// buildPlantBatch({ plants, config, rawRoot, cacheDir, refresh }) — builds
+// the dry-run bundle for an arbitrary list of { input_name, type } inputs
+// (one or many taxon families, each with zero or more cultivars). Output
+// order matches input order exactly. Each taxon family (species + its
+// cultivars, grouped by parsed parent name via planBatchGrouping) gets
+// exactly ONE WCVP lookup, shared across every entry in that family — never
+// one call per input — so entries sharing a parent are structurally
+// guaranteed to share the same taxon_ref, and a cultivar's
+// parent_catalog_ref is always the real catalog_ref of its species sibling
+// elsewhere in this same batch (spec §6). This generalizes the original
+// Acer/Bloodgood pair (still exactly reproduced when `plants` has just
+// those 2 entries) to any batch size.
+//
+// cacheDir/refresh (both optional) wire in the provider fetch cache
+// (providerCache.js): when cacheDir is provided, every WCVP/Perenual/Trefle
+// call in this batch goes through ONE shared cached-fetch instance instead
+// of a real fetchJson call — cache-first unless refresh=true. Omitting
+// cacheDir preserves the exact prior behavior (always a real network call)
+// for any other caller that doesn't pass it. The cache affects retrieval
+// ONLY — every step below it (normalization, crosswalks, observations,
+// selections) always runs on whatever raw data comes back, fresh or
+// cached, with today's code.
+export async function buildPlantBatch({ plants, config, rawRoot, cacheDir = null, refresh = false }) {
+  const fetchImpl = cacheDir ? createCachedFetch({ cacheDir, refresh }) : fetchJson;
   const { plan } = planBatchGrouping(plants);
 
   const sharedTaxonByParent = new Map();
   for (const parentName of new Set(plan.map((p) => p.parentName))) {
-    sharedTaxonByParent.set(parentName, await resolveSharedTaxon(parentName, { rawRoot }));
+    sharedTaxonByParent.set(parentName, await resolveSharedTaxon(parentName, { rawRoot, fetchImpl }));
   }
 
   const entries = [];
@@ -176,6 +190,7 @@ export async function buildPlantBatch({ plants, config, rawRoot }) {
         parentCatalogRef: p.parentCatalogRef,
         config,
         rawRoot,
+        fetchImpl,
       })
     );
   }

@@ -194,7 +194,7 @@ export function mapTrefleDetailToTraits({ candidateId, sourceUrl, detailData, re
   return { traits, provenance };
 }
 
-export async function queryTrefle({ inputName, rawRoot, apiKey }) {
+export async function queryTrefle({ inputName, rawRoot, apiKey, fetchImpl = fetchJson }) {
   const slug = slugify(inputName);
   const retrievedAt = new Date().toISOString();
 
@@ -203,7 +203,7 @@ export async function queryTrefle({ inputName, rawRoot, apiKey }) {
   }
 
   const searchUrl = `${BASE}/plants/search?token=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(inputName)}`;
-  const searchResult = await fetchJson(searchUrl, { providerName: "trefle" });
+  const searchResult = await fetchImpl(searchUrl, { providerName: "trefle" });
   writeRaw(rawRoot, "trefle", `${slug}.search`, { input_name: inputName, result: searchResult });
 
   if (!searchResult.ok) {
@@ -243,7 +243,7 @@ export async function queryTrefle({ inputName, rawRoot, apiKey }) {
   };
 
   const detailUrl = `${BASE}/species/${candidate.id}?token=${encodeURIComponent(apiKey)}`;
-  const detailResult = await fetchJson(detailUrl, { providerName: "trefle" });
+  const detailResult = await fetchImpl(detailUrl, { providerName: "trefle" });
   writeRaw(rawRoot, "trefle", `${slug}.detail`, { input_name: inputName, result: detailResult });
 
   if (!detailResult.ok) {
@@ -262,7 +262,13 @@ export async function queryTrefle({ inputName, rawRoot, apiKey }) {
 
   const sourceUrl = `${BASE}/species/${candidate.id}`;
   const species = (detailResult.data && detailResult.data.data) || {};
-  const { traits, provenance } = mapTrefleDetailToTraits({ candidateId: candidate.id, sourceUrl, detailData: species, retrievedAt });
+  // detailResult.retrieved_at is present, and stable across reruns, when
+  // this response came from the provider cache (providerCache.js) — a
+  // cache hit must never fabricate a fresh "now" retrieval date for
+  // already-retrieved data. Only a genuine new fetch falls back to the
+  // request-time `retrievedAt` computed above.
+  const detailRetrievedAt = detailResult.retrieved_at || retrievedAt;
+  const { traits, provenance } = mapTrefleDetailToTraits({ candidateId: candidate.id, sourceUrl, detailData: species, retrievedAt: detailRetrievedAt });
 
   return {
     input_name: inputName,

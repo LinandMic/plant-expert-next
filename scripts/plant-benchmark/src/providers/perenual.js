@@ -465,11 +465,17 @@ export async function queryPerenual({ inputName, rawRoot, apiKey, accessTier = n
   }
 
   const sourceUrl = `${BASE}/species/details/${candidate.id}`;
+  // detailResult.retrieved_at is present, and stable across reruns, when
+  // this response came from the provider cache (providerCache.js) — a
+  // cache hit must never fabricate a fresh "now" retrieval date for
+  // already-retrieved data. Only a genuine new fetch falls back to the
+  // request-time `retrievedAt` computed above.
+  const detailRetrievedAt = detailResult.retrieved_at || retrievedAt;
   const { traits, cultivarField, varietyField, subspeciesField, hybridField } = mapPerenualDetailToTraits({
     candidateId: candidate.id,
     sourceUrl,
     detailData: detailResult.data,
-    retrievedAt,
+    retrievedAt: detailRetrievedAt,
   });
 
   return {
