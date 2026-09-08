@@ -335,6 +335,60 @@ test("flowering_months H: conflicting plant_type observations (no plant_type sel
   assert.ok(selections.some((s) => s.trait === "flowering_months"), "an unresolved plant_type must never speculatively block flowering_months");
 });
 
+// Regression: real mini-batch-10 Mac run — Osmunda regalis (WCVP family
+// Osmundaceae, a fern) got NO plant_type observation from any provider at
+// all (only growth_form="Rhizomatous", light/humidity/soil_ph/growth_rate
+// observations plus a clean flowering_months=[5,6,7] from Trefle), so the
+// plant_type=fern guard (test E) never had anything to key off and
+// flowering_months was auto-selected verbatim. The taxonomic family — known
+// and reliable independently of what any horticultural provider returned —
+// must gate flowering_months on its own.
+test("flowering_months I: a taxonomically-confirmed fern family blocks flowering_months even with no plant_type observation at all", () => {
+  const observations = [
+    obs({ observation_ref: "gf1", trait: "growth_form", provider: "trefle", normalized_value: "Rhizomatous" }),
+    obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [5, 6, 7] }),
+  ];
+  const { selections, warnings } = proposeSelections({ observations, family: "Osmundaceae" });
+
+  // plant_type must never be invented from the family — classification
+  // stays conservative, only trait applicability uses taxonomy.
+  assert.ok(!selections.some((s) => s.trait === "plant_type"), "family must never be used to infer a plant_type selection");
+
+  assert.ok(!selections.some((s) => s.trait === "flowering_months"));
+  assert.ok(warnings.some((w) => w.includes('flowering_months') && w.includes('Osmundaceae')));
+
+  // The raw observation survives untouched — only promotion is blocked.
+  assert.ok(observations.some((o) => o.trait === "flowering_months" && o.provider === "trefle" && Array.isArray(o.normalized_value)));
+});
+
+test("flowering_months J: plant_type=fern (exact provider match) still blocks flowering_months even when family is also passed", () => {
+  const observations = [
+    obs({ observation_ref: "pt1", trait: "plant_type", provider: "perenual", normalized_value: "fern" }),
+    obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [6, 7, 8, 9, 10] }),
+  ];
+  const { selections, warnings } = proposeSelections({ observations, family: "Polypodiaceae" });
+
+  const plantTypeSel = selections.find((s) => s.trait === "plant_type");
+  assert.ok(plantTypeSel);
+  assert.equal(plantTypeSel.normalized_value, "fern");
+  assert.ok(!selections.some((s) => s.trait === "flowering_months"));
+  assert.ok(warnings.some((w) => w.includes("flowering_months")));
+});
+
+test("flowering_months K: a normal flowering family (not in NON_FLOWERING_FAMILIES) with no plant_type observation still selects flowering_months normally", () => {
+  const observations = [obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [7] })];
+  const { selections } = proposeSelections({ observations, family: "Malvaceae" });
+  const sel = selections.find((s) => s.trait === "flowering_months");
+  assert.ok(sel, "Tilia cordata (family Malvaceae) must remain selectable — not a confirmed fern family");
+  assert.deepEqual(sel.normalized_value, [7]);
+});
+
+test("flowering_months L: no family passed at all (undefined) behaves exactly as before — never blocks a clean flowering observation", () => {
+  const observations = [obs({ observation_ref: "fm1", trait: "flowering_months", provider: "trefle", normalized_value: [4, 5] })];
+  const { selections } = proposeSelections({ observations });
+  assert.ok(selections.some((s) => s.trait === "flowering_months"));
+});
+
 // ===========================================================================
 // Pilot batch regression: the 4 new traits must never interfere with the
 // existing height_min_cm/height_max_cm/plant_type/sun selections — a

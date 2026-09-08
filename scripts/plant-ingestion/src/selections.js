@@ -82,18 +82,54 @@ function proposeDeterministicNumericOrPassthrough(trait, observations) {
 // them regardless of what a provider's data pipeline happens to return.
 const PLANT_TYPES_WITHOUT_FLOWERING_MONTHS = new Set(["fern"]);
 
+// WCVP families confirmed, from real GBIF/WCVP lookups actually run by this
+// pipeline, to be ferns (spore-bearing, non-flowering vascular plants —
+// Polypodiopsida) — never flowering-capable regardless of provider data.
+// This is NOT an attempt at an exhaustive list of the ~30 recognized fern
+// families worldwide: it only ever grows by adding a family this pipeline
+// has itself observed on a real ACCEPTED WCVP fern taxon, never by guessing
+// ahead. Real regression (mini-batch-10, live Mac run): Osmunda regalis
+// (family Osmundaceae, WCVP key 207447382, ACCEPTED) got no plant_type
+// observation from any provider at all, so the plant_type="fern" gate above
+// never triggered, and Trefle's flowering_months=[5,6,7] was auto-selected
+// for a fern. Families below, each confirmed on a real ACCEPTED fern taxon
+// resolved by this pipeline: Polypodiaceae (Dryopteris filix-mas,
+// mini-batch-5; Polystichum setiferum, mini-batch-7 — this WCVP dataset
+// uses a broad, older circumscription that groups several modern fern
+// families under this name), Aspleniaceae (Asplenium scolopendrium,
+// mini-batch-6; Athyrium filix-femina, mini-batch-8; Onoclea
+// struthiopteris, mini-batch-9), Osmundaceae (Osmunda regalis,
+// mini-batch-10). This set deliberately does NOT feed plant_type — it only
+// gates flowering_months applicability, a taxonomic fact independent of
+// the conservative provider-only plant_type classification.
+const NON_FLOWERING_FAMILIES = new Set(["Polypodiaceae", "Aspleniaceae", "Osmundaceae"]);
+
+export function isNonFloweringFamily(family) {
+  return Boolean(family) && NON_FLOWERING_FAMILIES.has(family);
+}
+
 // proposeFloweringMonths — reuses proposeDeterministicNumericOrPassthrough
 // exactly as before for the raw computation (same eligibility/conflict
-// rules as every other deterministic trait), then applies one additional,
-// context-aware gate: if THIS SAME catalog entry's plant_type has already
-// been resolved (in this same proposeSelections call, from this same
-// observations array — never a second independent lookup) to a value in
-// PLANT_TYPES_WITHOUT_FLOWERING_MONTHS, the selection is withheld even
-// though the provider data was otherwise clean. The underlying observation
-// is untouched by this — this only ever affects promotion into a selection,
-// never data collection (spec: "l'observation Trefle... peut rester
-// stockée avec provenance").
-function proposeFloweringMonths(observations, plantTypeValue) {
+// rules as every other deterministic trait), then applies two independent
+// gates, either of which withholds the selection even though the provider
+// data was otherwise clean:
+//   1. plant_type gate — if THIS SAME catalog entry's plant_type has
+//      already been resolved (in this same proposeSelections call, from
+//      this same observations array — never a second independent lookup)
+//      to a value in PLANT_TYPES_WITHOUT_FLOWERING_MONTHS.
+//   2. taxonomic-family gate — if the resolved WCVP family is a confirmed
+//      fern family (NON_FLOWERING_FAMILIES above), regardless of whether
+//      any provider ever returned a plant_type observation at all. This is
+//      what catches Osmunda regalis: no provider plant_type observation
+//      exists, so gate 1 never fires, but the family is taxonomically
+//      known and reliable (spec: applicability of a trait may use explicit
+//      taxonomic information even where classification itself must stay
+//      conservative).
+// Neither gate ever mutates plant_type or invents one — the underlying
+// flowering_months observation is untouched either way — this only ever
+// affects promotion into a selection, never data collection (spec:
+// "l'observation Trefle... peut rester stockée avec provenance").
+function proposeFloweringMonths(observations, { plantTypeValue, family } = {}) {
   const { selection, warnings } = proposeDeterministicNumericOrPassthrough("flowering_months", observations);
   if (!selection) return { selection: null, warnings };
 
@@ -101,6 +137,13 @@ function proposeFloweringMonths(observations, plantTypeValue) {
     return {
       selection: null,
       warnings: [`flowering_months: plant_type is "${plantTypeValue}" — not botanically applicable, no selection proposed despite an otherwise clean provider observation`],
+    };
+  }
+
+  if (isNonFloweringFamily(family)) {
+    return {
+      selection: null,
+      warnings: [`flowering_months: WCVP family "${family}" is a confirmed non-flowering (fern) family — not botanically applicable, no selection proposed despite an otherwise clean provider observation`],
     };
   }
 
@@ -159,7 +202,7 @@ function proposeSun(observations) {
 // observation (test: selection/observation normalized_value invariant),
 // because selections are only ever built FROM that same array, never a
 // second independent computation.
-export function proposeSelections({ observations }) {
+export function proposeSelections({ observations, family = null }) {
   const selections = [];
   const warnings = [];
 
@@ -170,10 +213,10 @@ export function proposeSelections({ observations }) {
   }
 
   const plantTypeSelection = selections.find((s) => s.trait === "plant_type");
-  const { selection: floweringSelection, warnings: floweringWarnings } = proposeFloweringMonths(
-    observations,
-    plantTypeSelection ? plantTypeSelection.normalized_value : null
-  );
+  const { selection: floweringSelection, warnings: floweringWarnings } = proposeFloweringMonths(observations, {
+    plantTypeValue: plantTypeSelection ? plantTypeSelection.normalized_value : null,
+    family,
+  });
   if (floweringSelection) selections.push(floweringSelection);
   warnings.push(...floweringWarnings);
 

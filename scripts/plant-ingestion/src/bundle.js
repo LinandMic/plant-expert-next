@@ -118,7 +118,7 @@ async function buildPlantEntry({ inputName, inputType, sharedTaxon, catalogRefVa
 
   let selections = [];
   if (catalog) {
-    const proposed = proposeSelections({ observations });
+    const proposed = proposeSelections({ observations, family: sharedTaxon.wcvpTaxonomy ? sharedTaxon.wcvpTaxonomy.family : null });
     selections = proposed.selections;
     warnings.push(...proposed.warnings);
   }
