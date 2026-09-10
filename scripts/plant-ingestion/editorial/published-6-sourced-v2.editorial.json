@@ -1,0 +1,633 @@
+[
+  {
+    "schema_version": 2,
+    "catalog_ref": "hydrangea_macrophylla_species",
+    "trait": "sun",
+    "raw_value": "partial shade / dappled sunlight / deep shade",
+    "normalized_value": [
+      "partial_sun",
+      "bright_shade",
+      "shade"
+    ],
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Hydrangea macrophylla (Hortensia)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/hydrangea-macrophylla/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Trois formulations cohérentes (aucun full_sun mentionné) mappées intégralement : partial shade->partial_sun, dappled sunlight->bright_shade, deep shade->shade.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "hydrangea_macrophylla_species",
+    "trait": "height_min_cm",
+    "raw_value": "3 ft (lower bound of reported 3-6 ft range)",
+    "normalized_value": 91,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Hydrangea macrophylla (Hortensia)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/hydrangea-macrophylla/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "3 ft x 30.48 = 91.44 cm, arrondi 91 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "hydrangea_macrophylla_species",
+    "trait": "height_max_cm",
+    "raw_value": "6 ft (upper bound of reported 3-6 ft range)",
+    "normalized_value": 183,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Hydrangea macrophylla (Hortensia)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/hydrangea-macrophylla/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "6 ft x 30.48 = 182.88 cm, arrondi 183 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "hydrangea_macrophylla_species",
+    "trait": "spread_max_cm",
+    "raw_value": "6 ft (upper bound of reported width 3-6 ft)",
+    "normalized_value": 183,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Hydrangea macrophylla (Hortensia)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/hydrangea-macrophylla/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "6 ft x 30.48 = 182.88 cm, arrondi 183 cm. Schema n'a qu'un spread_max_cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "hydrangea_macrophylla_species",
+    "trait": "evergreen",
+    "raw_value": "deciduous",
+    "normalized_value": false,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Hydrangea macrophylla (Hortensia)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/hydrangea-macrophylla/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Source indique \"deciduous\" sans ambiguite.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "lavandula_angustifolia_species",
+    "trait": "sun",
+    "raw_value": "full sun (cultural recommendation; page also mentions partial shade tolerance)",
+    "normalized_value": [
+      "full_sun"
+    ],
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Lavandula angustifolia (English Lavender)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/lavandula-angustifolia/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Choix conservateur : valeur la plus stricte/recommandee retenue (full_sun), tolerance secondaire partial shade non ajoutee.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "lavandula_angustifolia_species",
+    "trait": "height_min_cm",
+    "raw_value": "1 ft (lower bound of reported 1-2 ft range)",
+    "normalized_value": 30,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Lavandula angustifolia (English Lavender)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/lavandula-angustifolia/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "1 ft x 30.48 = 30.48 cm, arrondi 30 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "lavandula_angustifolia_species",
+    "trait": "height_max_cm",
+    "raw_value": "2 ft (upper bound of reported 1-2 ft range)",
+    "normalized_value": 61,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Lavandula angustifolia (English Lavender)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/lavandula-angustifolia/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "2 ft x 30.48 = 60.96 cm, arrondi 61 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "lavandula_angustifolia_species",
+    "trait": "spread_max_cm",
+    "raw_value": "3 ft (upper bound of reported width 2-3 ft)",
+    "normalized_value": 91,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Lavandula angustifolia (English Lavender)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/lavandula-angustifolia/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "3 ft x 30.48 = 91.44 cm, arrondi 91 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "lavandula_angustifolia_species",
+    "trait": "evergreen",
+    "raw_value": "broadleaf evergreen",
+    "normalized_value": true,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Lavandula angustifolia (English Lavender)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/lavandula-angustifolia/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Source tranche explicitement pour evergreen (pas semi-evergreen).",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "echinacea_purpurea_species",
+    "trait": "plant_type",
+    "raw_value": "herbaceous perennial",
+    "normalized_value": "perennial",
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Echinacea purpurea (Purple Coneflower)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/echinacea-purpurea/common-name/purple-coneflower/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Mapping direct.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "echinacea_purpurea_species",
+    "trait": "height_min_cm",
+    "raw_value": "3 ft (lower bound of reported 3-4 ft range)",
+    "normalized_value": 91,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Echinacea purpurea (Purple Coneflower)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/echinacea-purpurea/common-name/purple-coneflower/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "3 ft x 30.48 = 91.44 cm, arrondi 91 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "echinacea_purpurea_species",
+    "trait": "height_max_cm",
+    "raw_value": "4 ft (upper bound of reported 3-4 ft range)",
+    "normalized_value": 122,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Echinacea purpurea (Purple Coneflower)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/echinacea-purpurea/common-name/purple-coneflower/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "4 ft x 30.48 = 121.92 cm, arrondi 122 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "echinacea_purpurea_species",
+    "trait": "evergreen",
+    "raw_value": "deciduous",
+    "normalized_value": false,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Echinacea purpurea (Purple Coneflower)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/echinacea-purpurea/common-name/purple-coneflower/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Source indique \"deciduous\" sans ambiguite.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "calluna_vulgaris_species",
+    "trait": "plant_type",
+    "raw_value": "shrub / perennial / ground cover (source lists all three; \"shrub\" selected)",
+    "normalized_value": "shrub",
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Calluna vulgaris (Scotch Heather)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/calluna-vulgaris/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Choix conservateur parmi 3 termes non arbitres par la source elle-meme ; \"shrub\" retenu comme classement le plus large/standard.",
+      "decided_by": null
+    },
+    "confidence": "medium"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "calluna_vulgaris_species",
+    "trait": "height_min_cm",
+    "raw_value": "4 in (lower bound of reported 4 in - 2 ft range)",
+    "normalized_value": 10,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Calluna vulgaris (Scotch Heather)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/calluna-vulgaris/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "4 in x 2.54 = 10.16 cm, arrondi 10 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "calluna_vulgaris_species",
+    "trait": "height_max_cm",
+    "raw_value": "2 ft (upper bound of reported 4 in - 2 ft range)",
+    "normalized_value": 61,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Calluna vulgaris (Scotch Heather)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/calluna-vulgaris/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "2 ft x 30.48 = 60.96 cm, arrondi 61 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "calluna_vulgaris_species",
+    "trait": "spread_max_cm",
+    "raw_value": "2 ft (upper bound of reported width 1-2 ft)",
+    "normalized_value": 61,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Calluna vulgaris (Scotch Heather)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/calluna-vulgaris/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "2 ft x 30.48 = 60.96 cm, arrondi 61 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "calluna_vulgaris_species",
+    "trait": "evergreen",
+    "raw_value": "broadleaf evergreen",
+    "normalized_value": true,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Calluna vulgaris (Scotch Heather)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/calluna-vulgaris/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Source tranche explicitement pour evergreen.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "dryopteris_filix_mas_species",
+    "trait": "sun",
+    "raw_value": "dappled sun / partial shade / deep shade",
+    "normalized_value": [
+      "partial_sun",
+      "bright_shade",
+      "shade"
+    ],
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Dryopteris filix-mas (Male Fern)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/dryopteris-filix-mas/common-name/male-fern/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Trois formulations coherentes mappees integralement : dappled sun->bright_shade, partial shade->partial_sun, deep shade->shade.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "dryopteris_filix_mas_species",
+    "trait": "height_min_cm",
+    "raw_value": "2 ft (lower bound of reported 2-3 ft range)",
+    "normalized_value": 61,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Dryopteris filix-mas (Male Fern)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/dryopteris-filix-mas/common-name/male-fern/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "2 ft x 30.48 = 60.96 cm, arrondi 61 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "dryopteris_filix_mas_species",
+    "trait": "height_max_cm",
+    "raw_value": "3 ft (upper bound of reported 2-3 ft range)",
+    "normalized_value": 91,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Dryopteris filix-mas (Male Fern)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/dryopteris-filix-mas/common-name/male-fern/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "3 ft x 30.48 = 91.44 cm, arrondi 91 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "dryopteris_filix_mas_species",
+    "trait": "spread_max_cm",
+    "raw_value": "3 ft (upper bound of reported width 2-3 ft)",
+    "normalized_value": 91,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Dryopteris filix-mas (Male Fern)",
+      "publisher": "NC State Extension Gardener Plant Toolbox (NC State University)",
+      "url": "https://plants.ces.ncsu.edu/plants/dryopteris-filix-mas/common-name/male-fern/",
+      "license": "NC State Extension public-education resource — specific reuse license not independently confirmed by this sandbox (WebFetch blocked); reported here for factual data only, no content reproduced verbatim",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "3 ft x 30.48 = 91.44 cm, arrondi 91 cm.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "aquilegia_vulgaris_species",
+    "trait": "plant_type",
+    "raw_value": "herbaceous perennial",
+    "normalized_value": "perennial",
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Aquilegia vulgaris",
+      "publisher": "Royal Horticultural Society (RHS) — Plant Details",
+      "url": "https://www.rhs.org.uk/plants/100859/i-aquilegia-vulgaris-i/details",
+      "license": "© Royal Horticultural Society (RHS) — copyrighted content, referenced for factual data only, no content reproduced verbatim; specific reuse license not independently confirmed by this sandbox",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Mapping direct.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "aquilegia_vulgaris_species",
+    "trait": "height_max_cm",
+    "raw_value": "RHS ultimate height band 0.5-1 m (upper bound retained; no independent minimum invented)",
+    "normalized_value": 100,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Aquilegia vulgaris",
+      "publisher": "Royal Horticultural Society (RHS) — Plant Details",
+      "url": "https://www.rhs.org.uk/plants/100859/i-aquilegia-vulgaris-i/details",
+      "license": "© Royal Horticultural Society (RHS) — copyrighted content, referenced for factual data only, no content reproduced verbatim; specific reuse license not independently confirmed by this sandbox",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "1 m x 100 = 100 cm. Bande categorielle RHS, pas une mesure directe -> confiance medium.",
+      "decided_by": null
+    },
+    "confidence": "medium"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "aquilegia_vulgaris_species",
+    "trait": "spread_max_cm",
+    "raw_value": "RHS ultimate spread band 0.1-0.5 m (upper bound retained)",
+    "normalized_value": 50,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Aquilegia vulgaris",
+      "publisher": "Royal Horticultural Society (RHS) — Plant Details",
+      "url": "https://www.rhs.org.uk/plants/100859/i-aquilegia-vulgaris-i/details",
+      "license": "© Royal Horticultural Society (RHS) — copyrighted content, referenced for factual data only, no content reproduced verbatim; specific reuse license not independently confirmed by this sandbox",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "0.5 m x 100 = 50 cm. Bande categorielle RHS -> confiance medium.",
+      "decided_by": null
+    },
+    "confidence": "medium"
+  },
+  {
+    "schema_version": 2,
+    "catalog_ref": "aquilegia_vulgaris_species",
+    "trait": "evergreen",
+    "raw_value": "deciduous",
+    "normalized_value": false,
+    "curation": {
+      "method": "open_source_synthesis",
+      "license": "proprietary_internal_curation_v1"
+    },
+    "source": {
+      "title": "Aquilegia vulgaris",
+      "publisher": "Royal Horticultural Society (RHS) — Plant Details",
+      "url": "https://www.rhs.org.uk/plants/100859/i-aquilegia-vulgaris-i/details",
+      "license": "© Royal Horticultural Society (RHS) — copyrighted content, referenced for factual data only, no content reproduced verbatim; specific reuse license not independently confirmed by this sandbox",
+      "retrieved_at": "2026-09-10T00:00:00.000Z"
+    },
+    "review": {
+      "note": "Source indique \"deciduous\" sans ambiguite.",
+      "decided_by": null
+    },
+    "confidence": "high"
+  }
+]
