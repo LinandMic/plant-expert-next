@@ -359,7 +359,8 @@ const FINDER_STYLES = `
   .pf2-card { position:relative;display:flex;gap:14px;align-items:center;padding:14px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);box-shadow:var(--pe-shadow-sm);text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s; }
   .pf2-card:hover { box-shadow:var(--pe-shadow-md);border-color:var(--pe-border-strong); }
   .pf2-card:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
-  .pf2-card-photo { flex-shrink:0;width:64px;height:64px;border-radius:var(--pe-radius-sm);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400); }
+  .pf2-card-photo { flex-shrink:0;width:64px;height:64px;border-radius:var(--pe-radius-sm);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400);overflow:hidden; }
+  .pf2-card-photo-img { width:100%;height:100%;object-fit:cover;display:block; }
   .pf2-card-body { flex:1;min-width:0; }
   .pf2-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
   .pf2-card-name { font:var(--pe-text-h3);color:var(--pe-text); }
