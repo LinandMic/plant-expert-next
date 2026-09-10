@@ -73,7 +73,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="rp-page">
       <style>{RP_STYLES}</style>
-      <div className="rp-brand"><IconLeaf size={20} /> <span>Plant Expert</span></div>
+      <div className="rp-brand"><IconLeaf size={20} /> <span>Herbiose</span></div>
 
       <div className="rp-card">
         {status === "loading" && (
@@ -88,7 +88,7 @@ export default function ResetPasswordPage() {
             <div className="rp-status-icon rp-status-icon-warn"><IconAlertCircle size={22} /></div>
             <div className="rp-title">Lien invalide</div>
             <div className="error-box">Ce lien de réinitialisation est invalide ou a expiré.</div>
-            <Button href="/" className="rp-cta">Retour à Plant Expert</Button>
+            <Button href="/" className="rp-cta">Retour à Herbiose</Button>
           </>
         )}
 
@@ -134,7 +134,7 @@ export default function ResetPasswordPage() {
             <div className="rp-status-icon rp-status-icon-success"><IconCheck size={22} /></div>
             <div className="rp-title">Mot de passe modifié avec succès</div>
             <div className="rp-success">Vous pouvez maintenant vous reconnecter avec votre nouveau mot de passe.</div>
-            <Button href="/" className="rp-cta">Retour à Plant Expert</Button>
+            <Button href="/" className="rp-cta">Retour à Herbiose</Button>
           </>
         )}
       </div>

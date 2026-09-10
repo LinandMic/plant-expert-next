@@ -334,7 +334,7 @@ export default function AccueilDashboard({
       <section className="ad-hero">
         <div>
           <h1 className="ad-hero-title">
-            {isAuthenticated ? (greetingName ? `Bonjour ${greetingName}` : "Bonjour") : "Bienvenue dans Plant Expert"}
+            {isAuthenticated ? (greetingName ? `Bonjour ${greetingName}` : "Bonjour") : "Bienvenue dans Herbiose"}
           </h1>
           <p className="ad-hero-subtitle">
             {isAuthenticated

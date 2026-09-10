@@ -67,7 +67,7 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
       >
         <IconButton icon={IconX} label="Fermer" onClick={onClose} className="am-close-btn" />
 
-        <div className="am-brand"><IconLeaf size={16} /> Plant Expert</div>
+        <div className="am-brand"><IconLeaf size={16} /> Herbiose</div>
 
         {mode === "forgot" ? (
           <>
@@ -78,7 +78,7 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
         ) : (
           <>
             <div className="am-title" id="am-title">{mode === "login" ? "Connexion" : "Créer un compte"}</div>
-            <div className="am-sub" id="am-sub">Accédez à votre espace Plant Expert.</div>
+            <div className="am-sub" id="am-sub">Accédez à votre espace Herbiose.</div>
             <div className="am-tabs" role="tablist">
               <button type="button" role="tab" aria-selected={mode === "login"} className={"am-tab" + (mode === "login" ? " active" : "")} onClick={() => switchMode("login")}>Se connecter</button>
               <button type="button" role="tab" aria-selected={mode === "signup"} className={"am-tab" + (mode === "signup" ? " active" : "")} onClick={() => switchMode("signup")}>Créer un compte</button>

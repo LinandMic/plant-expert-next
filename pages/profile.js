@@ -102,14 +102,14 @@ export default function ProfilePage() {
             <IconUser size={26} />
             <div className="pro-empty-title">Connexion requise</div>
             <p className="pro-empty-sub">Connecte-toi pour accéder à ton profil.</p>
-            <Button href="/">Retour à Plant Expert</Button>
+            <Button href="/">Retour à Herbiose</Button>
           </Card>
         ) : (
           <>
             <header className="pro-header">
               <div className="pro-eyebrow">PROFIL</div>
               <h1 className="pro-title">Mon profil</h1>
-              <p className="pro-subtitle">Personnalisez les informations utilisées par Plant Expert.</p>
+              <p className="pro-subtitle">Personnalisez les informations utilisées par Herbiose.</p>
             </header>
 
             {loading ? (

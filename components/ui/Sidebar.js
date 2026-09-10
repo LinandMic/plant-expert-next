@@ -46,7 +46,7 @@ export default function Sidebar({ navItems, activeKey }) {
       <div>
         <div className="pe-sidebar-logo">
           <IconLeaf size={22} className="pe-sidebar-logo-mark" />
-          <span className="pe-sidebar-logo-word">Plant Expert</span>
+          <span className="pe-sidebar-logo-word">Herbiose</span>
         </div>
         <nav className="pe-sidebar-nav" aria-label="Navigation principale">
           {mainItems.map((item) => (

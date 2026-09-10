@@ -1,4 +1,4 @@
-// Minimal inline-SVG line-icon set for Plant Expert's new UI. No external
+// Minimal inline-SVG line-icon set for Herbiose's new UI. No external
 // icon library dependency (spec §6) — every icon is a tiny stroke-based
 // functional component sharing the same visual language (1.75 stroke,
 // rounded joins, 20-24px default box).
