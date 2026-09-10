@@ -38,23 +38,6 @@ function Field({ label, value }) {
   );
 }
 
-// CoreField — for the grid's main physical/environmental characteristics
-// only (Type, Hauteur, Largeur, Exposition). Unlike Field, a genuinely
-// unknown value is still shown as its own row, labeled "Non renseigné" —
-// this is presentation only: the underlying value stays null, nothing is
-// inferred, borrowed from a parent taxon, or read from a raw provider
-// value. Keeping this to the core set (not every optional attribute) is
-// what keeps the sheet compact (spec: "garde une fiche compacte").
-function CoreField({ label, value }) {
-  const display = value === null || value === undefined || value === "" ? "Non renseigné" : value;
-  return (
-    <div className="pfd-info-card">
-      <div className="pfd-info-label">{label}</div>
-      <div className="pfd-info-value">{display}</div>
-    </div>
-  );
-}
-
 export default function PlantFinderDetailPage({ plant }) {
   const router = useRouter();
   // `from` is the list page's own serialized filter/search query string,
@@ -125,11 +108,11 @@ export default function PlantFinderDetailPage({ plant }) {
 
         <h2 className="pfd-section-title">Caractéristiques</h2>
         <div className="pfd-info-grid">
-          <CoreField label="Type" value={plantType} />
+          <Field label="Type" value={plantType} />
           <Field label="Genre botanique" value={plant.taxon?.genus} />
-          <CoreField label="Hauteur" value={height} />
-          <CoreField label="Largeur" value={spread} />
-          <CoreField label="Exposition" value={sun ? sun.join(", ") : null} />
+          <Field label="Hauteur" value={height} />
+          <Field label="Largeur" value={spread} />
+          <Field label="Exposition" value={sun ? sun.join(", ") : null} />
           <Field label="Feuillage persistant" value={evergreenLabel} />
           <Field label="Besoin en eau" value={plant.waterNeed} />
           <Field label="Culture en pot" value={containerLabel} />
