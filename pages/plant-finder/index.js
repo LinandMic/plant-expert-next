@@ -35,6 +35,9 @@ export default function PlantFinderPage() {
   const [plants, setPlants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const requestIdRef = useRef(0);
 
@@ -63,13 +66,18 @@ export default function PlantFinderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryInput, initialized]);
 
-  // Fetch + sync the URL whenever the settled filter state changes.
+  // Fetch + sync the URL whenever the settled filter state changes. This is
+  // always a page-1 fetch — it replaces `plants`, never appends to it — so
+  // any in-flight/prior "Charger plus" pagination state is reset here too.
   useEffect(() => {
     if (!initialized) return;
 
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
+    setHasMore(false);
+    setLoadingMore(false);
+    setLoadMoreError(null);
 
     router.replace({ pathname: "/plant-finder", query: serializeFiltersToQuery(filters) }, undefined, { shallow: true });
 
@@ -79,9 +87,10 @@ export default function PlantFinderPage() {
       sun: filters.sun,
       heightCategory: filters.heightCategory,
     })
-      .then((results) => {
+      .then(({ plants: results, hasMore: more }) => {
         if (requestIdRef.current !== requestId) return;
         setPlants(results);
+        setHasMore(more);
         setLoading(false);
       })
       .catch(() => {
@@ -92,6 +101,39 @@ export default function PlantFinderPage() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized, filters]);
+
+  // "Charger plus" — appends the next page after the currently loaded rows,
+  // reusing the same requestIdRef race-safety guard as the page-1 fetch: a
+  // filter/query change bumps requestIdRef, so a late load-more response
+  // for a stale filter set is silently discarded instead of corrupting the
+  // (now different) result set.
+  function handleLoadMore() {
+    if (loadingMore || !hasMore) return;
+
+    const requestId = ++requestIdRef.current;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+
+    searchPublishedPlants({
+      query: filters.query,
+      plantType: filters.plantType,
+      sun: filters.sun,
+      heightCategory: filters.heightCategory,
+      offset: plants.length,
+    })
+      .then(({ plants: results, hasMore: more }) => {
+        if (requestIdRef.current !== requestId) return;
+        setPlants((prev) => [...prev, ...results]);
+        setHasMore(more);
+        setLoadingMore(false);
+      })
+      .catch(() => {
+        if (requestIdRef.current !== requestId) return;
+        // Keep the plants already loaded — only the next page failed.
+        setLoadMoreError("Impossible de charger plus de plantes pour le moment.");
+        setLoadingMore(false);
+      });
+  }
 
   function handleTypeChange(e) {
     const value = e.target.value;
@@ -280,11 +322,23 @@ export default function PlantFinderPage() {
                 )}
               </Card>
             ) : (
-              <div className="pf2-grid">
-                {plants.map((plant) => (
-                  <PlantFinderCard key={plant.id} plant={plant} returnTo={returnTo} />
-                ))}
-              </div>
+              <>
+                <div className="pf2-grid">
+                  {plants.map((plant) => (
+                    <PlantFinderCard key={plant.id} plant={plant} returnTo={returnTo} />
+                  ))}
+                </div>
+
+                {loadMoreError && <div className="pf2-error-box pf2-load-more-error">{loadMoreError}</div>}
+
+                {hasMore && (
+                  <div className="pf2-load-more-row">
+                    <Button variant="secondary" onClick={handleLoadMore} disabled={loadingMore}>
+                      {loadingMore ? "Chargement…" : "Charger plus"}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -355,6 +409,9 @@ const FINDER_STYLES = `
   .pf2-empty-sub { max-width:380px; }
 
   .pf2-grid { display:grid;grid-template-columns:1fr;gap:16px; }
+
+  .pf2-load-more-row { display:flex;justify-content:center;margin-top:24px; }
+  .pf2-load-more-error { margin-top:16px; }
 
   .pf2-card { position:relative;display:flex;gap:14px;align-items:center;padding:14px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);box-shadow:var(--pe-shadow-sm);text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s; }
   .pf2-card:hover { box-shadow:var(--pe-shadow-md);border-color:var(--pe-border-strong); }
