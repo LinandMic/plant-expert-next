@@ -40,3 +40,19 @@ a {
   outline: 2px solid var(--pe-forest-800);
   outline-offset: 2px;
 }
+
+/* iOS Safari auto-zooms the whole page when a focused input/select/textarea
+   has a font-size below 16px. Scoped to <768px (mobile) and to font-size
+   only — desktop keeps every input's current size (mostly --pe-text-body's
+   15px) untouched, so this never "grows the whole body" on desktop.
+   !important is deliberate: every input across the app sets its font via a
+   component class (e.g. .pi-name-input, .mj-search-input, .pf2-search-input)
+   which is higher specificity than a bare element selector, and this rule
+   needs to win over all of them without editing each one individually. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

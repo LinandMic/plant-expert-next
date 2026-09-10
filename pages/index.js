@@ -1492,7 +1492,7 @@ const GARDEN_STYLES = `
   .mj-weather-line strong { color:var(--pe-text);font-weight:600; }
 
   .mj-zones-row { display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;margin-bottom:18px;padding-bottom:2px; }
-  .mj-zone-chip { flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;min-height:38px; }
+  .mj-zone-chip { flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;min-height:44px; }
   .mj-zone-chip:hover { border-color:var(--pe-border-strong); }
   .mj-zone-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
   .mj-zone-manage-btn { flex-shrink:0;padding:9px 14px;border-radius:999px;border:1px dashed var(--pe-border-strong);background:transparent;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:38px; }
@@ -1515,7 +1515,7 @@ const GARDEN_STYLES = `
   .mj-search-clear:hover { color:var(--pe-text); }
 
   .mj-cats-row { display:flex;gap:8px;overflow-x:auto;margin-bottom:22px;padding-bottom:2px; }
-  .mj-cat-chip { flex-shrink:0;padding:8px 15px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:38px; white-space:nowrap; }
+  .mj-cat-chip { flex-shrink:0;padding:8px 15px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:44px; white-space:nowrap; }
   .mj-cat-chip:hover { border-color:var(--pe-border-strong);color:var(--pe-text); }
   .mj-cat-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
 
