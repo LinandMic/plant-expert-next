@@ -33,6 +33,7 @@ export default function PlantFinderPage() {
   const [queryInput, setQueryInput] = useState("");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [plants, setPlants] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -76,6 +77,7 @@ export default function PlantFinderPage() {
     setLoading(true);
     setError(null);
     setHasMore(false);
+    setTotal(0);
     setLoadingMore(false);
     setLoadMoreError(null);
 
@@ -87,10 +89,11 @@ export default function PlantFinderPage() {
       sun: filters.sun,
       heightCategory: filters.heightCategory,
     })
-      .then(({ plants: results, hasMore: more }) => {
+      .then(({ plants: results, hasMore: more, total: matchedTotal }) => {
         if (requestIdRef.current !== requestId) return;
         setPlants(results);
         setHasMore(more);
+        setTotal(matchedTotal);
         setLoading(false);
       })
       .catch(() => {
@@ -121,10 +124,11 @@ export default function PlantFinderPage() {
       heightCategory: filters.heightCategory,
       offset: plants.length,
     })
-      .then(({ plants: results, hasMore: more }) => {
+      .then(({ plants: results, hasMore: more, total: matchedTotal }) => {
         if (requestIdRef.current !== requestId) return;
         setPlants((prev) => [...prev, ...results]);
         setHasMore(more);
+        setTotal(matchedTotal);
         setLoadingMore(false);
       })
       .catch(() => {
@@ -298,7 +302,7 @@ export default function PlantFinderPage() {
             )}
 
             {!loading && !error && plants.length > 0 && (
-              <div className="pf2-result-count">{formatResultCount(plants.length)}</div>
+              <div className="pf2-result-count">{formatResultCount(total)}</div>
             )}
 
             {loading ? (

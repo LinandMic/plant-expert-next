@@ -147,7 +147,7 @@ const DETAIL_STYLES = `
   .pfd-hero-image { display:block;width:100%;max-height:360px;object-fit:cover;border-radius:var(--pe-radius-lg) var(--pe-radius-lg) 0 0; }
   .pfd-hero-attribution { padding:8px 24px 0;font-size:11px;color:var(--pe-text-muted); }
   .pfd-hero-attribution a { color:var(--pe-text-muted);text-decoration:underline; }
-  @media (max-width:480px) { .pfd-hero-media { margin:-18px -18px 16px; } .pfd-hero-image { max-height:240px;border-radius:var(--pe-radius-md) var(--pe-radius-md) 0 0; } .pfd-hero-attribution { padding:8px 18px 0; } }
+  @media (max-width:480px) { .pfd-hero-media { margin:-18px -18px 16px; } .pfd-hero-image { aspect-ratio:16/9;max-height:200px;border-radius:var(--pe-radius-md) var(--pe-radius-md) 0 0; } .pfd-hero-attribution { padding:8px 18px 0; } }
 
   .pfd-section-title { font-family:var(--pe-font-display);font-weight:600;font-size:20px;color:var(--pe-text);margin-bottom:14px; }
   .pfd-info-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px; }

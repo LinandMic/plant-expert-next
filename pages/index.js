@@ -768,8 +768,14 @@ function IdentifierTab({ addPlant }) {
                 ) : (
                   <>
                     <span className="pi-dropzone-icon"><IconCamera size={26} /></span>
-                    <div className="pi-dropzone-title">Dépose une photo ici</div>
-                    <div className="pi-dropzone-sub">ou clique pour en choisir une</div>
+                    <div className="pi-dropzone-title">
+                      <span className="pi-copy-mobile">Prendre ou choisir une photo</span>
+                      <span className="pi-copy-desktop">Dépose une photo ici</span>
+                    </div>
+                    <div className="pi-dropzone-sub">
+                      <span className="pi-copy-mobile">Touchez pour utiliser l&apos;appareil photo ou votre photothèque</span>
+                      <span className="pi-copy-desktop">ou clique pour en choisir une</span>
+                    </div>
                   </>
                 )}
               </div>
@@ -861,6 +867,15 @@ const IDENTIFIER_STYLES = `
   .pi-dropzone-icon { color:var(--pe-sage-400);display:flex;margin-bottom:6px; }
   .pi-dropzone-title { font:var(--pe-text-h3);color:var(--pe-text); }
   .pi-dropzone-sub { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400; }
+  /* Mobile gets tap-oriented copy ("Touchez..."), desktop keeps the
+     drag/drop wording — pure CSS toggle (no JS/hydration risk), same
+     768px breakpoint as the rest of the shell (AppShell/Sidebar/MobileNav). */
+  .pi-copy-desktop { display:none; }
+  .pi-copy-mobile { display:inline; }
+  @media (min-width:768px) {
+    .pi-copy-mobile { display:none; }
+    .pi-copy-desktop { display:inline; }
+  }
   @media (max-width:480px) { .pi-dropzone { min-height:220px;padding:16px; } }
 
   .pi-dropzone.has-image { display:block;padding:0;overflow:hidden;cursor:default;min-height:0; }
@@ -1163,7 +1178,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             <div className="mj-empty-title">Votre jardin est vide</div>
             <p className="mj-empty-sub">Identifiez une plante et ajoutez-la à Mon Jardin pour la retrouver ici.</p>
             {onGoIdentifier && (
-              <Button variant="secondary" onClick={onGoIdentifier}>
+              <Button onClick={onGoIdentifier}>
                 <IconCamera size={16} /> Identifier une plante
               </Button>
             )}
@@ -1473,9 +1488,20 @@ const GARDEN_STYLES = `
   .mj-title { margin-top:6px;font-family:var(--pe-font-display);font-weight:600;font-size:clamp(26px,3.2vw,40px);color:var(--pe-text);line-height:1.1; }
   .mj-subtitle { margin-top:8px;font:var(--pe-text-body);color:var(--pe-text-muted);max-width:480px; }
   .mj-header-cta { flex-shrink:0;display:inline-flex;align-items:center;gap:8px;white-space:nowrap; }
-  @media (max-width:640px) { .mj-header { flex-direction:column;align-items:stretch;gap:14px;padding-bottom:16px;margin-bottom:22px; } .mj-header-cta { align-self:flex-start; } }
+  @media (max-width:640px) {
+    .mj-header { flex-direction:column;align-items:stretch;gap:14px;padding-bottom:16px;margin-bottom:22px; }
+    .mj-header-cta { align-self:flex-start; }
+    /* The empty-state card below already carries its own full-emphasis
+       "Identifier une plante" CTA (see mj-empty-card) — on mobile, right
+       above it, this header CTA would otherwise be a second identical
+       filled button. De-emphasized to a lighter/outlined look here only
+       (same label, same onGoIdentifier action, nothing behavioral changes)
+       so the card's button reads as the one obvious primary action. */
+    .mj-header-cta.pe-btn-primary { background:transparent;color:var(--pe-accent);border-color:var(--pe-border-strong);box-shadow:none; }
+  }
 
   .mj-loading, .mj-empty-card { padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--pe-text-muted);font:var(--pe-text-body); }
+  @media (max-width:480px) { .mj-empty-card { padding:26px 20px;gap:10px; } }
   .mj-loading svg, .mj-empty-card svg { color:var(--pe-sage-400); }
   .mj-empty-title { font:var(--pe-text-h3);color:var(--pe-text); }
   .mj-empty-sub { max-width:360px; }
@@ -1495,7 +1521,7 @@ const GARDEN_STYLES = `
   .mj-zone-chip { flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;min-height:44px; }
   .mj-zone-chip:hover { border-color:var(--pe-border-strong); }
   .mj-zone-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
-  .mj-zone-manage-btn { flex-shrink:0;padding:9px 14px;border-radius:999px;border:1px dashed var(--pe-border-strong);background:transparent;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:38px; }
+  .mj-zone-manage-btn { flex-shrink:0;padding:9px 14px;border-radius:999px;border:1px dashed var(--pe-border-strong);background:transparent;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:44px; }
   .mj-zone-manage-btn:hover { color:var(--pe-text);border-color:var(--pe-accent); }
 
   .mj-section { margin-bottom:18px; }
