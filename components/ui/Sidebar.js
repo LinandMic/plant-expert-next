@@ -1,5 +1,6 @@
 import { IconLeaf } from "@/components/ui/icons";
 import Badge from "@/components/ui/Badge";
+import { useI18n } from "@/lib/i18n";
 
 function NavLink({ item, isActive }) {
   const Icon = item.icon;
@@ -38,6 +39,7 @@ function NavLink({ item, isActive }) {
 // from 768px, full width with labels from 1024px. Below 768px this renders
 // nothing — MobileNav takes over.
 export default function Sidebar({ navItems, activeKey }) {
+  const { t } = useI18n();
   const mainItems = navItems.filter((item) => item.placement !== "bottom");
   const bottomItems = navItems.filter((item) => item.placement === "bottom");
 
@@ -48,7 +50,7 @@ export default function Sidebar({ navItems, activeKey }) {
           <IconLeaf size={22} className="pe-sidebar-logo-mark" />
           <span className="pe-sidebar-logo-word">Herbiose</span>
         </div>
-        <nav className="pe-sidebar-nav" aria-label="Navigation principale">
+        <nav className="pe-sidebar-nav" aria-label={t("nav.mainNavigation")}>
           {mainItems.map((item) => (
             <NavLink key={item.key} item={item} isActive={item.key === activeKey} />
           ))}

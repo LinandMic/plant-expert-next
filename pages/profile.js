@@ -4,16 +4,11 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { useAuth } from "@/lib/useAuth";
 import { fetchProfile, updateProfile } from "@/lib/profileApi";
-import { EXTERNAL_NAV_ITEMS } from "@/components/ui/externalNavItems";
+import { getExternalNavItems } from "@/components/ui/externalNavItems";
 import { IconUser, IconMapPin, IconHome } from "@/components/ui/icons";
+import { useI18n, SUPPORTED_LOCALES } from "@/lib/i18n";
 
-const SPACE_TYPES = [
-  { id: "jardin", label: "Jardin" },
-  { id: "terrasse", label: "Terrasse" },
-  { id: "balcon", label: "Balcon" },
-  { id: "interieur", label: "Intérieur" },
-  { id: "mixte", label: "Mixte" },
-];
+const SPACE_TYPE_IDS = ["jardin", "terrasse", "balcon", "interieur", "mixte"];
 
 const EMPTY_FORM = { first_name: "", last_name: "", country: "", region: "", city: "", space_type: "" };
 
@@ -22,18 +17,46 @@ const EMPTY_FORM = { first_name: "", last_name: "", country: "", region: "", cit
 // logout mechanism. Only rendered once a user is present; the unauthenticated
 // branch below already has its own distinct "Connexion requise" panel.
 function ProfileAccountBar({ auth }) {
+  const { t } = useI18n();
   if (!auth.user) return null;
   return (
     <div className="pe-account-bar">
       <span className="pe-account-email">{auth.user.email}</span>
-      <a className="pe-account-action" href="/profile">Mon profil</a>
-      <button className="pe-account-action" onClick={() => auth.signOut()}>Se déconnecter</button>
+      <a className="pe-account-action" href="/profile">{t("account.myProfile")}</a>
+      <button className="pe-account-action" onClick={() => auth.signOut()}>{t("account.logout")}</button>
+    </div>
+  );
+}
+
+// Discrete FR/EN switcher (round spec: placed in Profil since there's no
+// Settings screen yet, must stay reachable even when logged out, >=44px tap
+// targets on mobile). setLocale() persists the manual choice to
+// localStorage — it always wins over browser auto-detection from then on.
+function LanguageSwitcher() {
+  const { locale, setLocale, t } = useI18n();
+  return (
+    <div className="pro-lang-switcher" role="group" aria-label={t("profile.language")}>
+      <span className="pro-lang-switcher-label">{t("profile.language")}</span>
+      <div className="pro-lang-switcher-pills">
+        {SUPPORTED_LOCALES.map((loc) => (
+          <button
+            key={loc}
+            type="button"
+            className={"pro-lang-pill" + (locale === loc ? " active" : "")}
+            aria-pressed={locale === loc}
+            onClick={() => setLocale(loc)}
+          >
+            {loc === "fr" ? t("profile.languageFr") : t("profile.languageEn")}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
 export default function ProfilePage() {
   const auth = useAuth();
+  const { t } = useI18n();
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -60,7 +83,7 @@ export default function ProfilePage() {
           space_type: profile.space_type || "",
         });
       })
-      .catch(() => { if (!cancelled) setLoadError("Impossible de charger votre profil pour le moment."); })
+      .catch(() => { if (!cancelled) setLoadError(t("profile.loadError")); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
@@ -81,106 +104,111 @@ export default function ProfilePage() {
       await updateProfile(auth.user.id, form);
       setSaveSuccess(true);
     } catch {
-      setSaveError("Impossible d'enregistrer votre profil pour le moment. Réessaie.");
+      setSaveError(t("profile.saveError"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AppShell navItems={EXTERNAL_NAV_ITEMS} activeKey="profil" topBar={<ProfileAccountBar auth={auth} />}>
+    <AppShell navItems={getExternalNavItems(t)} activeKey="profil" topBar={<ProfileAccountBar auth={auth} />}>
       <div className="pro-page">
         <style>{PROFILE_STYLES}</style>
 
         {auth.loading ? (
           <div className="pro-loading" role="status" aria-live="polite">
             <div className="pro-spinner" aria-hidden="true" />
-            <div className="pro-loading-title">Chargement...</div>
+            <div className="pro-loading-title">{t("profile.loading")}</div>
           </div>
         ) : !auth.user ? (
           <Card className="pro-empty-card">
             <IconUser size={26} />
-            <div className="pro-empty-title">Connexion requise</div>
-            <p className="pro-empty-sub">Connecte-toi pour accéder à ton profil.</p>
-            <Button href="/">Retour à Herbiose</Button>
+            <div className="pro-empty-title">{t("profile.loginRequiredTitle")}</div>
+            <p className="pro-empty-sub">{t("profile.loginRequiredSub")}</p>
+            <Button href="/">{t("profile.backToHome")}</Button>
+            <LanguageSwitcher />
           </Card>
         ) : (
           <>
             <header className="pro-header">
-              <div className="pro-eyebrow">PROFIL</div>
-              <h1 className="pro-title">Mon profil</h1>
-              <p className="pro-subtitle">Personnalisez les informations utilisées par Herbiose.</p>
+              <div className="pro-eyebrow">{t("profile.eyebrow")}</div>
+              <h1 className="pro-title">{t("profile.title")}</h1>
+              <p className="pro-subtitle">{t("profile.subtitle")}</p>
             </header>
 
             {loading ? (
               <div className="pro-loading" role="status" aria-live="polite">
                 <div className="pro-spinner" aria-hidden="true" />
-                <div className="pro-loading-title">Chargement du profil...</div>
+                <div className="pro-loading-title">{t("profile.loadingProfile")}</div>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="pro-form">
                 {loadError && <div className="pro-error-box">{loadError}</div>}
 
                 <Card className="pro-section">
-                  <div className="pro-section-head"><IconUser size={18} /><span>Informations personnelles</span></div>
+                  <div className="pro-section-head"><IconUser size={18} /><span>{t("profile.personalInfo")}</span></div>
                   <div className="pro-field">
-                    <label className="pro-label">Email</label>
+                    <label className="pro-label">{t("profile.email")}</label>
                     <div className="pro-readonly">{auth.user.email}</div>
-                    <div className="pro-hint">Non modifiable</div>
+                    <div className="pro-hint">{t("profile.notModifiable")}</div>
                   </div>
                   <div className="pro-field-row">
                     <div className="pro-field">
-                      <label className="pro-label" htmlFor="first_name">Prénom</label>
+                      <label className="pro-label" htmlFor="first_name">{t("profile.firstName")}</label>
                       <input id="first_name" className="pro-input" value={form.first_name} onChange={updateField("first_name")} />
                     </div>
                     <div className="pro-field">
-                      <label className="pro-label" htmlFor="last_name">Nom</label>
+                      <label className="pro-label" htmlFor="last_name">{t("profile.lastName")}</label>
                       <input id="last_name" className="pro-input" value={form.last_name} onChange={updateField("last_name")} />
                     </div>
                   </div>
                 </Card>
 
                 <Card className="pro-section">
-                  <div className="pro-section-head"><IconMapPin size={18} /><span>Localisation</span></div>
+                  <div className="pro-section-head"><IconMapPin size={18} /><span>{t("profile.location")}</span></div>
                   <div className="pro-field-row">
                     <div className="pro-field">
-                      <label className="pro-label" htmlFor="country">Pays</label>
+                      <label className="pro-label" htmlFor="country">{t("profile.country")}</label>
                       <input id="country" className="pro-input" value={form.country} onChange={updateField("country")} />
                     </div>
                     <div className="pro-field">
-                      <label className="pro-label" htmlFor="region">Région / province</label>
+                      <label className="pro-label" htmlFor="region">{t("profile.region")}</label>
                       <input id="region" className="pro-input" value={form.region} onChange={updateField("region")} />
                     </div>
                   </div>
                   <div className="pro-field">
-                    <label className="pro-label" htmlFor="city">Ville</label>
+                    <label className="pro-label" htmlFor="city">{t("profile.city")}</label>
                     <input id="city" className="pro-input" value={form.city} onChange={updateField("city")} />
                   </div>
                 </Card>
 
                 <Card className="pro-section">
-                  <div className="pro-section-head"><IconHome size={18} /><span>Mon espace</span></div>
+                  <div className="pro-section-head"><IconHome size={18} /><span>{t("profile.mySpace")}</span></div>
                   <div className="pro-space-grid">
-                    {SPACE_TYPES.map((s) => (
+                    {SPACE_TYPE_IDS.map((id) => (
                       <button
                         type="button"
-                        key={s.id}
-                        aria-pressed={form.space_type === s.id}
-                        className={"pro-space-btn" + (form.space_type === s.id ? " active" : "")}
-                        onClick={() => { setSaveSuccess(false); setForm((f) => ({ ...f, space_type: s.id })); }}
+                        key={id}
+                        aria-pressed={form.space_type === id}
+                        className={"pro-space-btn" + (form.space_type === id ? " active" : "")}
+                        onClick={() => { setSaveSuccess(false); setForm((f) => ({ ...f, space_type: id })); }}
                       >
-                        {s.label}
+                        {t(`profile.spaceTypes.${id}`)}
                       </button>
                     ))}
                   </div>
                 </Card>
 
+                <Card className="pro-section">
+                  <LanguageSwitcher />
+                </Card>
+
                 {saveError && <div className="pro-error-box">{saveError}</div>}
-                {saveSuccess && <div className="pro-success-box">Profil enregistré avec succès.</div>}
+                {saveSuccess && <div className="pro-success-box">{t("profile.saveSuccess")}</div>}
 
                 <div className="pro-actions">
                   <Button type="submit" disabled={saving} className="pro-save-btn">
-                    {saving ? "Enregistrement..." : "Enregistrer"}
+                    {saving ? t("profile.saving") : t("profile.save")}
                   </Button>
                 </div>
               </form>
@@ -237,4 +265,12 @@ const PROFILE_STYLES = `
   .pro-empty-card svg { color:var(--pe-sage-400); }
   .pro-empty-title { font:var(--pe-text-h3);color:var(--pe-text); }
   .pro-empty-sub { max-width:340px; }
+
+  .pro-lang-switcher { display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:20px; }
+  .pro-lang-switcher-label { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px; }
+  .pro-lang-switcher-pills { display:inline-flex;gap:8px; }
+  .pro-lang-pill { min-height:44px;min-width:76px;padding:9px 18px;border-radius:999px;border:1.5px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:700;cursor:pointer;transition:border-color .15s,background-color .15s,color .15s; }
+  .pro-lang-pill:hover { border-color:var(--pe-border-strong); }
+  .pro-lang-pill:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+  .pro-lang-pill.active { border-color:var(--pe-accent);background:var(--pe-sand);color:var(--pe-accent); }
 `;

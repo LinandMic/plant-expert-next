@@ -16,6 +16,7 @@ import {
   plantDisplayName,
   resolveGreetingName,
 } from "@/lib/homeDashboardData";
+import { useI18n } from "@/lib/i18n";
 
 // Same local-calendar-day convention as lib/reminderApi.js and
 // lib/weatherEngine.js (never toISOString()/UTC) — kept as a small private
@@ -32,18 +33,18 @@ function todayLocalDateString() {
   return toLocalDateString(new Date());
 }
 
-function WeatherCard({ todayWeather, weatherLoading, hint, city }) {
+function WeatherCard({ todayWeather, weatherLoading, hint, city, t }) {
   return (
     <Card className="ad-summary-card ad-summary-weather">
       <div className="ad-summary-card-head">
         <span className="ad-summary-icon"><IconSun size={20} /></span>
-        <span className="ad-summary-label">Météo</span>
+        <span className="ad-summary-label">{t("dashboard.weather")}</span>
       </div>
       {todayWeather ? (
         <>
           <div className="ad-summary-value-lg">{Math.round(todayWeather.temperatureMaxC)}°C</div>
           <div className="ad-summary-sub">
-            {city ? `${city} · ` : ""}min {Math.round(todayWeather.temperatureMinC)}°C
+            {city ? `${city} · ` : ""}{t("dashboard.min")} {Math.round(todayWeather.temperatureMinC)}°C
           </div>
         </>
       ) : (
@@ -69,35 +70,32 @@ function CompactSummaryCard({ icon: Icon, label, value, hint }) {
   );
 }
 
-function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants }) {
+function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants, t }) {
   return (
     <>
       <section className="ad-section">
         <Card className="ad-promo-card">
           <div className="ad-promo-content">
-            <h2 className="ad-promo-title">Votre jardin, au même endroit</h2>
-            <p className="ad-promo-text">
-              Connectez-vous pour identifier vos plantes, organiser votre jardin en zones et suivre leur entretien
-              au fil des saisons.
-            </p>
+            <h2 className="ad-promo-title">{t("dashboard.promoTitle")}</h2>
+            <p className="ad-promo-text">{t("dashboard.promoText")}</p>
             <div className="ad-promo-benefits">
               <div className="ad-promo-benefit">
                 <IconCamera size={18} />
-                <span>Identifier</span>
+                <span>{t("dashboard.promoIdentify")}</span>
               </div>
               <div className="ad-promo-benefit">
                 <IconSprout size={18} />
-                <span>Organiser</span>
+                <span>{t("dashboard.promoOrganize")}</span>
               </div>
               <div className="ad-promo-benefit">
                 <IconBell size={18} />
-                <span>Suivre</span>
+                <span>{t("dashboard.promoFollow")}</span>
               </div>
             </div>
             <div className="ad-promo-actions">
-              <Button onClick={onLogin}>Se connecter</Button>
+              <Button onClick={onLogin}>{t("dashboard.login")}</Button>
               <Button variant="secondary" onClick={onSignup}>
-                Créer un compte
+                {t("dashboard.signup")}
               </Button>
             </div>
           </div>
@@ -108,11 +106,11 @@ function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants }) 
       </section>
 
       <section className="ad-section">
-        <SectionHeader title="Dans votre jardin" />
+        <SectionHeader title={t("dashboard.inYourGarden")} />
         {previewPlants.length === 0 ? (
           <Card className="ad-empty-card">
             <IconSprig size={26} />
-            <p>Connectez-vous pour retrouver votre jardin ici.</p>
+            <p>{t("dashboard.loginToSeeGarden")}</p>
           </Card>
         ) : (
           <div className="ad-garden-grid">
@@ -121,14 +119,14 @@ function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants }) 
                 <div className="ad-plant-photo">
                   {plant && plant.imagePreview ? <img src={plant.imagePreview} alt="" /> : <IconSprig size={22} />}
                 </div>
-                <div className="ad-plant-name">{plantDisplayName(plant) || "Plante"}</div>
+                <div className="ad-plant-name">{plantDisplayName(plant) || t("dashboard.plantFallbackName")}</div>
               </Card>
             ))}
           </div>
         )}
       </section>
 
-      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onLogin} />
+      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onLogin} t={t} />
     </>
   );
 }
@@ -146,47 +144,48 @@ function ConnectedHome({
   model,
   onGoIdentifier,
   onGoJardin,
+  t,
 }) {
   const { plants, dueCount, overdueCount, todayWeather, weatherCity } = model;
 
-  const weatherHint = weatherLoading ? "Chargement…" : "Renseignez votre ville dans votre profil.";
+  const weatherHint = weatherLoading ? t("dashboard.loadingWeatherHint") : t("dashboard.setCityHint");
 
   return (
     <>
       <section className="ad-section">
-        <SectionHeader title="Résumé du jour" />
+        <SectionHeader title={t("dashboard.todaySummary")} />
         <div className="ad-summary-grid">
-          <WeatherCard todayWeather={todayWeather} weatherLoading={weatherLoading} hint={weatherHint} city={weatherCity} />
+          <WeatherCard todayWeather={todayWeather} weatherLoading={weatherLoading} hint={weatherHint} city={weatherCity} t={t} />
           <div className="ad-summary-stack">
             <CompactSummaryCard
               icon={IconBell}
-              label="Tâches"
+              label={t("dashboard.tasks")}
               value={remindersLoading ? "…" : String(dueCount)}
-              hint={remindersLoading ? null : dueCount > 0 ? "à traiter aujourd'hui" : "rien pour l'instant"}
+              hint={remindersLoading ? null : dueCount > 0 ? t("dashboard.toHandleToday") : t("dashboard.nothingForNow")}
             />
             <CompactSummaryCard
               icon={IconAlertCircle}
-              label="À surveiller"
+              label={t("dashboard.toWatch")}
               value={remindersLoading ? "…" : String(overdueCount)}
-              hint={remindersLoading ? null : overdueCount > 0 ? "rappels en retard" : "tout est à jour"}
+              hint={remindersLoading ? null : overdueCount > 0 ? t("dashboard.overdueReminders") : t("dashboard.allUpToDate")}
             />
           </div>
         </div>
       </section>
 
       <section className="ad-section">
-        <SectionHeader title="Dans votre jardin" actionLabel={plants.length > 0 ? "Voir tout" : null} onAction={onGoJardin} />
+        <SectionHeader title={t("dashboard.inYourGarden")} actionLabel={plants.length > 0 ? t("dashboard.seeAll") : null} onAction={onGoJardin} />
         {gardenLoading ? (
           <Card className="ad-empty-card">
             <IconSprig size={26} />
-            <p>Chargement de votre jardin…</p>
+            <p>{t("dashboard.loadingGarden")}</p>
           </Card>
         ) : plants.length === 0 ? (
           <Card className="ad-empty-card">
             <IconSprig size={26} />
-            <p>Votre jardin est encore vide.</p>
+            <p>{t("dashboard.emptyGarden")}</p>
             <Button variant="secondary" onClick={onGoIdentifier}>
-              Identifier une première plante
+              {t("dashboard.identifyFirstPlant")}
             </Button>
           </Card>
         ) : (
@@ -196,49 +195,49 @@ function ConnectedHome({
                 <div className="ad-plant-photo">
                   {plant && plant.imagePreview ? <img src={plant.imagePreview} alt="" /> : <IconSprig size={22} />}
                 </div>
-                <div className="ad-plant-name">{plantDisplayName(plant) || "Plante"}</div>
+                <div className="ad-plant-name">{plantDisplayName(plant) || t("dashboard.plantFallbackName")}</div>
               </Card>
             ))}
           </div>
         )}
       </section>
 
-      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onGoJardin} />
+      <QuickActionsSection onGoIdentifier={onGoIdentifier} onGoJardin={onGoJardin} t={t} />
     </>
   );
 }
 
-function QuickActionsSection({ onGoIdentifier, onGoJardin }) {
+function QuickActionsSection({ onGoIdentifier, onGoJardin, t }) {
   return (
     <section className="ad-section">
-      <SectionHeader title="Actions rapides" />
+      <SectionHeader title={t("dashboard.quickActions")} />
       <div className="ad-actions-grid">
         <Card onClick={onGoIdentifier} className="ad-action-card">
           <IconCamera size={22} />
           <div className="ad-action-text">
-            <div className="ad-action-title">Identifier</div>
-            <div className="ad-action-desc">Photo ou nom de la plante</div>
+            <div className="ad-action-title">{t("dashboard.actionIdentify")}</div>
+            <div className="ad-action-desc">{t("dashboard.actionIdentifyDesc")}</div>
           </div>
         </Card>
         <Card href="/plant-finder" className="ad-action-card">
           <IconSearch size={22} />
           <div className="ad-action-text">
-            <div className="ad-action-title">Trouver une plante</div>
-            <div className="ad-action-desc">Parcourir le catalogue</div>
+            <div className="ad-action-title">{t("dashboard.actionFind")}</div>
+            <div className="ad-action-desc">{t("dashboard.actionFindDesc")}</div>
           </div>
         </Card>
         <Card onClick={onGoJardin} className="ad-action-card">
           <IconBell size={22} />
           <div className="ad-action-text">
-            <div className="ad-action-title">Mes rappels</div>
-            <div className="ad-action-desc">Arrosage, taille, entretien</div>
+            <div className="ad-action-title">{t("dashboard.actionReminders")}</div>
+            <div className="ad-action-desc">{t("dashboard.actionRemindersDesc")}</div>
           </div>
         </Card>
         <Card onClick={onGoJardin} className="ad-action-card">
           <IconSprout size={22} />
           <div className="ad-action-text">
-            <div className="ad-action-title">Mon jardin</div>
-            <div className="ad-action-desc">Plantes et zones</div>
+            <div className="ad-action-title">{t("dashboard.actionGarden")}</div>
+            <div className="ad-action-desc">{t("dashboard.actionGardenDesc")}</div>
           </div>
         </Card>
       </div>
@@ -323,6 +322,7 @@ export default function AccueilDashboard({
   onLogin,
   onSignup,
 }) {
+  const { t } = useI18n();
   const today = todayLocalDateString();
   const greetingName = resolveGreetingName(firstName);
   const model = buildConnectedHomeModel({ plants: jardin, reminders, weather, today });
@@ -334,12 +334,10 @@ export default function AccueilDashboard({
       <section className="ad-hero">
         <div>
           <h1 className="ad-hero-title">
-            {isAuthenticated ? (greetingName ? `Bonjour ${greetingName}` : "Bonjour") : "Bienvenue dans Herbiose"}
+            {isAuthenticated ? (greetingName ? t("dashboard.greeting", { name: greetingName }) : t("dashboard.greetingNoName")) : t("dashboard.welcome")}
           </h1>
           <p className="ad-hero-subtitle">
-            {isAuthenticated
-              ? "Prenons soin de votre jardin aujourd'hui."
-              : "Identifiez vos plantes, organisez votre jardin et suivez leur entretien."}
+            {isAuthenticated ? t("dashboard.subtitleConnected") : t("dashboard.subtitleDisconnected")}
           </p>
         </div>
         <div className="ad-hero-mark" aria-hidden="true">
@@ -356,6 +354,7 @@ export default function AccueilDashboard({
           model={model}
           onGoIdentifier={onGoIdentifier}
           onGoJardin={onGoJardin}
+          t={t}
         />
       ) : (
         <DisconnectedHome
@@ -363,6 +362,7 @@ export default function AccueilDashboard({
           onSignup={onSignup}
           onGoIdentifier={onGoIdentifier}
           previewPlants={normalizeList(jardin)}
+          t={t}
         />
       )}
     </div>

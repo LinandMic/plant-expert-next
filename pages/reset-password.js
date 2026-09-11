@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/useAuth";
 import { IconLeaf, IconAlertCircle, IconCheck } from "@/components/ui/icons";
 import Button from "@/components/ui/Button";
+import { useI18n } from "@/lib/i18n";
 
 function urlAuthError() {
   if (typeof window === "undefined") return null;
@@ -14,6 +15,7 @@ function urlAuthError() {
 
 export default function ResetPasswordPage() {
   const auth = useAuth();
+  const { t } = useI18n();
   const [status, setStatus] = useState("loading"); // loading | ready | invalid | success
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -55,8 +57,8 @@ export default function ResetPasswordPage() {
     if (submitting) return;
     setFormError("");
 
-    if (password.length < 8) { setFormError("Le mot de passe doit contenir au moins 8 caractères."); return; }
-    if (password !== confirmPassword) { setFormError("Les mots de passe ne correspondent pas."); return; }
+    if (password.length < 8) { setFormError(t("resetPassword.errorTooShort")); return; }
+    if (password !== confirmPassword) { setFormError(t("resetPassword.errorMismatch")); return; }
 
     setSubmitting(true);
     const { error } = await auth.updatePassword(password);
@@ -79,25 +81,25 @@ export default function ResetPasswordPage() {
         {status === "loading" && (
           <div className="rp-loading">
             <div className="rp-spinner" aria-hidden="true" />
-            <div className="rp-loading-title">Vérification du lien...</div>
+            <div className="rp-loading-title">{t("resetPassword.checkingLink")}</div>
           </div>
         )}
 
         {status === "invalid" && (
           <>
             <div className="rp-status-icon rp-status-icon-warn"><IconAlertCircle size={22} /></div>
-            <div className="rp-title">Lien invalide</div>
-            <div className="error-box">Ce lien de réinitialisation est invalide ou a expiré.</div>
-            <Button href="/" className="rp-cta">Retour à Herbiose</Button>
+            <div className="rp-title">{t("resetPassword.invalidTitle")}</div>
+            <div className="error-box">{t("resetPassword.invalidMessage")}</div>
+            <Button href="/" className="rp-cta">{t("resetPassword.backToHome")}</Button>
           </>
         )}
 
         {status === "ready" && (
           <form onSubmit={handleSubmit}>
-            <div className="rp-title">Nouveau mot de passe</div>
-            <div className="rp-sub">Choisissez un nouveau mot de passe pour votre compte.</div>
+            <div className="rp-title">{t("resetPassword.newPasswordTitle")}</div>
+            <div className="rp-sub">{t("resetPassword.newPasswordSub")}</div>
             <div className="rp-field">
-              <label className="rp-label" htmlFor="new-password">Nouveau mot de passe</label>
+              <label className="rp-label" htmlFor="new-password">{t("resetPassword.newPasswordLabel")}</label>
               <input
                 id="new-password"
                 className="rp-input"
@@ -110,7 +112,7 @@ export default function ResetPasswordPage() {
               />
             </div>
             <div className="rp-field">
-              <label className="rp-label" htmlFor="confirm-password">Confirmer le mot de passe</label>
+              <label className="rp-label" htmlFor="confirm-password">{t("resetPassword.confirmPasswordLabel")}</label>
               <input
                 id="confirm-password"
                 className="rp-input"
@@ -124,7 +126,7 @@ export default function ResetPasswordPage() {
             </div>
             {formError && <div className="error-box">{formError}</div>}
             <Button type="submit" disabled={submitting} className="rp-cta">
-              {submitting ? "Veuillez patienter..." : "Changer le mot de passe"}
+              {submitting ? t("resetPassword.pleaseWait") : t("resetPassword.submit")}
             </Button>
           </form>
         )}
@@ -132,9 +134,9 @@ export default function ResetPasswordPage() {
         {status === "success" && (
           <>
             <div className="rp-status-icon rp-status-icon-success"><IconCheck size={22} /></div>
-            <div className="rp-title">Mot de passe modifié avec succès</div>
-            <div className="rp-success">Vous pouvez maintenant vous reconnecter avec votre nouveau mot de passe.</div>
-            <Button href="/" className="rp-cta">Retour à Herbiose</Button>
+            <div className="rp-title">{t("resetPassword.successTitle")}</div>
+            <div className="rp-success">{t("resetPassword.successMessage")}</div>
+            <Button href="/" className="rp-cta">{t("resetPassword.backToHome")}</Button>
           </>
         )}
       </div>

@@ -2,8 +2,10 @@ import { useState } from "react";
 import { IconX, IconLeaf } from "@/components/ui/icons";
 import IconButton from "@/components/ui/IconButton";
 import Button from "@/components/ui/Button";
+import { useI18n } from "@/lib/i18n";
 
 export default function AuthModal({ auth, onClose, initialMode = "login" }) {
+  const { t } = useI18n();
   const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +32,7 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
       const { error } = await auth.requestPasswordReset(email);
       setSubmitting(false);
       if (error) { setError(error); return; }
-      setSuccessMessage("Si un compte existe pour cette adresse, un email de réinitialisation a été envoyé.");
+      setSuccessMessage(t("auth.resetEmailSent"));
       return;
     }
 
@@ -47,7 +49,7 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
       setSubmitting(false);
       if (error) { setError(error); return; }
       if (data.needsEmailConfirmation) {
-        setSuccessMessage("Compte créé ! Consultez votre boîte mail pour confirmer votre adresse avant de vous connecter.");
+        setSuccessMessage(t("auth.signupSuccess"));
       } else {
         onClose();
       }
@@ -65,23 +67,23 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
         aria-labelledby="am-title"
         aria-describedby="am-sub"
       >
-        <IconButton icon={IconX} label="Fermer" onClick={onClose} className="am-close-btn" />
+        <IconButton icon={IconX} label={t("auth.close")} onClick={onClose} className="am-close-btn" />
 
         <div className="am-brand"><IconLeaf size={16} /> Herbiose</div>
 
         {mode === "forgot" ? (
           <>
-            <button type="button" className="am-back-link" onClick={() => switchMode("login")}>← Retour à la connexion</button>
-            <div className="am-title" id="am-title">Mot de passe oublié</div>
-            <div className="am-sub" id="am-sub">Recevez un lien par email pour réinitialiser votre mot de passe.</div>
+            <button type="button" className="am-back-link" onClick={() => switchMode("login")}>{t("auth.backToLogin")}</button>
+            <div className="am-title" id="am-title">{t("auth.forgotPasswordTitle")}</div>
+            <div className="am-sub" id="am-sub">{t("auth.forgotPasswordSub")}</div>
           </>
         ) : (
           <>
-            <div className="am-title" id="am-title">{mode === "login" ? "Connexion" : "Créer un compte"}</div>
-            <div className="am-sub" id="am-sub">Accédez à votre espace Herbiose.</div>
+            <div className="am-title" id="am-title">{mode === "login" ? t("auth.loginTitle") : t("auth.signupTitle")}</div>
+            <div className="am-sub" id="am-sub">{t("auth.loginSub")}</div>
             <div className="am-tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={mode === "login"} className={"am-tab" + (mode === "login" ? " active" : "")} onClick={() => switchMode("login")}>Se connecter</button>
-              <button type="button" role="tab" aria-selected={mode === "signup"} className={"am-tab" + (mode === "signup" ? " active" : "")} onClick={() => switchMode("signup")}>Créer un compte</button>
+              <button type="button" role="tab" aria-selected={mode === "login"} className={"am-tab" + (mode === "login" ? " active" : "")} onClick={() => switchMode("login")}>{t("auth.loginTab")}</button>
+              <button type="button" role="tab" aria-selected={mode === "signup"} className={"am-tab" + (mode === "signup" ? " active" : "")} onClick={() => switchMode("signup")}>{t("auth.signupTab")}</button>
             </div>
           </>
         )}
@@ -90,13 +92,13 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
           <>
             <div className="am-success">{successMessage}</div>
             <div className="am-actions">
-              <Button type="button" variant="secondary" onClick={onClose}>Fermer</Button>
+              <Button type="button" variant="secondary" onClick={onClose}>{t("common.close")}</Button>
             </div>
           </>
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="am-field">
-              <label className="am-label" htmlFor="auth-email">Email</label>
+              <label className="am-label" htmlFor="auth-email">{t("auth.email")}</label>
               <input
                 id="auth-email"
                 className="am-input"
@@ -110,7 +112,7 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
 
             {mode !== "forgot" && (
               <div className="am-field">
-                <label className="am-label" htmlFor="auth-password">Mot de passe</label>
+                <label className="am-label" htmlFor="auth-password">{t("auth.password")}</label>
                 <input
                   id="auth-password"
                   className="am-input"
@@ -126,7 +128,7 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
 
             {mode === "login" && (
               <button type="button" className="am-forgot-link" onClick={() => switchMode("forgot")}>
-                Mot de passe oublié ?
+                {t("auth.forgotPasswordLink")}
               </button>
             )}
 
@@ -135,14 +137,14 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
             <div className="am-actions">
               <Button type="submit" disabled={submitting}>
                 {submitting
-                  ? "Veuillez patienter..."
+                  ? t("auth.pleaseWait")
                   : mode === "login"
-                  ? "Se connecter"
+                  ? t("auth.submitLogin")
                   : mode === "signup"
-                  ? "Créer mon compte"
-                  : "Envoyer le lien"}
+                  ? t("auth.submitSignup")
+                  : t("auth.submitForgot")}
               </Button>
-              <Button type="button" variant="secondary" onClick={onClose}>Annuler</Button>
+              <Button type="button" variant="secondary" onClick={onClose}>{t("auth.cancel")}</Button>
             </div>
           </form>
         )}

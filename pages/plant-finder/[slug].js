@@ -3,7 +3,8 @@ import { useRouter } from "next/router";
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
 import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths, plantTypeLabel, plantFinderDisplayTitle } from "@/lib/plantFinderFormat";
 import { IconSprig } from "@/components/ui/icons";
-import { EXTERNAL_NAV_ITEMS } from "@/components/ui/externalNavItems";
+import { getExternalNavItems } from "@/components/ui/externalNavItems";
+import { useI18n } from "@/lib/i18n";
 
 // Server-rendered on purpose: returning `notFound: true` is what gives a
 // missing slug (or a draft row RLS already hides) Next.js's real 404
@@ -40,6 +41,7 @@ function Field({ label, value }) {
 
 export default function PlantFinderDetailPage({ plant }) {
   const router = useRouter();
+  const { t } = useI18n();
   // `from` is the list page's own serialized filter/search query string,
   // passed through by PlantFinderCard so this link returns the visitor to
   // their exact prior search state rather than always resetting it.
@@ -47,23 +49,23 @@ export default function PlantFinderDetailPage({ plant }) {
   const backHref = from ? `/plant-finder?${from}` : "/plant-finder";
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
   const spread = formatHeightRange(null, plant.spreadMaxCm);
-  const sun = sunLabels(plant.sun);
-  const plantType = plantTypeLabel(plant.plantType);
-  const badgeLabel = entryTypeLabel(plant.entryType);
-  const evergreenLabel = formatBoolean(plant.evergreen);
-  const containerLabel = formatBoolean(plant.containerSuitable);
-  const edibleLabel = formatBoolean(plant.edible);
-  const flowering = formatFloweringMonths(plant.floweringMonths);
+  const sun = sunLabels(plant.sun, t);
+  const plantType = plantTypeLabel(plant.plantType, t);
+  const badgeLabel = entryTypeLabel(plant.entryType, t);
+  const evergreenLabel = formatBoolean(plant.evergreen, t);
+  const containerLabel = formatBoolean(plant.containerSuitable, t);
+  const edibleLabel = formatBoolean(plant.edible, t);
+  const flowering = formatFloweringMonths(plant.floweringMonths, t);
   // Same commonName-leads / displayName-as-scientific-subtitle convention as
   // PlantFinderCard, kept consistent across list -> detail (spec §12).
   const { title, scientificSubtitle } = plantFinderDisplayTitle(plant);
 
   return (
-    <AppShell navItems={EXTERNAL_NAV_ITEMS} activeKey="trouver">
+    <AppShell navItems={getExternalNavItems(t)} activeKey="trouver">
       <div className="pfd-page">
         <style>{DETAIL_STYLES}</style>
 
-        <a href={backHref} className="pfd-back-link">← Retour à la recherche</a>
+        <a href={backHref} className="pfd-back-link">{t("finder.backLink")}</a>
 
         <div className="pfd-hero">
           {plant.imageUrl && (
@@ -106,18 +108,18 @@ export default function PlantFinderDetailPage({ plant }) {
           </div>
         </div>
 
-        <h2 className="pfd-section-title">Caractéristiques</h2>
+        <h2 className="pfd-section-title">{t("finder.characteristics")}</h2>
         <div className="pfd-info-grid">
-          <Field label="Type" value={plantType} />
-          <Field label="Genre botanique" value={plant.taxon?.genus} />
-          <Field label="Hauteur" value={height} />
-          <Field label="Largeur" value={spread} />
-          <Field label="Exposition" value={sun ? sun.join(", ") : null} />
-          <Field label="Feuillage persistant" value={evergreenLabel} />
-          <Field label="Besoin en eau" value={plant.waterNeed} />
-          <Field label="Culture en pot" value={containerLabel} />
-          <Field label="Comestible" value={edibleLabel} />
-          <Field label="Floraison" value={flowering} />
+          <Field label={t("finder.type")} value={plantType} />
+          <Field label={t("finder.genus")} value={plant.taxon?.genus} />
+          <Field label={t("finder.height")} value={height} />
+          <Field label={t("finder.width")} value={spread} />
+          <Field label={t("finder.exposure")} value={sun ? sun.join(", ") : null} />
+          <Field label={t("finder.evergreen")} value={evergreenLabel} />
+          <Field label={t("finder.waterNeed")} value={plant.waterNeed} />
+          <Field label={t("finder.containerGrowing")} value={containerLabel} />
+          <Field label={t("finder.edible")} value={edibleLabel} />
+          <Field label={t("finder.flowering")} value={flowering} />
         </div>
       </div>
     </AppShell>

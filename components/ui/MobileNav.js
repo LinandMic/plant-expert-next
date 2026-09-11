@@ -1,10 +1,13 @@
+import { useI18n } from "@/lib/i18n";
+
 // Fixed bottom navigation for <768px (spec §9). Shows every item in
 // navItems, in order — callers should cap that list at 5 destinations.
 // The `emphasis` item (Identifier) gets a subtly raised icon chip, never a
 // giant floating button.
 export default function MobileNav({ navItems, activeKey }) {
+  const { t } = useI18n();
   return (
-    <nav className="pe-mobile-nav" aria-label="Navigation principale">
+    <nav className="pe-mobile-nav" aria-label={t("nav.mainNavigation")}>
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = item.key === activeKey;

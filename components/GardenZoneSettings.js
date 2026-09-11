@@ -2,6 +2,7 @@ import { useState } from "react";
 import { EXPOSURE_TYPES, ORIENTATION_TYPES, WATERING_MODES, WATERING_TYPES } from "@/lib/plantContextOptions";
 import Button from "@/components/ui/Button";
 import { IconSun, IconDroplet, IconHelpCircle, IconAlertCircle } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n";
 
 // Mirrors gardenApi.js's toPositiveIntOrNull (used for the same columns on
 // plants) — coerces "" to null and guarantees a NaN/non-finite/non-positive
@@ -31,8 +32,13 @@ function optionIcon(id) {
   return SOBER_ICON_BY_ID[id] || null;
 }
 
-function withClearOption(options) {
-  return [{ id: "", label: "Non renseigné" }, ...options];
+// EXPOSURE_TYPES/ORIENTATION_TYPES/WATERING_MODES/WATERING_TYPES (from
+// lib/plantContextOptions.js) are out of scope for round 1 (see
+// UNTRANSLATED_IN_SCOPE) — their .label stays French this round, only this
+// component's own chrome (field labels, buttons, the synthetic "cleared"
+// option below) is translated.
+function withClearOption(options, t) {
+  return [{ id: "", label: t("gardenZoneSettings.notProvided") }, ...options];
 }
 
 function OptionGrid({ options, value, onChange, groupLabel, idPrefix }) {
@@ -59,6 +65,7 @@ function OptionGrid({ options, value, onChange, groupLabel, idPrefix }) {
 }
 
 export default function GardenZoneSettings({ zone, onSave, onCancel }) {
+  const { t } = useI18n();
   const [exposure, setExposure] = useState(zone.exposure || "");
   const [orientation, setOrientation] = useState(zone.orientation || "");
   const [wateringMode, setWateringMode] = useState(zone.wateringMode || "");
@@ -71,10 +78,10 @@ export default function GardenZoneSettings({ zone, onSave, onCancel }) {
 
   const isAutomatic = wateringMode === "automatic";
 
-  const exposureOptions = withClearOption(EXPOSURE_TYPES);
-  const orientationOptions = withClearOption(ORIENTATION_TYPES);
-  const wateringModeOptions = withClearOption(WATERING_MODES);
-  const wateringTypeOptions = withClearOption(WATERING_TYPES);
+  const exposureOptions = withClearOption(EXPOSURE_TYPES, t);
+  const orientationOptions = withClearOption(ORIENTATION_TYPES, t);
+  const wateringModeOptions = withClearOption(WATERING_MODES, t);
+  const wateringTypeOptions = withClearOption(WATERING_TYPES, t);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -108,28 +115,28 @@ export default function GardenZoneSettings({ zone, onSave, onCancel }) {
       <style>{GZS_STYLES}</style>
 
       <div className="gzs-field">
-        <label className="gzs-label">Exposition</label>
-        <OptionGrid options={exposureOptions} value={exposure} onChange={setExposure} groupLabel="Exposition" idPrefix={`zs-exposure-${zone.id}-`} />
+        <label className="gzs-label">{t("gardenZoneSettings.exposure")}</label>
+        <OptionGrid options={exposureOptions} value={exposure} onChange={setExposure} groupLabel={t("gardenZoneSettings.exposure")} idPrefix={`zs-exposure-${zone.id}-`} />
       </div>
 
       <div className="gzs-field">
-        <label className="gzs-label">Orientation</label>
-        <OptionGrid options={orientationOptions} value={orientation} onChange={setOrientation} groupLabel="Orientation" idPrefix={`zs-orientation-${zone.id}-`} />
+        <label className="gzs-label">{t("gardenZoneSettings.orientation")}</label>
+        <OptionGrid options={orientationOptions} value={orientation} onChange={setOrientation} groupLabel={t("gardenZoneSettings.orientation")} idPrefix={`zs-orientation-${zone.id}-`} />
       </div>
 
       <div className="gzs-field">
-        <label className="gzs-label">Arrosage</label>
-        <OptionGrid options={wateringModeOptions} value={wateringMode} onChange={setWateringMode} groupLabel="Arrosage" idPrefix={`zs-watering-mode-${zone.id}-`} />
+        <label className="gzs-label">{t("gardenZoneSettings.watering")}</label>
+        <OptionGrid options={wateringModeOptions} value={wateringMode} onChange={setWateringMode} groupLabel={t("gardenZoneSettings.watering")} idPrefix={`zs-watering-mode-${zone.id}-`} />
       </div>
 
       {isAutomatic && (
         <>
           <div className="gzs-field">
-            <label className="gzs-label">Type d&apos;arrosage</label>
-            <OptionGrid options={wateringTypeOptions} value={wateringType} onChange={setWateringType} groupLabel="Type d'arrosage" idPrefix={`zs-watering-type-${zone.id}-`} />
+            <label className="gzs-label">{t("gardenZoneSettings.wateringType")}</label>
+            <OptionGrid options={wateringTypeOptions} value={wateringType} onChange={setWateringType} groupLabel={t("gardenZoneSettings.wateringType")} idPrefix={`zs-watering-type-${zone.id}-`} />
           </div>
           <div className="gzs-field">
-            <label className="gzs-label" htmlFor={`zs-freq-${zone.id}`}>Fréquence (jours)</label>
+            <label className="gzs-label" htmlFor={`zs-freq-${zone.id}`}>{t("gardenZoneSettings.frequencyDays")}</label>
             <input
               id={`zs-freq-${zone.id}`}
               className="gzs-input"
@@ -142,7 +149,7 @@ export default function GardenZoneSettings({ zone, onSave, onCancel }) {
             />
           </div>
           <div className="gzs-field">
-            <label className="gzs-label" htmlFor={`zs-duration-${zone.id}`}>Durée (minutes)</label>
+            <label className="gzs-label" htmlFor={`zs-duration-${zone.id}`}>{t("gardenZoneSettings.durationMinutes")}</label>
             <input
               id={`zs-duration-${zone.id}`}
               className="gzs-input"
@@ -161,10 +168,10 @@ export default function GardenZoneSettings({ zone, onSave, onCancel }) {
 
       <div className="gzs-actions">
         <Button type="submit" disabled={saving}>
-          {saving ? "Enregistrement..." : "Enregistrer"}
+          {saving ? t("gardenZoneSettings.saving") : t("gardenZoneSettings.save")}
         </Button>
         <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>
-          Annuler
+          {t("gardenZoneSettings.cancel")}
         </Button>
       </div>
     </form>

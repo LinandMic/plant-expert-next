@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/router";
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/useAuth";
 import { tabFromQuery, tabToQuery } from "@/lib/homeTabRouting";
 import { useGarden } from "@/lib/useGarden";
@@ -185,6 +186,7 @@ function resizeImage(file, maxSize = 1024) {
 }
 
 function PlantationModal({ onConfirm, onSkip }) {
+  const { t } = useI18n();
   const [step, setStep] = useState(1);
   const [plantation, setPlantation] = useState(null);
   const [usageSelected, setUsageSelected] = useState(null);
@@ -198,12 +200,12 @@ function PlantationModal({ onConfirm, onSkip }) {
     <div className="plm-overlay">
       <style>{PLM_STYLES}</style>
       <div className="plm-panel" role="dialog" aria-modal="true" aria-labelledby="plm-title">
-        <div className="plm-step">Étape {step}/2</div>
+        <div className="plm-step">{t("identifier.step", { step })}</div>
         {step === 1 && (
           <>
-            <div className="plm-title" id="plm-title">Contexte de plantation</div>
-            <div className="plm-sub">Les quantités eau et engrais seront adaptées</div>
-            <div className="plm-option-grid" role="group" aria-label="Contexte de plantation">
+            <div className="plm-title" id="plm-title">{t("identifier.plantationContextTitle")}</div>
+            <div className="plm-sub">{t("identifier.plantationContextSub")}</div>
+            <div className="plm-option-grid" role="group" aria-label={t("identifier.plantationContextTitle")}>
               {PLANTATION_TYPES.map(p => (
                 <button
                   type="button"
@@ -220,9 +222,9 @@ function PlantationModal({ onConfirm, onSkip }) {
         )}
         {step === 2 && (
           <>
-            <div className="plm-title" id="plm-title">Usage de la plante</div>
-            <div className="plm-sub">Les conseils de taille seront adaptés à cet usage</div>
-            <div className="plm-option-grid" role="group" aria-label="Usage de la plante">
+            <div className="plm-title" id="plm-title">{t("identifier.usageTitle")}</div>
+            <div className="plm-sub">{t("identifier.usageSub")}</div>
+            <div className="plm-option-grid" role="group" aria-label={t("identifier.usageTitle")}>
               {USAGE_TYPES.map(u => (
                 <button
                   type="button"
@@ -243,10 +245,10 @@ function PlantationModal({ onConfirm, onSkip }) {
             disabled={step === 1 ? !plantation : false}
             onClick={handleConfirm}
           >
-            {step === 1 ? <>Suivant <IconArrowRight size={16} /></> : "Obtenir les conseils adaptés"}
+            {step === 1 ? <>{t("identifier.next")} <IconArrowRight size={16} /></> : t("identifier.getAdaptedAdvice")}
           </Button>
           <Button type="button" variant="secondary" onClick={() => onSkip()}>
-            Passer (conseils généraux)
+            {t("identifier.skip")}
           </Button>
         </div>
       </div>
@@ -274,8 +276,9 @@ const PLM_STYLES = `
 `;
 
 function TagList({ items, color }) {
+  const { t } = useI18n();
   const c = color || "green";
-  if (!items || !items.length) return <p className="pdet-empty-text">Aucune donnée</p>;
+  if (!items || !items.length) return <p className="pdet-empty-text">{t("plantDetail.noData")}</p>;
   return (
     <div className="pdet-tag-list">
       {items.map((item, i) => (
@@ -305,12 +308,14 @@ function InfoCard({ icon: Icon, label, value }) {
 }
 
 function CalendrierGrid({ data }) {
+  const { t } = useI18n();
+  const monthsShort = t("format.monthsShort");
   const moisActuel = new Date().getMonth();
   return (
     <div className="pdet-cal-grid">
-      {MONTHS.map(([key, label], i) => (
+      {MONTHS.map(([key], i) => (
         <div key={key} className={"pdet-cal-cell" + (i === moisActuel ? " active" : "")}>
-          <div className="pdet-cal-month">{label}</div>
+          <div className="pdet-cal-month">{monthsShort[i]}</div>
           <div className="pdet-cal-text">{data[key] || "—"}</div>
         </div>
       ))}
@@ -318,17 +323,26 @@ function CalendrierGrid({ data }) {
   );
 }
 
-const PLANT_DETAIL_TABS = [
-  { key: "maladies", label: "Maladies", icon: IconAlertCircle },
-  { key: "taille", label: "Taille", icon: IconScissors },
-  { key: "nutriments", label: "Nutriments", icon: IconFlask },
-  { key: "arrosage", label: "Arrosage", icon: IconDroplet },
-  { key: "calendrier", label: "Calendrier", icon: IconCalendar },
-];
+// A function, not a module-level constant: the labels must reflect the
+// active locale, and this is evaluated outside React in several call sites
+// (PlanteFiche) where t comes from useI18n() at render time. `key` (used to
+// index r.maladies/r.taille/... which are AI-generated JSON) is never
+// translated — only the displayed label is.
+function getPlantDetailTabs(t) {
+  return [
+    { key: "maladies", label: t("plantDetail.tabs.maladies"), icon: IconAlertCircle },
+    { key: "taille", label: t("plantDetail.tabs.taille"), icon: IconScissors },
+    { key: "nutriments", label: t("plantDetail.tabs.nutriments"), icon: IconFlask },
+    { key: "arrosage", label: t("plantDetail.tabs.arrosage"), icon: IconDroplet },
+    { key: "calendrier", label: t("plantDetail.tabs.calendrier"), icon: IconCalendar },
+  ];
+}
 
 function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions, zoneId, zones, isAuthenticated, onSaveZone }) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState("maladies");
-  const tabs = onSaveContext ? [...PLANT_DETAIL_TABS, { key: "jardin", label: "Jardin", icon: IconSprout }] : PLANT_DETAIL_TABS;
+  const plantDetailTabs = getPlantDetailTabs(t);
+  const tabs = onSaveContext ? [...plantDetailTabs, { key: "jardin", label: t("plantDetail.tabs.jardin"), icon: IconSprout }] : plantDetailTabs;
   const r = result;
   const identite = r && r.identite;
   // zoneId/zones are only ever passed from the Mon Jardin context — reuses
@@ -345,7 +359,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
             {imagePreview ? (
               <img
                 src={imagePreview}
-                alt={identite && identite.nom_commun ? `Photo de ${identite.nom_commun}` : "Photo de la plante"}
+                alt={identite && identite.nom_commun ? t("plantDetail.photoOf", { name: identite.nom_commun }) : t("plantDetail.photoOfPlant")}
               />
             ) : (
               <IconSprig size={34} />
@@ -354,7 +368,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
           <div className="pdet-hero-text">
             {identite && identite.confiance && (
               <span className={"pdet-confidence pdet-confidence-" + identite.confiance}>
-                Confiance : {identite.confiance}
+                {t("plantDetail.confidence", { value: identite.confiance })}
               </span>
             )}
             {identite && identite.nom_commun && <h1 className="pdet-hero-name">{identite.nom_commun}</h1>}
@@ -366,10 +380,10 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
             </div>
             <div className="pdet-status-row">
               {alreadySaved && identificationStatus === "confirmed" && (
-                <span className="pdet-status-badge pdet-status-confirmed"><IconCheck size={13} /> Identification confirmée</span>
+                <span className="pdet-status-badge pdet-status-confirmed"><IconCheck size={13} /> {t("plantDetail.identificationConfirmed")}</span>
               )}
               {alreadySaved && identificationStatus === "uncertain" && (
-                <span className="pdet-status-badge pdet-status-uncertain"><IconHelpCircle size={13} /> Identification à confirmer</span>
+                <span className="pdet-status-badge pdet-status-uncertain"><IconHelpCircle size={13} /> {t("plantDetail.identificationUncertain")}</span>
               )}
               {plantation && <span className="pdet-context-pill">{plantation.label}</span>}
               {usage && <span className="pdet-context-pill">{usage.label}</span>}
@@ -381,23 +395,23 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
 
         <div className="pdet-save-row">
           {alreadySaved ? (
-            <span className="pdet-saved-badge"><IconCheck size={15} /> Dans Mon Jardin</span>
+            <span className="pdet-saved-badge"><IconCheck size={15} /> {t("plantDetail.inMyGarden")}</span>
           ) : identificationStatus === "rejected" ? (
-            <span className="pdet-blocked-note">Ajout à Mon Jardin bloqué — identification rejetée</span>
+            <span className="pdet-blocked-note">{t("plantDetail.addBlockedRejected")}</span>
           ) : (
-            <Button onClick={onSave}><IconSprout size={16} /> Ajouter à Mon Jardin</Button>
+            <Button onClick={onSave}><IconSprout size={16} /> {t("plantDetail.addToGarden")}</Button>
           )}
         </div>
 
         {identificationActions && identificationStatus && !alreadySaved && (
-          <div className="pdet-id-check" role="group" aria-label="Confirmer l'identification">
+          <div className="pdet-id-check" role="group" aria-label={t("plantDetail.confirmIdAriaLabel")}>
             <button
               type="button"
               aria-pressed={identificationStatus === "confirmed"}
               className={"pdet-id-check-btn" + (identificationStatus === "confirmed" ? " active-yes" : "")}
               onClick={identificationActions.onConfirm}
             >
-              <IconCheck size={15} /> Oui, c&apos;est ça
+              <IconCheck size={15} /> {t("plantDetail.yesThatsIt")}
             </button>
             <button
               type="button"
@@ -405,7 +419,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
               className={"pdet-id-check-btn" + (identificationStatus === "rejected" ? " active-no" : "")}
               onClick={identificationActions.onReject}
             >
-              <IconX size={15} /> Non
+              <IconX size={15} /> {t("plantDetail.no")}
             </button>
             <button
               type="button"
@@ -413,7 +427,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
               className={"pdet-id-check-btn" + (identificationStatus === "uncertain" ? " active-unsure" : "")}
               onClick={identificationActions.onUncertain}
             >
-              <IconHelpCircle size={15} /> Je ne sais pas
+              <IconHelpCircle size={15} /> {t("plantDetail.unsure")}
             </button>
           </div>
         )}
@@ -437,21 +451,21 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
 
       {identificationStatus === "rejected" && identificationActions && !alreadySaved && (
         <div className="pdet-content-card" style={{ marginBottom: 16 }}>
-          <div className="pdet-section-title"><IconX size={17} /> Identification rejetée</div>
+          <div className="pdet-section-title"><IconX size={17} /> {t("plantDetail.rejectedTitle")}</div>
           <div className="error-box" style={{ margin: "0 0 16px" }}>
-            Vous avez indiqué que ce résultat n&apos;était pas correct. Il ne peut pas être ajouté à Mon Jardin tel quel.
+            {t("plantDetail.rejectedMessage")}
           </div>
           <div className="pdet-rejected-actions">
-            <Button onClick={identificationActions.onRetakePhoto}><IconCamera size={16} /> Reprendre une photo</Button>
-            <Button variant="secondary" onClick={identificationActions.onSwitchToNameSearch}><IconSearch size={16} /> Identifier par nom</Button>
+            <Button onClick={identificationActions.onRetakePhoto}><IconCamera size={16} /> {t("plantDetail.retakePhoto")}</Button>
+            <Button variant="secondary" onClick={identificationActions.onSwitchToNameSearch}><IconSearch size={16} /> {t("plantDetail.identifyByName")}</Button>
           </div>
         </div>
       )}
       {identificationStatus === "uncertain" && !alreadySaved && (
         <div className="pdet-content-card" style={{ marginBottom: 16 }}>
-          <div className="pdet-section-title"><IconHelpCircle size={17} /> Identification à confirmer</div>
+          <div className="pdet-section-title"><IconHelpCircle size={17} /> {t("plantDetail.uncertainTitle")}</div>
           <div className="pdet-highlight-box">
-            Pour confirmer cette identification, essaie une nouvelle photo : la plante entière, une feuille, une fleur ou un fruit si disponible, et l&apos;écorce ou la tige si pertinent.
+            {t("plantDetail.uncertainMessage")}
           </div>
         </div>
       )}
@@ -459,64 +473,64 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
       <div className="pdet-content-card">
         {activeTab === "maladies" && r.maladies && (
           <div>
-            <div className="pdet-section-title"><IconAlertCircle size={17} /> Maladies &amp; Ravageurs</div>
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Vulnérabilités</div><TagList items={r.maladies.vulnerabilites} color="red" /></div>
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Symptômes</div><TagList items={r.maladies.symptomes_alerte} color="gold" /></div>
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Traitements</div><TagList items={r.maladies.traitements} color="green" /></div>
-            {r.maladies.conseil_urgence && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Urgence</div>{r.maladies.conseil_urgence}</div>}
+            <div className="pdet-section-title"><IconAlertCircle size={17} /> {t("plantDetail.diseasesTitle")}</div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.vulnerabilities")}</div><TagList items={r.maladies.vulnerabilites} color="red" /></div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.symptoms")}</div><TagList items={r.maladies.symptomes_alerte} color="gold" /></div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.treatments")}</div><TagList items={r.maladies.traitements} color="green" /></div>
+            {r.maladies.conseil_urgence && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.emergency")}</div>{r.maladies.conseil_urgence}</div>}
           </div>
         )}
         {activeTab === "taille" && r.taille && (
           <div>
-            <div className="pdet-section-title"><IconScissors size={17} /> Taille</div>
+            <div className="pdet-section-title"><IconScissors size={17} /> {t("plantDetail.pruningTitle")}</div>
             <div className="pdet-info-grid">
-              <InfoCard icon={IconCalendar} label="Période" value={r.taille.periode_ideale} />
-              <InfoCard label="Fréquence" value={r.taille.frequence} />
+              <InfoCard icon={IconCalendar} label={t("plantDetail.period")} value={r.taille.periode_ideale} />
+              <InfoCard label={t("plantDetail.frequency")} value={r.taille.frequence} />
             </div>
-            {r.taille.technique && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Technique</div>{r.taille.technique}</div>}
-            {r.taille.a_eviter && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">À éviter</div>{r.taille.a_eviter}</div>}
-            {r.taille.conseil_pro && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">Conseil pro</div>{r.taille.conseil_pro}</div>}
+            {r.taille.technique && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.technique")}</div>{r.taille.technique}</div>}
+            {r.taille.a_eviter && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">{t("plantDetail.toAvoid")}</div>{r.taille.a_eviter}</div>}
+            {r.taille.conseil_pro && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">{t("plantDetail.proTip")}</div>{r.taille.conseil_pro}</div>}
           </div>
         )}
         {activeTab === "nutriments" && r.nutriments && (
           <div>
-            <div className="pdet-section-title"><IconFlask size={17} /> Nutriments &amp; Engrais</div>
-            {plantation && <div className="pdet-context-banner">Conseils adaptés : {plantation.label}</div>}
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Besoins</div><TagList items={r.nutriments.besoins_principaux} color="green" /></div>
+            <div className="pdet-section-title"><IconFlask size={17} /> {t("plantDetail.nutrientsTitle")}</div>
+            {plantation && <div className="pdet-context-banner">{t("plantDetail.adaptedAdviceFor", { label: plantation.label })}</div>}
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.needs")}</div><TagList items={r.nutriments.besoins_principaux} color="green" /></div>
             <div className="pdet-info-grid" style={{ marginTop: 14 }}>
-              <InfoCard icon={IconFlask} label="Engrais recommandé" value={r.nutriments.engrais_recommande} />
-              <InfoCard icon={IconCalendar} label="Période" value={r.nutriments.periode_fertilisation} />
+              <InfoCard icon={IconFlask} label={t("plantDetail.recommendedFertilizer")} value={r.nutriments.engrais_recommande} />
+              <InfoCard icon={IconCalendar} label={t("plantDetail.fertilizationPeriod")} value={r.nutriments.periode_fertilisation} />
             </div>
-            {r.nutriments.frequence_apport && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Quantités et fréquence</div>{r.nutriments.frequence_apport}</div>}
-            {r.nutriments.signes_carence && r.nutriments.signes_carence.length > 0 && <div className="pdet-subsection"><div className="pdet-subsection-title">Signes de carence</div><TagList items={r.nutriments.signes_carence} color="gold" /></div>}
-            {r.nutriments.surdosage_risques && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">Risque surdosage</div>{r.nutriments.surdosage_risques}</div>}
+            {r.nutriments.frequence_apport && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.quantitiesAndFrequency")}</div>{r.nutriments.frequence_apport}</div>}
+            {r.nutriments.signes_carence && r.nutriments.signes_carence.length > 0 && <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.deficiencySigns")}</div><TagList items={r.nutriments.signes_carence} color="gold" /></div>}
+            {r.nutriments.surdosage_risques && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">{t("plantDetail.overdoseRisk")}</div>{r.nutriments.surdosage_risques}</div>}
           </div>
         )}
         {activeTab === "arrosage" && r.arrosage && (
           <div>
-            <div className="pdet-section-title"><IconDroplet size={17} /> Arrosage</div>
-            {plantation && <div className="pdet-context-banner">Conseils adaptés : {plantation.label}</div>}
+            <div className="pdet-section-title"><IconDroplet size={17} /> {t("plantDetail.wateringTitle")}</div>
+            {plantation && <div className="pdet-context-banner">{t("plantDetail.adaptedAdviceFor", { label: plantation.label })}</div>}
             <div className="pdet-info-grid">
-              <InfoCard icon={IconSun} label="Été" value={r.arrosage.frequence_ete} />
-              <InfoCard label="Hiver" value={r.arrosage.frequence_hiver} />
+              <InfoCard icon={IconSun} label={t("plantDetail.summer")} value={r.arrosage.frequence_ete} />
+              <InfoCard label={t("plantDetail.winter")} value={r.arrosage.frequence_hiver} />
             </div>
-            {r.arrosage.methode && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Méthode</div>{r.arrosage.methode}</div>}
-            {r.arrosage.conseil_pratique && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">Conseil pratique</div>{r.arrosage.conseil_pratique}</div>}
+            {r.arrosage.methode && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.method")}</div>{r.arrosage.methode}</div>}
+            {r.arrosage.conseil_pratique && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">{t("plantDetail.practicalAdvice")}</div>{r.arrosage.conseil_pratique}</div>}
             <div className="pdet-info-grid" style={{ marginTop: 10 }}>
-              <InfoCard icon={IconAlertCircle} label="Manque" value={r.arrosage.signes_manque} />
-              <InfoCard icon={IconAlertCircle} label="Excès" value={r.arrosage.signes_exces} />
+              <InfoCard icon={IconAlertCircle} label={t("plantDetail.lackSigns")} value={r.arrosage.signes_manque} />
+              <InfoCard icon={IconAlertCircle} label={t("plantDetail.excessSigns")} value={r.arrosage.signes_exces} />
             </div>
           </div>
         )}
         {activeTab === "calendrier" && r.calendrier && (
           <div>
-            <div className="pdet-section-title"><IconCalendar size={17} /> Calendrier annuel</div>
+            <div className="pdet-section-title"><IconCalendar size={17} /> {t("plantDetail.calendarTitle")}</div>
             <CalendrierGrid data={r.calendrier} />
           </div>
         )}
         {activeTab === "jardin" && onSaveContext && (
           <div>
-            <div className="pdet-section-title"><IconSprout size={17} /> Contexte du jardin</div>
+            <div className="pdet-section-title"><IconSprout size={17} /> {t("plantDetail.gardenContextTitle")}</div>
             <PlantContextEditor
               context={context}
               onSave={onSaveContext}
@@ -625,6 +639,7 @@ const PLANT_DETAIL_STYLES = `
 `;
 
 function IdentifierTab({ addPlant }) {
+  const { t } = useI18n();
   const [plantName, setPlantName] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -671,12 +686,12 @@ function IdentifierTab({ addPlant }) {
       setResult(data);
       setIdentificationStatus(imageFile ? "unreviewed" : null);
     } catch (e) {
-      setError("Erreur d analyse. Vérifie ta connexion ou réessaie.");
+      setError(t("identifier.analyzeError"));
     } finally { setLoading(false); }
   };
 
   const handleAnalyze = () => {
-    if (!imageFile && !plantName.trim()) { setError("Fournis une photo ou un nom de plante."); return; }
+    if (!imageFile && !plantName.trim()) { setError(t("identifier.missingInput")); return; }
     setShowModal(true);
   };
 
@@ -727,9 +742,9 @@ function IdentifierTab({ addPlant }) {
       {!result && !loading && (
         <>
           <header className="pi-header">
-            <div className="pi-eyebrow">IDENTIFIER</div>
-            <h1 className="pi-title">Quelle est cette plante ?</h1>
-            <p className="pi-subtitle">Prenez ou importez une photo pour tenter de l&apos;identifier.</p>
+            <div className="pi-eyebrow">{t("identifier.eyebrow")}</div>
+            <h1 className="pi-title">{t("identifier.title")}</h1>
+            <p className="pi-subtitle">{t("identifier.subtitle")}</p>
           </header>
 
           <div className="pi-layout">
@@ -738,7 +753,7 @@ function IdentifierTab({ addPlant }) {
                 className={"pi-dropzone" + (imagePreview ? " has-image" : "")}
                 role={imagePreview ? undefined : "button"}
                 tabIndex={imagePreview ? undefined : 0}
-                aria-label={imagePreview ? undefined : "Choisir ou déposer une photo de plante"}
+                aria-label={imagePreview ? undefined : t("identifier.dropzoneAriaLabel")}
                 onClick={() => !imagePreview && fileRef.current && fileRef.current.click()}
                 onKeyDown={(e) => {
                   if (!imagePreview && (e.key === "Enter" || e.key === " ")) {
@@ -753,7 +768,7 @@ function IdentifierTab({ addPlant }) {
                   <>
                     <img
                       src={imagePreview}
-                      alt={imageFile && imageFile.name ? `Photo sélectionnée : ${imageFile.name}` : "Photo sélectionnée"}
+                      alt={imageFile && imageFile.name ? t("identifier.selectedPhotoAltNamed", { name: imageFile.name }) : t("identifier.selectedPhotoAlt")}
                       className="pi-preview-img"
                     />
                     <button
@@ -761,7 +776,7 @@ function IdentifierTab({ addPlant }) {
                       className="pi-change-btn"
                       onClick={e => { e.stopPropagation(); fileRef.current && fileRef.current.click(); }}
                     >
-                      <IconCamera size={15} /> Changer
+                      <IconCamera size={15} /> {t("identifier.change")}
                     </button>
                     {imageFile && imageFile.name && <div className="pi-filename">{imageFile.name}</div>}
                   </>
@@ -769,12 +784,12 @@ function IdentifierTab({ addPlant }) {
                   <>
                     <span className="pi-dropzone-icon"><IconCamera size={26} /></span>
                     <div className="pi-dropzone-title">
-                      <span className="pi-copy-mobile">Prendre ou choisir une photo</span>
-                      <span className="pi-copy-desktop">Dépose une photo ici</span>
+                      <span className="pi-copy-mobile">{t("identifier.dropzoneTitleMobile")}</span>
+                      <span className="pi-copy-desktop">{t("identifier.dropzoneTitleDesktop")}</span>
                     </div>
                     <div className="pi-dropzone-sub">
-                      <span className="pi-copy-mobile">Touchez pour utiliser l&apos;appareil photo ou votre photothèque</span>
-                      <span className="pi-copy-desktop">ou clique pour en choisir une</span>
+                      <span className="pi-copy-mobile">{t("identifier.dropzoneSubMobile")}</span>
+                      <span className="pi-copy-desktop">{t("identifier.dropzoneSubDesktop")}</span>
                     </div>
                   </>
                 )}
@@ -786,21 +801,21 @@ function IdentifierTab({ addPlant }) {
                 style={{display:"none"}}
                 tabIndex={-1}
                 aria-hidden="true"
-                aria-label="Choisir une photo de plante"
+                aria-label={t("identifier.filePickerAriaLabel")}
                 onChange={e => e.target.files && handleFile(e.target.files[0])}
               />
 
-              <div className="pi-divider"><div className="pi-divider-line" /><span>ou</span><div className="pi-divider-line" /></div>
+              <div className="pi-divider"><div className="pi-divider-line" /><span>{t("identifier.or")}</span><div className="pi-divider-line" /></div>
 
               <div className="pi-name-field">
-                <label htmlFor="pi-plant-name" className="pi-name-label">Nom de la plante</label>
+                <label htmlFor="pi-plant-name" className="pi-name-label">{t("identifier.nameLabel")}</label>
                 <div className="pi-name-input-wrap">
                   <IconSearch size={16} />
                   <input
                     id="pi-plant-name"
                     ref={nameInputRef}
                     className="pi-name-input"
-                    placeholder="Ex. Lavande, Rosier..."
+                    placeholder={t("identifier.namePlaceholder")}
                     value={plantName}
                     onChange={e => setPlantName(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && handleAnalyze()}
@@ -809,7 +824,7 @@ function IdentifierTab({ addPlant }) {
               </div>
 
               <Button onClick={handleAnalyze} className="pi-analyze-btn">
-                <IconSearch size={16} /> Analyser
+                <IconSearch size={16} /> {t("identifier.analyze")}
               </Button>
 
               {error && <div className="error-box pi-error"><IconAlertCircle size={14} /> {error}</div>}
@@ -818,13 +833,13 @@ function IdentifierTab({ addPlant }) {
             <Card className="pi-tips-card">
               <div className="pi-tips-head">
                 <IconSprig size={18} />
-                <span>Pour de meilleurs résultats</span>
+                <span>{t("identifier.tipsTitle")}</span>
               </div>
               <ul className="pi-tips-list">
-                <li>Photographiez la plante de près</li>
-                <li>Privilégiez une image nette et bien éclairée</li>
-                <li>Montrez les feuilles ou les fleurs si elles sont visibles</li>
-                <li>Évitez une plante trop éloignée dans le cadre</li>
+                <li>{t("identifier.tip1")}</li>
+                <li>{t("identifier.tip2")}</li>
+                <li>{t("identifier.tip3")}</li>
+                <li>{t("identifier.tip4")}</li>
               </ul>
             </Card>
           </div>
@@ -833,13 +848,13 @@ function IdentifierTab({ addPlant }) {
       {loading && (
         <div className="pi-loading" role="status" aria-live="polite">
           <div className="pi-spinner" aria-hidden="true" />
-          <div className="pi-loading-title">Analyse en cours</div>
-          <div className="pi-loading-sub">{plantation ? "Adaptation pour " + plantation.label : "Identification et conseils"}...</div>
+          <div className="pi-loading-title">{t("identifier.analyzing")}</div>
+          <div className="pi-loading-sub">{plantation ? t("identifier.adaptingFor", { label: plantation.label }) : t("identifier.identifyingAndAdvice")}</div>
         </div>
       )}
       {result && !loading && (
         <div className="pi-result-wrap">
-          <div className="pi-reset-row"><button type="button" className="pi-reset-btn" onClick={reset}>← Nouvelle analyse</button></div>
+          <div className="pi-reset-row"><button type="button" className="pi-reset-btn" onClick={reset}>{t("identifier.newAnalysis")}</button></div>
           <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} identificationStatus={identificationStatus} identificationActions={identificationActions} />
           {saveError && <div className="error-box pi-error" style={{marginTop:12}}><IconAlertCircle size={14} /> {saveError}</div>}
         </div>
@@ -951,6 +966,7 @@ const MJ_DETAIL_STYLES = `
 `;
 
 function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated, onGoIdentifier }) {
+  const { t } = useI18n();
   // selectedId (not the plant object itself) is the only state kept for the
   // open detail view — the plant is always re-derived from the live
   // `jardin` array below, so any update to `jardin` (e.g. a successful
@@ -1012,7 +1028,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
 
   const moisIdx = new Date().getMonth();
   const moisActuel = MONTHS[moisIdx][0];
-  const moisLabel = MONTHS[moisIdx][1];
+  const moisLabel = t("format.monthsShort")[moisIdx];
 
   const filtered = jardin.filter(p => {
     const nom = (p.data && p.data.identite && p.data.identite.nom_commun || "").toLowerCase();
@@ -1058,7 +1074,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
 
   const handleOpenReminderModal = () => {
     if (reminders.requiresAuth) {
-      setReminderNotice({ type: "error", text: "Connectez-vous pour créer et synchroniser vos rappels sur tous vos appareils." });
+      setReminderNotice({ type: "error", text: t("garden.remindersAuthRequired") });
       return;
     }
     setReminderNotice(null);
@@ -1071,7 +1087,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
       setShowReminderModal(false);
       setSelectionMode(false);
       setSelectedIds(new Set());
-      setReminderNotice({ type: "success", text: "Rappels créés." });
+      setReminderNotice({ type: "success", text: t("garden.remindersCreated") });
     }
     return result;
   };
@@ -1130,12 +1146,12 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
     return (
       <div className="mj-detail-page">
         <style>{MJ_DETAIL_STYLES}</style>
-        <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>← Mon Jardin</button>
+        <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>{t("garden.backToGarden")}</button>
         <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} />
         {deleteError && <div className="error-box mj-detail-error"><IconAlertCircle size={14} /> {deleteError}</div>}
         <div className="mj-detail-delete-row">
           <button type="button" className="mj-detail-delete-btn" onClick={() => handleDelete(selectedPlant.id)}>
-            <IconTrash size={15} /> Retirer du jardin
+            <IconTrash size={15} /> {t("garden.removeFromGarden")}
           </button>
         </div>
       </div>
@@ -1149,19 +1165,19 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   return (
     <div className="mj-page">
       <style>{GARDEN_STYLES}</style>
-      {migrating && <div className="context-banner">Synchronisation de votre jardin avec votre compte...</div>}
+      {migrating && <div className="context-banner">{t("garden.syncingBanner")}</div>}
       {error && <div className="error-box"><IconAlertCircle size={14} /> {error}</div>}
       {deleteError && <div className="error-box"><IconAlertCircle size={14} /> {deleteError}</div>}
 
       <header className="mj-header">
         <div>
-          <div className="mj-eyebrow">MON JARDIN</div>
-          <h1 className="mj-title">Votre jardin</h1>
-          <p className="mj-subtitle">Suivez vos plantes, leurs zones et leur entretien au fil des saisons.</p>
+          <div className="mj-eyebrow">{t("garden.eyebrow")}</div>
+          <h1 className="mj-title">{t("garden.title")}</h1>
+          <p className="mj-subtitle">{t("garden.subtitle")}</p>
         </div>
         {onGoIdentifier && (
           <Button onClick={onGoIdentifier} className="mj-header-cta">
-            <IconCamera size={17} /> Identifier une plante
+            <IconCamera size={17} /> {t("garden.identifyPlant")}
           </Button>
         )}
       </header>
@@ -1169,25 +1185,25 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
       {loading && jardin.length === 0 ? (
         <div className="mj-loading">
           <IconSprig size={26} />
-          <div className="mj-loading-title">Chargement de votre jardin…</div>
+          <div className="mj-loading-title">{t("garden.loading")}</div>
         </div>
       ) : jardin.length === 0 ? (
         <>
           <Card className="mj-empty-card">
             <IconSprig size={28} />
-            <div className="mj-empty-title">Votre jardin est vide</div>
-            <p className="mj-empty-sub">Identifiez une plante et ajoutez-la à Mon Jardin pour la retrouver ici.</p>
+            <div className="mj-empty-title">{t("garden.emptyTitle")}</div>
+            <p className="mj-empty-sub">{t("garden.emptySub")}</p>
             {onGoIdentifier && (
               <Button onClick={onGoIdentifier}>
-                <IconCamera size={16} /> Identifier une plante
+                <IconCamera size={16} /> {t("garden.identifyPlant")}
               </Button>
             )}
           </Card>
           {isAuthenticated && (
             <section className="mj-section">
               <button type="button" className="mj-section-toggle" onClick={() => setZonesOpen((v) => !v)}>
-                <span className="mj-section-toggle-label"><IconMapPin size={17} /> Zones du jardin</span>
-                <span className="mj-section-toggle-action">{zonesOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+                <span className="mj-section-toggle-label"><IconMapPin size={17} /> {t("garden.zonesTitle")}</span>
+                <span className="mj-section-toggle-action">{zonesOpen ? t("garden.hide") : t("garden.view")} <IconChevronRight size={15} /></span>
               </button>
               {zonesOpen && (
                 <Card className="mj-section-body">
@@ -1210,40 +1226,40 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             <Card className="mj-stat-card">
               <span className="mj-stat-icon"><IconSprout size={18} /></span>
               <div className="mj-stat-value">{jardin.length}</div>
-              <div className="mj-stat-label">plante{jardin.length > 1 ? "s" : ""}</div>
+              <div className="mj-stat-label">{jardin.length > 1 ? t("garden.statPlants") : t("garden.statPlant")}</div>
             </Card>
             <Card className="mj-stat-card">
               <span className="mj-stat-icon"><IconBell size={18} /></span>
               <div className="mj-stat-value">{tasksCount}</div>
-              <div className="mj-stat-label">tâche{tasksCount > 1 ? "s" : ""} à venir</div>
+              <div className="mj-stat-label">{tasksCount > 1 ? t("garden.statTasksUpcoming") : t("garden.statTaskUpcoming")}</div>
             </Card>
             <Card className="mj-stat-card">
               <span className="mj-stat-icon"><IconSun size={18} /></span>
               <div className="mj-stat-value">{wateringTasksCount}</div>
-              <div className="mj-stat-label">arrosage{wateringTasksCount > 1 ? "s" : ""}</div>
+              <div className="mj-stat-label">{wateringTasksCount > 1 ? t("garden.statWaterings") : t("garden.statWatering")}</div>
             </Card>
             {isAuthenticated && (
               <Card className="mj-stat-card">
                 <span className="mj-stat-icon"><IconMapPin size={18} /></span>
                 <div className="mj-stat-value">{zones.zones.length}</div>
-                <div className="mj-stat-label">zone{zones.zones.length > 1 ? "s" : ""}</div>
+                <div className="mj-stat-label">{zones.zones.length > 1 ? t("garden.statZones") : t("garden.statZone")}</div>
               </Card>
             )}
           </div>
           {weatherLocationName && (
             <div className="mj-weather-line">
-              {weatherLoading ? "Météo…" : <>Météo pour <strong>{weatherLocationName}</strong></>}
+              {weatherLoading ? t("garden.weatherLoading") : <>{t("garden.weatherFor")} <strong>{weatherLocationName}</strong></>}
             </div>
           )}
 
           {isAuthenticated && hasZones && (
-            <div className="mj-zones-row" role="tablist" aria-label="Filtrer par zone">
+            <div className="mj-zones-row" role="tablist" aria-label={t("garden.filterByZone")}>
               <button
                 type="button"
                 className={"mj-zone-chip" + (zoneFilter === "all" ? " active" : "")}
                 onClick={() => setZoneFilter("all")}
               >
-                Toutes les zones
+                {t("garden.allZones")}
               </button>
               {zones.zones.map((z) => (
                 <button
@@ -1260,10 +1276,10 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                 className={"mj-zone-chip" + (zoneFilter === "unassigned" ? " active" : "")}
                 onClick={() => setZoneFilter("unassigned")}
               >
-                Sans zone
+                {t("garden.noZone")}
               </button>
               <button type="button" className="mj-zone-manage-btn" onClick={() => setZonesOpen((v) => !v)}>
-                Gérer les zones
+                {t("garden.manageZones")}
               </button>
             </div>
           )}
@@ -1271,7 +1287,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           {isAuthenticated && zonesOpen && (
             <section className="mj-section">
               <button type="button" className="mj-section-collapse-btn" onClick={() => setZonesOpen(false)}>
-                Masquer les zones
+                {t("garden.hideZones")}
               </button>
               <Card className="mj-section-body">
                 <GardenZonesPanel
@@ -1291,12 +1307,12 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
               <IconSearch size={17} />
               <input
                 className="mj-search-input"
-                placeholder="Rechercher une plante..."
+                placeholder={t("garden.searchPlaceholder")}
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
               />
               {searchQ && (
-                <button type="button" className="mj-search-clear" onClick={() => setSearchQ("")} aria-label="Effacer la recherche">
+                <button type="button" className="mj-search-clear" onClick={() => setSearchQ("")} aria-label={t("garden.clearSearchAriaLabel")}>
                   <IconX size={15} />
                 </button>
               )}
@@ -1310,7 +1326,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                 className={"mj-cat-chip" + (filterCat === c ? " active" : "")}
                 onClick={() => setFilterCat(c)}
               >
-                {c}
+                {c === "Tout" ? t("garden.all") : c}
               </button>
             ))}
           </div>
@@ -1319,20 +1335,20 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             <Card className="mj-dash-card" onClick={() => setTasksOpen((v) => !v)}>
               <span className="mj-dash-icon"><IconBell size={19} /></span>
               <div className="mj-dash-text">
-                <div className="mj-dash-title">Tâches</div>
-                <div className="mj-dash-sub">{tasksCount} à venir</div>
+                <div className="mj-dash-title">{t("dashboard.tasks")}</div>
+                <div className="mj-dash-sub">{t("garden.tasksUpcoming", { count: tasksCount })}</div>
               </div>
-              <span className="mj-dash-action">{tasksOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+              <span className="mj-dash-action">{tasksOpen ? t("garden.hide") : t("garden.view")} <IconChevronRight size={15} /></span>
             </Card>
             <Card className="mj-dash-card" onClick={() => setAFaireOpen((v) => !v)}>
               <span className="mj-dash-icon"><IconCalendar size={19} /></span>
               <div className="mj-dash-text">
-                <div className="mj-dash-title">À faire en {moisLabel}</div>
+                <div className="mj-dash-title">{t("garden.todoInMonth", { month: moisLabel })}</div>
                 <div className="mj-dash-sub">
-                  {moisTasks.length > 0 ? `${moisTasks.length} plante${moisTasks.length > 1 ? "s" : ""}` : "rien de particulier"}
+                  {moisTasks.length > 0 ? (moisTasks.length > 1 ? t("garden.plantsCountShort", { count: moisTasks.length }) : t("garden.plantCountShort", { count: moisTasks.length })) : t("garden.nothingParticular")}
                 </div>
               </div>
-              <span className="mj-dash-action">{aFaireOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+              <span className="mj-dash-action">{aFaireOpen ? t("garden.hide") : t("garden.view")} <IconChevronRight size={15} /></span>
             </Card>
           </div>
 
@@ -1354,7 +1370,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             <section className="mj-section">
               <Card className="mj-section-body mj-mois-card">
                 {moisTasks.length === 0 ? (
-                  <div className="mj-mois-vide">Rien de particulier ce mois-ci.</div>
+                  <div className="mj-mois-vide">{t("garden.nothingParticularThisMonth")}</div>
                 ) : (
                   <div className="mj-mois-list">
                     {moisTasks.map((p) => (
@@ -1372,20 +1388,20 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           <div className="mj-select-bar">
             {!selectionMode ? (
               <button type="button" className="mj-select-toggle-btn" onClick={() => setSelectionMode(true)}>
-                Sélectionner
+                {t("garden.select")}
               </button>
             ) : (
               <>
                 <button type="button" className="mj-select-toggle-btn" onClick={handleSelectAll}>
-                  {allVisibleSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                  {allVisibleSelected ? t("garden.deselectAll") : t("garden.selectAll")}
                 </button>
                 <span className="mj-select-count">
-                  {selectedIds.size} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+                  {selectedIds.size > 1 ? t("garden.selectedCountPlural", { count: selectedIds.size }) : t("garden.selectedCount", { count: selectedIds.size })}
                 </span>
-                <button type="button" className="mj-select-toggle-btn" onClick={handleCancelSelection}>Annuler</button>
+                <button type="button" className="mj-select-toggle-btn" onClick={handleCancelSelection}>{t("garden.cancel")}</button>
                 {selectedIds.size > 0 && (
                   <Button onClick={handleOpenReminderModal} className="mj-select-reminder-btn">
-                    <IconBell size={16} /> Créer des rappels
+                    <IconBell size={16} /> {t("garden.createReminders")}
                   </Button>
                 )}
               </>
@@ -1405,14 +1421,14 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           {filtered.length === 0 ? (
             <Card className="mj-empty-card">
               <IconSprig size={26} />
-              <div className="mj-empty-title">Aucune plante ne correspond</div>
+              <div className="mj-empty-title">{t("garden.noMatchTitle")}</div>
               <p className="mj-empty-sub">
                 {activeZoneName
-                  ? <>Aucun résultat pour la zone « {activeZoneName} » avec ces filtres.</>
-                  : "Essayez une autre recherche ou réinitialisez les filtres."}
+                  ? t("garden.noMatchForZone", { zone: activeZoneName })
+                  : t("garden.noMatchGeneric")}
               </p>
               {hasActiveFilters && (
-                <Button variant="secondary" onClick={handleResetFilters}>Réinitialiser les filtres</Button>
+                <Button variant="secondary" onClick={handleResetFilters}>{t("garden.resetFilters")}</Button>
               )}
             </Card>
           ) : (
@@ -1435,7 +1451,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                         checked={selectedIds.has(p.id)}
                         onChange={() => toggleSelected(p.id)}
                         onClick={(e) => e.stopPropagation()}
-                        aria-label={nom ? `Sélectionner ${nom}` : "Sélectionner cette plante"}
+                        aria-label={nom ? t("garden.selectPlantAriaLabel", { name: nom }) : t("garden.selectPlantAriaLabelGeneric")}
                       />
                     )}
                     <div className="mj-card-photo">
@@ -1457,14 +1473,14 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                     {!selectionMode && (
                       confirmDeleteId === p.id ? (
                         <div className="mj-delete-confirm" onClick={(e) => e.stopPropagation()}>
-                          <span className="mj-delete-confirm-text">Supprimer cette plante ?</span>
+                          <span className="mj-delete-confirm-text">{t("garden.confirmDeletePlant")}</span>
                           <div className="mj-delete-confirm-actions">
-                            <button type="button" className="mj-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
-                            <button type="button" className="mj-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+                            <button type="button" className="mj-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>{t("garden.delete")}</button>
+                            <button type="button" className="mj-delete-confirm-no" onClick={handleCancelDeleteClick}>{t("garden.cancel")}</button>
                           </div>
                         </div>
                       ) : (
-                        <button type="button" className="mj-card-delete" onClick={(e) => handleRequestDelete(e, p.id)} aria-label="Supprimer cette plante">
+                        <button type="button" className="mj-card-delete" onClick={(e) => handleRequestDelete(e, p.id)} aria-label={t("garden.deletePlantAriaLabel")}>
                           <IconTrash size={15} />
                         </button>
                       )
@@ -1474,7 +1490,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
               })}
             </div>
           )}
-          <div className="mj-count">{jardin.length} plante{jardin.length > 1 ? "s" : ""} dans votre jardin</div>
+          <div className="mj-count">{jardin.length > 1 ? t("garden.countInGardenPlural", { count: jardin.length }) : t("garden.countInGarden", { count: jardin.length })}</div>
         </>
       )}
     </div>
@@ -1618,17 +1634,18 @@ function wait(ms) {
 }
 
 function AccountBar({ auth, onLogin }) {
+  const { t } = useI18n();
   if (auth.loading) return null;
   return (
     <div className="pe-account-bar">
       {auth.user ? (
         <>
           <span className="pe-account-email">{auth.user.email}</span>
-          <a className="pe-account-action" href="/profile">Mon profil</a>
-          <button className="pe-account-action" onClick={() => auth.signOut()}>Se déconnecter</button>
+          <a className="pe-account-action" href="/profile">{t("account.myProfile")}</a>
+          <button className="pe-account-action" onClick={() => auth.signOut()}>{t("account.logout")}</button>
         </>
       ) : (
-        <button className="pe-account-action" onClick={onLogin}>Se connecter</button>
+        <button className="pe-account-action" onClick={onLogin}>{t("account.login")}</button>
       )}
     </div>
   );
@@ -1636,6 +1653,7 @@ function AccountBar({ auth, onLogin }) {
 
 export default function Home() {
   const router = useRouter();
+  const { t } = useI18n();
   const [activeNav, setActiveNav] = useState("accueil");
   const [navInitialized, setNavInitialized] = useState(false);
   const auth = useAuth();
@@ -1848,11 +1866,11 @@ export default function Home() {
   }, [auth.loading, profileLoading, weatherRequestKey]);
 
   const navItems = [
-    { key: "accueil", label: "Accueil", icon: IconHome, kind: "tab", placement: "main", onClick: () => setActiveNav("accueil") },
-    { key: "identifier", label: "Identifier", icon: IconCamera, kind: "tab", placement: "main", emphasis: true, onClick: () => setActiveNav("identifier") },
-    { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "tab", placement: "main", onClick: () => setActiveNav("jardin"), badge: garden.jardin.length > 0 ? garden.jardin.length : null },
-    { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
-    { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
+    { key: "accueil", label: t("nav.accueil"), icon: IconHome, kind: "tab", placement: "main", onClick: () => setActiveNav("accueil") },
+    { key: "identifier", label: t("nav.identifier"), icon: IconCamera, kind: "tab", placement: "main", emphasis: true, onClick: () => setActiveNav("identifier") },
+    { key: "jardin", label: t("nav.jardin"), icon: IconSprout, kind: "tab", placement: "main", onClick: () => setActiveNav("jardin"), badge: garden.jardin.length > 0 ? garden.jardin.length : null },
+    { key: "trouver", label: t("nav.trouver"), icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
+    { key: "profil", label: t("nav.profil"), icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
   ];
 
   return (
@@ -1886,7 +1904,7 @@ export default function Home() {
 
       <p className="pe-ai-disclaimer">
         <IconInfo size={13} />
-        <span>Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</span>
+        <span>{t("app.aiDisclaimer")}</span>
       </p>
     </AppShell>
   );

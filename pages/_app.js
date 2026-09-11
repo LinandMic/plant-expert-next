@@ -1,5 +1,6 @@
 import Head from "next/head";
 import { useEffect } from "react";
+import { I18nProvider } from "@/lib/i18n";
 import "@/styles/globals.css";
 import "@/styles/ui-shell.css";
 
@@ -47,7 +48,9 @@ export default function App({ Component, pageProps }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </Head>
-      <Component {...pageProps} />
+      <I18nProvider>
+        <Component {...pageProps} />
+      </I18nProvider>
     </>
   );
 }

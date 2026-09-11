@@ -1,5 +1,6 @@
 import { formatHeightRange, sunLabels, entryTypeLabel, plantTypeLabel, plantFinderDisplayTitle } from "@/lib/plantFinderFormat";
 import { IconSprig, IconChevronRight } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n";
 
 // returnTo: an optional already-serialized query string (q=...&type=...)
 // carrying the list page's current search/filter state, so the detail
@@ -11,7 +12,7 @@ import { IconSprig, IconChevronRight } from "@/components/ui/icons";
 // than a broken image or an invented photo.
 //
 // display_name is the scientific/cultivar name (always present); common_name
-// is the optional French vernacular name. When present, common_name leads as
+// is the optional vernacular name. When present, common_name leads as
 // the card's title and display_name becomes the italic scientific subtitle —
 // when absent, display_name is shown alone as the title.
 //
@@ -21,10 +22,11 @@ import { IconSprig, IconChevronRight } from "@/components/ui/icons";
 // placeholder as before — the thumbnail box itself stays a fixed size
 // either way, so card height never depends on whether an image exists.
 export default function PlantFinderCard({ plant, returnTo }) {
+  const { t } = useI18n();
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
-  const sun = sunLabels(plant.sun);
-  const badgeLabel = entryTypeLabel(plant.entryType);
-  const plantType = plantTypeLabel(plant.plantType);
+  const sun = sunLabels(plant.sun, t);
+  const badgeLabel = entryTypeLabel(plant.entryType, t);
+  const plantType = plantTypeLabel(plant.plantType, t);
   const href = `/plant-finder/${encodeURIComponent(plant.slug)}${returnTo ? `?from=${encodeURIComponent(returnTo)}` : ""}`;
   const { title, scientificSubtitle } = plantFinderDisplayTitle(plant);
 
