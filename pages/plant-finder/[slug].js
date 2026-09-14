@@ -41,7 +41,7 @@ function Field({ label, value }) {
 
 export default function PlantFinderDetailPage({ plant }) {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // `from` is the list page's own serialized filter/search query string,
   // passed through by PlantFinderCard so this link returns the visitor to
   // their exact prior search state rather than always resetting it.
@@ -56,9 +56,10 @@ export default function PlantFinderDetailPage({ plant }) {
   const containerLabel = formatBoolean(plant.containerSuitable, t);
   const edibleLabel = formatBoolean(plant.edible, t);
   const flowering = formatFloweringMonths(plant.floweringMonths, t);
-  // Same commonName-leads / displayName-as-scientific-subtitle convention as
-  // PlantFinderCard, kept consistent across list -> detail (spec §12).
-  const { title, scientificSubtitle } = plantFinderDisplayTitle(plant);
+  // Same preferred-common-name-leads / displayName-as-scientific-subtitle
+  // convention as PlantFinderCard, kept consistent across list -> detail
+  // (spec §12), now locale-aware (plant_common_names, not plant_catalog.common_name).
+  const { title, scientificSubtitle } = plantFinderDisplayTitle(plant, locale);
 
   return (
     <AppShell navItems={getExternalNavItems(t)} activeKey="trouver">
