@@ -13,6 +13,7 @@ import { getEffectivePlantContext } from "@/lib/effectivePlantContext";
 import { gardenPlantDisplayName, gardenPlantLatinName, gardenPlantCategory } from "@/lib/gardenPlantDisplay";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
+import CatalogPlantGardenDetail from "@/components/CatalogPlantGardenDetail";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
@@ -1144,6 +1145,26 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   });
 
   if (selectedPlant) {
+    // Two entirely different detail experiences by source (spec: this
+    // round's whole objective) — a catalog-sourced plant (added from Plant
+    // Finder) never has ai_data.identite/maladies/taille/.../calendrier,
+    // so PlanteFiche's AI-only tabs would render almost empty for it (the
+    // real-device bug this round fixes). ai_identification plants keep the
+    // exact same PlanteFiche branch, byte-for-byte unchanged below.
+    if (selectedPlant.source === "catalog") {
+      return (
+        <div className="mj-detail-page">
+          <style>{MJ_DETAIL_STYLES}</style>
+          <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>{t("garden.backToGarden")}</button>
+          <CatalogPlantGardenDetail
+            plant={selectedPlant}
+            zones={zones.zones}
+            onRemove={() => handleDelete(selectedPlant.id)}
+            deleteError={deleteError}
+          />
+        </div>
+      );
+    }
     return (
       <div className="mj-detail-page">
         <style>{MJ_DETAIL_STYLES}</style>
