@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:native": "BUILD_TARGET=native next build",
     "start": "next start",
     "test": "node --test lib/*.test.js",
     "plant:benchmark": "node scripts/plant-benchmark/src/index.js",

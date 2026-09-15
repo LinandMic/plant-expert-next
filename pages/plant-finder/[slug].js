@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "@/components/ui/AppShell";
+import Card from "@/components/ui/Card";
 import { useRouter } from "next/router";
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
 import {
@@ -21,27 +22,56 @@ import AuthModal from "@/components/AuthModal";
 import AddToGardenModal from "@/components/AddToGardenModal";
 import Button from "@/components/ui/Button";
 
-// Server-rendered on purpose: returning `notFound: true` is what gives a
-// missing slug (or a draft row RLS already hides) Next.js's real 404
-// behavior (spec §9) — the public visitor sees the exact same 404 as any
-// unknown URL, never a hint that a draft row exists at this slug. Uses the
-// same anon/RLS-scoped Supabase client as the rest of the app; no
-// service_role, no separate admin path.
-export async function getServerSideProps({ params }) {
-  let plant;
-  try {
-    plant = await fetchPublishedPlantBySlug(params.slug);
-  } catch {
-    // A real fetch failure (not "not found") — let Next.js's own error
-    // page handle it rather than silently reporting a false 404.
-    throw new Error("plant-finder: failed to load plant");
-  }
+// Client-fetched on purpose (not getServerSideProps): this route ships in
+// the native (Capacitor) static export, and Next's static export cannot
+// include a page that uses getServerSideProps. Same query
+// (fetchPublishedPlantBySlug), same anon/RLS-scoped Supabase client, no
+// service_role, no separate admin path — only WHEN it runs changed. The
+// not-found-vs-error split is preserved: a missing slug or a draft row RLS
+// already hides both resolve to `plant: null` with no distinguishing signal
+// (spec §9 — a draft is never revealed to exist), while a real fetch
+// failure sets a separate error flag instead of being silently treated as
+// "not found". One inherent behavior change from the old GSSP version: the
+// response is always HTTP 200 (a static file) with the "not found" state
+// rendered client-side, rather than a real HTTP 404 — unavoidable on a
+// static host, not a redesign choice.
+function usePlantFinderDetail(slug, ready) {
+  const [plant, setPlant] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  if (!plant) {
-    return { notFound: true };
-  }
+  useEffect(() => {
+    if (!ready) return;
+    if (!slug) {
+      setPlant(null);
+      setLoadError(false);
+      setLoading(false);
+      return;
+    }
 
-  return { props: { plant } };
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(false);
+
+    fetchPublishedPlantBySlug(slug)
+      .then((data) => {
+        if (cancelled) return;
+        setPlant(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPlant(null);
+        setLoadError(true);
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, ready]);
+
+  return { plant, loading, loadError };
 }
 
 // StatTile: one of the 4 compact "key stats" immediately below the hero.
@@ -69,10 +99,12 @@ function DetailRow({ label, value }) {
   );
 }
 
-export default function PlantFinderDetailPage({ plant }) {
+export default function PlantFinderDetailPage() {
   const router = useRouter();
   const { t, locale } = useI18n();
   const auth = useAuth();
+  const slug = typeof router.query.slug === "string" ? router.query.slug : null;
+  const { plant, loading, loadError } = usePlantFinderDetail(slug, router.isReady);
   const { zones, loading: zonesLoading } = useGardenZones(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -117,6 +149,48 @@ export default function PlantFinderDetailPage({ plant }) {
       router.back();
     }
   };
+
+  if (loading) {
+    return (
+      <AppShell navItems={getExternalNavItems(t)} activeKey="trouver">
+        <div className="pfd-page">
+          <style>{DETAIL_STYLES}</style>
+          <div className="pfd-loading" role="status" aria-live="polite">
+            <div className="pfd-spinner" aria-hidden="true" />
+            <div className="pfd-loading-title">{t("finder.loadingPlant")}</div>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <AppShell navItems={getExternalNavItems(t)} activeKey="trouver">
+        <div className="pfd-page">
+          <style>{DETAIL_STYLES}</style>
+          <a href={backHref} className="pfd-back-link" onClick={handleBackClick}>{t("finder.backLink")}</a>
+          <div className="pfd-error-box">{t("finder.detailLoadError")}</div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!plant) {
+    return (
+      <AppShell navItems={getExternalNavItems(t)} activeKey="trouver">
+        <div className="pfd-page">
+          <style>{DETAIL_STYLES}</style>
+          <Card className="pfd-empty-card">
+            <IconSprig size={26} />
+            <div className="pfd-empty-title">{t("finder.detailNotFound")}</div>
+            <a href="/plant-finder" className="pfd-empty-back">{t("finder.backLink")}</a>
+          </Card>
+        </div>
+      </AppShell>
+    );
+  }
+
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
   const spread = formatHeightRange(null, plant.spreadMaxCm);
   const sun = sunLabels(plant.sun, t);
@@ -277,6 +351,23 @@ const DETAIL_STYLES = `
 
   .pfd-back-link { display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:2px 0;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;text-decoration:none;margin-bottom:8px; }
   .pfd-back-link:hover { color:var(--pe-accent); }
+
+  /* --- Loading / error / not-found: same visual vocabulary as the Plant
+     Finder list page (pages/plant-finder/index.js's pf2-loading/pf2-error-box/
+     pf2-empty-card), scoped locally here under the pfd- prefix. ---------- */
+  .pfd-loading { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:80px 24px;text-align:center; }
+  .pfd-spinner { width:48px;height:48px;border-radius:50%;border:3px solid var(--pe-sand);border-top-color:var(--pe-accent);animation:pfd-spin .85s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .pfd-spinner { animation:none; } }
+  @keyframes pfd-spin { to { transform:rotate(360deg); } }
+  .pfd-loading-title { font:var(--pe-text-h3);color:var(--pe-text); }
+
+  .pfd-error-box { background:#fff5f5;border:1px solid rgba(139,58,30,0.2);border-radius:var(--pe-radius-md);padding:14px 16px;color:var(--pe-terracotta,#8b3a1e);font:var(--pe-text-body); }
+
+  .pfd-empty-card { padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--pe-text-muted);font:var(--pe-text-body); }
+  .pfd-empty-card svg { color:var(--pe-sage-400); }
+  .pfd-empty-title { font:var(--pe-text-h3);color:var(--pe-text); }
+  .pfd-empty-back { color:var(--pe-accent);font:var(--pe-text-small);font-weight:600;text-decoration:none; }
+  .pfd-empty-back:hover { text-decoration:underline; }
 
   /* --- Hero: full-bleed photo, calm text block below, no overlay ------- */
   .pfd-hero { border-radius:var(--pe-radius-lg);background:var(--pe-surface);border:1px solid var(--pe-border);box-shadow:var(--pe-shadow-sm);margin-bottom:20px;overflow:hidden; }
