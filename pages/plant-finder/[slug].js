@@ -1,7 +1,16 @@
 import AppShell from "@/components/ui/AppShell";
 import { useRouter } from "next/router";
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
-import { formatHeightRange, sunLabels, entryTypeLabel, formatBoolean, formatFloweringMonths, plantTypeLabel, plantFinderDisplayTitle } from "@/lib/plantFinderFormat";
+import {
+  formatHeightRange,
+  sunLabels,
+  entryTypeLabel,
+  formatBoolean,
+  formatFloweringMonths,
+  formatPlantGlance,
+  plantTypeLabel,
+  plantFinderDisplayTitle,
+} from "@/lib/plantFinderFormat";
 import { IconSprig } from "@/components/ui/icons";
 import { getExternalNavItems } from "@/components/ui/externalNavItems";
 import { useI18n } from "@/lib/i18n";
@@ -29,12 +38,27 @@ export async function getServerSideProps({ params }) {
   return { props: { plant } };
 }
 
-function Field({ label, value }) {
+// StatTile: one of the 4 compact "key stats" immediately below the hero.
+// Hides itself entirely when its value is missing (spec: never show
+// "N/A") — the 2x2 grid simply has fewer tiles rather than an empty one.
+function StatTile({ label, value }) {
   if (value === null || value === undefined || value === "") return null;
   return (
-    <div className="pfd-info-card">
-      <div className="pfd-info-label">{label}</div>
-      <div className="pfd-info-value">{value}</div>
+    <div className="pfd-stat-tile">
+      <div className="pfd-stat-label">{label}</div>
+      <div className="pfd-stat-value">{value}</div>
+    </div>
+  );
+}
+
+// DetailRow: one row of the grouped secondary-traits list (label left,
+// value right). The caller (detailRows below) already filters out missing
+// values before rendering, so this component itself needs no null guard.
+function DetailRow({ label, value }) {
+  return (
+    <div className="pfd-detail-row">
+      <span className="pfd-detail-label">{label}</span>
+      <span className="pfd-detail-value">{value}</span>
     </div>
   );
 }
@@ -56,10 +80,38 @@ export default function PlantFinderDetailPage({ plant }) {
   const containerLabel = formatBoolean(plant.containerSuitable, t);
   const edibleLabel = formatBoolean(plant.edible, t);
   const flowering = formatFloweringMonths(plant.floweringMonths, t);
+  const exposureValue = sun ? sun.join(", ") : null;
   // Same preferred-common-name-leads / displayName-as-scientific-subtitle
   // convention as PlantFinderCard, kept consistent across list -> detail
   // (spec §12), now locale-aware (plant_common_names, not plant_catalog.common_name).
   const { title, scientificSubtitle } = plantFinderDisplayTitle(plant, locale);
+
+  // The 4 key stats (spec: height, spread, exposure, plant type) promoted
+  // above the fold — each hides itself individually when absent, and the
+  // whole grid is skipped only if every one of them is.
+  const hasAnyStat = [height, spread, exposureValue, plantType].some(Boolean);
+
+  // "At a glance" — one deterministic line built only from existing
+  // structured fields (lib/plantFinderFormat.js's formatPlantGlance); null
+  // when nothing is available, so the block itself is skipped rather than
+  // rendered empty.
+  const glance = formatPlantGlance(plant, t, locale);
+
+  // Secondary traits, consolidated into a calmer label/value list. height,
+  // spread, exposure and plant type are NOT repeated here — they already
+  // lead as the key stats above; this list is what used to fill out the
+  // rest of the old repeated-card grid. Genus is kept ("botanical genus if
+  // still useful" — it still is, e.g. distinguishing Acer from its
+  // species). Pre-filtered here (rather than inside DetailRow) so the
+  // section heading itself can be skipped when every row would be empty.
+  const detailRows = [
+    { key: "genus", label: t("finder.genus"), value: plant.taxon?.genus },
+    { key: "evergreen", label: t("finder.evergreen"), value: evergreenLabel },
+    { key: "waterNeed", label: t("finder.waterNeed"), value: plant.waterNeed },
+    { key: "container", label: t("finder.containerGrowing"), value: containerLabel },
+    { key: "edible", label: t("finder.edible"), value: edibleLabel },
+    { key: "flowering", label: t("finder.flowering"), value: flowering },
+  ].filter((row) => row.value !== null && row.value !== undefined && row.value !== "");
 
   return (
     <AppShell navItems={getExternalNavItems(t)} activeKey="trouver">
@@ -69,93 +121,114 @@ export default function PlantFinderDetailPage({ plant }) {
         <a href={backHref} className="pfd-back-link">{t("finder.backLink")}</a>
 
         <div className="pfd-hero">
-          {plant.imageUrl && (
+          {plant.imageUrl ? (
             <div className="pfd-hero-media">
               <img src={plant.imageUrl} alt={plant.imageAlt || title} className="pfd-hero-image" />
-              {(plant.imageAuthor || plant.imageLicense) && (
-                <div className="pfd-hero-attribution">
-                  {plant.imageSourceUrl ? (
-                    <a href={plant.imageSourceUrl} target="_blank" rel="noopener noreferrer nofollow">
-                      {[plant.imageAuthor, plant.imageLicense].filter(Boolean).join(" — ")}
-                    </a>
-                  ) : (
-                    [plant.imageAuthor, plant.imageLicense].filter(Boolean).join(" — ")
-                  )}
-                </div>
+            </div>
+          ) : (
+            <div className="pfd-hero-photo-placeholder">
+              <IconSprig size={36} />
+            </div>
+          )}
+          {(plant.imageAuthor || plant.imageLicense) && (
+            <div className="pfd-hero-attribution">
+              {plant.imageSourceUrl ? (
+                <a href={plant.imageSourceUrl} target="_blank" rel="noopener noreferrer nofollow">
+                  {[plant.imageAuthor, plant.imageLicense].filter(Boolean).join(" — ")}
+                </a>
+              ) : (
+                [plant.imageAuthor, plant.imageLicense].filter(Boolean).join(" — ")
               )}
             </div>
           )}
-          <div className="pfd-hero-top-row">
-            {!plant.imageUrl && (
-              <div className="pfd-hero-photo">
-                <IconSprig size={40} />
-              </div>
-            )}
-            <div className="pfd-hero-text">
-              <div className="pfd-hero-top">
-                <h1 className="pfd-hero-name">{title}</h1>
-                {badgeLabel && (
-                  <span className={"pfd-badge " + (plant.entryType === "cultivar" ? "pfd-badge-cultivar" : "pfd-badge-species")}>
-                    {badgeLabel}
-                  </span>
-                )}
-              </div>
-              {scientificSubtitle && <div className="pfd-hero-latin">{scientificSubtitle}</div>}
-              {plant.taxon?.canonicalName && plant.taxon.canonicalName !== plant.displayName && (
-                <div className="pfd-hero-canonical">{plant.taxon.canonicalName}</div>
+          <div className="pfd-hero-body">
+            <div className="pfd-hero-top">
+              <h1 className="pfd-hero-name">{title}</h1>
+              {badgeLabel && (
+                <span className={"pfd-badge " + (plant.entryType === "cultivar" ? "pfd-badge-cultivar" : "pfd-badge-species")}>
+                  {badgeLabel}
+                </span>
               )}
-              {plant.taxon?.family && <div className="pfd-hero-family">{plant.taxon.family}</div>}
             </div>
+            {scientificSubtitle && <div className="pfd-hero-latin">{scientificSubtitle}</div>}
+            {plant.taxon?.family && <div className="pfd-hero-family">{plant.taxon.family}</div>}
           </div>
         </div>
 
-        <h2 className="pfd-section-title">{t("finder.characteristics")}</h2>
-        <div className="pfd-info-grid">
-          <Field label={t("finder.type")} value={plantType} />
-          <Field label={t("finder.genus")} value={plant.taxon?.genus} />
-          <Field label={t("finder.height")} value={height} />
-          <Field label={t("finder.width")} value={spread} />
-          <Field label={t("finder.exposure")} value={sun ? sun.join(", ") : null} />
-          <Field label={t("finder.evergreen")} value={evergreenLabel} />
-          <Field label={t("finder.waterNeed")} value={plant.waterNeed} />
-          <Field label={t("finder.containerGrowing")} value={containerLabel} />
-          <Field label={t("finder.edible")} value={edibleLabel} />
-          <Field label={t("finder.flowering")} value={flowering} />
-        </div>
+        {hasAnyStat && (
+          <div className="pfd-stats-grid">
+            <StatTile label={t("finder.height")} value={height} />
+            <StatTile label={t("finder.width")} value={spread} />
+            <StatTile label={t("finder.exposure")} value={exposureValue} />
+            <StatTile label={t("finder.type")} value={plantType} />
+          </div>
+        )}
+
+        {glance && (
+          <div className="pfd-glance">
+            <div className="pfd-glance-title">{t("finder.atAGlance")}</div>
+            <p className="pfd-glance-text">{glance}</p>
+          </div>
+        )}
+
+        {detailRows.length > 0 && (
+          <>
+            <h2 className="pfd-section-title">{t("finder.characteristics")}</h2>
+            <div className="pfd-detail-list">
+              {detailRows.map((row) => (
+                <DetailRow key={row.key} label={row.label} value={row.value} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </AppShell>
   );
 }
 
 const DETAIL_STYLES = `
-  .pfd-page { max-width:760px; }
-  .pfd-back-link { display:inline-flex;align-items:center;gap:6px;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;text-decoration:none;margin-bottom:20px; }
+  .pfd-page { max-width:640px; }
+
+  .pfd-back-link { display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:2px 0;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;text-decoration:none;margin-bottom:8px; }
   .pfd-back-link:hover { color:var(--pe-accent); }
 
-  .pfd-hero { padding:24px;border-radius:var(--pe-radius-lg);background:var(--pe-surface);border:1px solid var(--pe-border);box-shadow:var(--pe-shadow-sm);margin-bottom:28px; }
-  .pfd-hero-top-row { display:flex;gap:20px;align-items:flex-start; }
-  .pfd-hero-photo { flex-shrink:0;width:88px;height:88px;border-radius:var(--pe-radius-md);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400); }
-  .pfd-hero-text { flex:1;min-width:0; }
+  /* --- Hero: full-bleed photo, calm text block below, no overlay ------- */
+  .pfd-hero { border-radius:var(--pe-radius-lg);background:var(--pe-surface);border:1px solid var(--pe-border);box-shadow:var(--pe-shadow-sm);margin-bottom:20px;overflow:hidden; }
+  .pfd-hero-media { line-height:0; }
+  .pfd-hero-image { display:block;width:100%;aspect-ratio:4/3;object-fit:cover; }
+  .pfd-hero-photo-placeholder { width:100%;aspect-ratio:4/3;background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400); }
+
+  /* Kept below the photo (never an overlay on top of it) — just visually
+     lighter than before: smaller, softened, still a real working link. */
+  .pfd-hero-attribution { padding:7px 20px 0;font-size:10.5px;color:var(--pe-text-muted);opacity:0.75; }
+  .pfd-hero-attribution a { color:inherit;text-decoration:underline; }
+
+  .pfd-hero-body { padding:16px 20px 20px; }
   .pfd-hero-top { display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap; }
   .pfd-hero-name { font-family:var(--pe-font-display);font-weight:600;font-size:clamp(22px,3vw,30px);color:var(--pe-text);line-height:1.15; }
-  .pfd-badge { flex-shrink:0;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap; }
+  .pfd-badge { flex-shrink:0;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap;margin-top:2px; }
   .pfd-badge-species { background:var(--pe-sand);color:var(--pe-accent); }
   .pfd-badge-cultivar { background:#fdf3e0;color:#8a6a1e; }
   .pfd-hero-latin { font-style:italic;color:var(--pe-text-muted);font-size:15px;margin-top:6px; }
-  .pfd-hero-canonical { color:var(--pe-text-muted);font-size:13px;margin-top:3px; }
-  .pfd-hero-family { color:var(--pe-text-muted);font-size:11px;margin-top:6px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600; }
-  @media (max-width:480px) { .pfd-hero { padding:18px; } .pfd-hero-top-row { gap:14px; } .pfd-hero-photo { width:64px;height:64px; } }
+  .pfd-hero-family { color:var(--pe-text-muted);font-size:11px;margin-top:8px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600; }
+  @media (max-width:480px) { .pfd-hero-body { padding:14px 16px 18px; } .pfd-hero-attribution { padding:6px 16px 0; } }
 
-  .pfd-hero-media { margin:-24px -24px 20px; }
-  .pfd-hero-image { display:block;width:100%;max-height:360px;object-fit:cover;border-radius:var(--pe-radius-lg) var(--pe-radius-lg) 0 0; }
-  .pfd-hero-attribution { padding:8px 24px 0;font-size:11px;color:var(--pe-text-muted); }
-  .pfd-hero-attribution a { color:var(--pe-text-muted);text-decoration:underline; }
-  @media (max-width:480px) { .pfd-hero-media { margin:-18px -18px 16px; } .pfd-hero-image { aspect-ratio:16/9;max-height:200px;border-radius:var(--pe-radius-md) var(--pe-radius-md) 0 0; } .pfd-hero-attribution { padding:8px 18px 0; } }
+  /* --- Key stats: compact 2x2, no repeated large beige blocks ---------- */
+  .pfd-stats-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px; }
+  .pfd-stat-tile { background:var(--pe-surface);border:1px solid var(--pe-border);border-radius:var(--pe-radius-md);padding:12px 14px; }
+  .pfd-stat-label { font-size:10.5px;text-transform:uppercase;letter-spacing:0.7px;color:var(--pe-text-muted);font-weight:700;margin-bottom:4px; }
+  .pfd-stat-value { font-family:var(--pe-font-display);font-weight:600;font-size:17px;color:var(--pe-text);line-height:1.25; }
 
-  .pfd-section-title { font-family:var(--pe-font-display);font-weight:600;font-size:20px;color:var(--pe-text);margin-bottom:14px; }
-  .pfd-info-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
-  .pfd-info-card { background:var(--pe-sand);border-radius:var(--pe-radius-sm);padding:13px 14px; }
-  .pfd-info-label { font-size:10.5px;text-transform:uppercase;letter-spacing:0.7px;color:var(--pe-text-muted);font-weight:700;margin-bottom:3px; }
-  .pfd-info-value { font:var(--pe-text-body);font-size:14px;color:var(--pe-text);font-weight:500;line-height:1.4; }
-  @media (max-width:480px) { .pfd-info-grid { grid-template-columns:1fr; } }
+  /* --- At a glance: one calm synthesis line ----------------------------- */
+  .pfd-glance { background:var(--pe-sand);border-radius:var(--pe-radius-md);padding:14px 16px;margin-bottom:22px; }
+  .pfd-glance-title { font-size:10.5px;text-transform:uppercase;letter-spacing:0.7px;color:var(--pe-text-muted);font-weight:700;margin-bottom:5px; }
+  .pfd-glance-text { font:var(--pe-text-body);font-size:14px;color:var(--pe-text);line-height:1.5;margin:0; }
+
+  /* --- Secondary traits: grouped list, label left / value right --------- */
+  .pfd-section-title { font-family:var(--pe-font-display);font-weight:600;font-size:19px;color:var(--pe-text);margin-bottom:10px; }
+  .pfd-detail-list { background:var(--pe-surface);border:1px solid var(--pe-border);border-radius:var(--pe-radius-md);overflow:hidden; }
+  .pfd-detail-row { display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:11px 16px;border-bottom:1px solid var(--pe-border); }
+  .pfd-detail-row:last-child { border-bottom:none; }
+  .pfd-detail-label { font-size:13px;color:var(--pe-text-muted);font-weight:500;flex-shrink:0; }
+  .pfd-detail-value { font-size:14px;color:var(--pe-text);font-weight:500;text-align:right; }
 `;
