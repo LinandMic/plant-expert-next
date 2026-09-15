@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Herbiose</string>
+    <string name="title_activity_main">Herbiose</string>
+    <string name="package_name">com.linandmic.herbiose</string>
+    <string name="custom_url_scheme">com.linandmic.herbiose</string>
+</resources>
