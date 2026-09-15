@@ -1,3 +1,4 @@
+import { useState } from "react";
 import AppShell from "@/components/ui/AppShell";
 import { useRouter } from "next/router";
 import { fetchPublishedPlantBySlug } from "@/lib/plantFinderApi";
@@ -11,9 +12,14 @@ import {
   plantTypeLabel,
   plantFinderDisplayTitle,
 } from "@/lib/plantFinderFormat";
-import { IconSprig } from "@/components/ui/icons";
+import { IconSprig, IconCheck } from "@/components/ui/icons";
 import { getExternalNavItems } from "@/components/ui/externalNavItems";
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/lib/useAuth";
+import { useGardenZones } from "@/lib/useGardenZones";
+import AuthModal from "@/components/AuthModal";
+import AddToGardenModal from "@/components/AddToGardenModal";
+import Button from "@/components/ui/Button";
 
 // Server-rendered on purpose: returning `notFound: true` is what gives a
 // missing slug (or a draft row RLS already hides) Next.js's real 404
@@ -66,6 +72,31 @@ function DetailRow({ label, value }) {
 export default function PlantFinderDetailPage({ plant }) {
   const router = useRouter();
   const { t, locale } = useI18n();
+  const auth = useAuth();
+  const { zones, loading: zonesLoading } = useGardenZones(auth.user, auth.loading);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  // Session-local only: flips the CTA to a confirmed state right after a
+  // successful add on THIS view, never a persistent "already in your
+  // garden" check (that would need an extra query on every page load — see
+  // round report). A fresh visit later shows "Ajouter à mon jardin" again,
+  // which is fine: duplicates are allowed by design (no uniqueness
+  // constraint on plants for this), this only guards the one interaction.
+  const [addedToGarden, setAddedToGarden] = useState(false);
+
+  // "Do not silently fail" (spec): while auth is still resolving, the CTA
+  // stays disabled rather than risking a wrong logged-out/logged-in branch
+  // on a stray click. Once resolved, no session -> open the EXISTING
+  // AuthModal (no new auth architecture); a real session -> open the
+  // add-to-garden flow.
+  const handleAddToGardenClick = () => {
+    if (auth.loading) return;
+    if (!auth.user) {
+      setShowAuthModal(true);
+      return;
+    }
+    setShowAddModal(true);
+  };
   // `from` is the list page's own serialized filter/search query string,
   // passed through by PlantFinderCard so this link returns the visitor to
   // their exact prior search state rather than always resetting it.
@@ -170,6 +201,22 @@ export default function PlantFinderDetailPage({ plant }) {
           </div>
         </div>
 
+        <Button
+          type="button"
+          className="pfd-add-to-garden-btn"
+          variant={addedToGarden ? "secondary" : "primary"}
+          disabled={auth.loading || addedToGarden}
+          onClick={handleAddToGardenClick}
+        >
+          {addedToGarden ? (
+            <>
+              <IconCheck size={16} /> {t("finder.inMyGarden")}
+            </>
+          ) : (
+            t("finder.addToGarden")
+          )}
+        </Button>
+
         {hasAnyStat && (
           <div className="pfd-stats-grid">
             <StatTile label={t("finder.height")} value={height} />
@@ -197,6 +244,22 @@ export default function PlantFinderDetailPage({ plant }) {
           </>
         )}
       </div>
+
+      {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} />}
+      {showAddModal && (
+        <AddToGardenModal
+          plant={plant}
+          locale={locale}
+          user={auth.user}
+          zones={zones}
+          zonesLoading={zonesLoading}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            setShowAddModal(false);
+            setAddedToGarden(true);
+          }}
+        />
+      )}
     </AppShell>
   );
 }
@@ -235,6 +298,13 @@ const DETAIL_STYLES = `
   .pfd-hero-latin { font-style:italic;color:var(--pe-text-muted);font-size:15px;margin-top:6px; }
   .pfd-hero-family { color:var(--pe-text-muted);font-size:11px;margin-top:8px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600; }
   @media (max-width:480px) { .pfd-hero-body { padding:14px 16px 18px; } .pfd-hero-attribution { padding:6px 16px 0; } }
+
+  /* --- Add to garden CTA: a normal (non-sticky) full-width primary
+     button — reuses components/ui/Button's existing .pe-btn styling
+     verbatim (forest palette, 44px min-height already built in), only
+     stretched to full width here. Deliberately not sticky/fixed: it never
+     has to be reconciled against the fixed bottom mobile nav. ---------- */
+  .pfd-add-to-garden-btn { width:100%;margin-bottom:18px; }
 
   /* --- Key stats: compact 2x2, no repeated large beige blocks ---------- */
   .pfd-stats-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px; }
