@@ -281,16 +281,32 @@
   width: 40px;
   height: 40px;
   border-radius: 13px;
-  background: var(--pe-accent);
-  color: var(--pe-white);
   align-items: center;
   justify-content: center;
   margin-top: -16px;
-  box-shadow: var(--pe-shadow-md);
+  border: 1.5px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Identifier is always the elevated central action (spec: never moved,
+   never demoted to a plain tab) but only looks "selected" when it actually
+   is — another tab being active must not still read as if Identifier were
+   the current page. Distinguished on more than color alone: solid fill
+   with no border (active) vs. a bordered outline chip (inactive) is a
+   shape/texture difference too, on top of aria-current already marking the
+   real active tab for assistive tech. */
+.pe-mobile-nav-item.is-emphasis:not(.is-active) .pe-mobile-nav-item-icon {
+  background: var(--pe-ivory);
+  color: var(--pe-accent);
+  border-color: var(--pe-sage-400);
+  box-shadow: var(--pe-shadow-sm);
 }
 
 .pe-mobile-nav-item.is-emphasis.is-active .pe-mobile-nav-item-icon {
   background: var(--pe-accent-strong);
+  color: var(--pe-white);
+  border-color: var(--pe-accent-strong);
+  box-shadow: var(--pe-shadow-md);
 }
 
 /* ---------------------------------------------------------------------- */
