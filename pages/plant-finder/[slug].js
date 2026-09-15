@@ -71,6 +71,21 @@ export default function PlantFinderDetailPage({ plant }) {
   // their exact prior search state rather than always resetting it.
   const from = typeof router.query.from === "string" ? router.query.from : "";
   const backHref = from ? `/plant-finder?${from}` : "/plant-finder";
+  // Prefer router.back() only when it's safe to assume the previous history
+  // entry really is that exact Plant Finder search: `from` is set only by
+  // PlantFinderCard's own link (never typed/shared), so its presence is
+  // itself the safety signal — no new navigation architecture, no guessing
+  // at arbitrary history state. router.back() then restores scroll position
+  // and any in-page state the list still had, which a fresh href load
+  // would not. Without `from` (direct link, shared URL, no known prior
+  // state) the plain href to /plant-finder below is left to do its normal
+  // job — never blocked, never intercepted.
+  const handleBackClick = (event) => {
+    if (from && typeof window !== "undefined" && window.history.length > 1) {
+      event.preventDefault();
+      router.back();
+    }
+  };
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
   const spread = formatHeightRange(null, plant.spreadMaxCm);
   const sun = sunLabels(plant.sun, t);
@@ -118,7 +133,7 @@ export default function PlantFinderDetailPage({ plant }) {
       <div className="pfd-page">
         <style>{DETAIL_STYLES}</style>
 
-        <a href={backHref} className="pfd-back-link">{t("finder.backLink")}</a>
+        <a href={backHref} className="pfd-back-link" onClick={handleBackClick}>{t("finder.backLink")}</a>
 
         <div className="pfd-hero">
           {plant.imageUrl ? (
@@ -187,7 +202,15 @@ export default function PlantFinderDetailPage({ plant }) {
 }
 
 const DETAIL_STYLES = `
-  .pfd-page { max-width:640px; }
+  /* Real-device (installed PWA / viewport-fit=cover) fix: the hero photo
+     and back link used to start right under the iOS status bar, which
+     visually sat on top of the image. env(safe-area-inset-top) is 0 in
+     every normal browser context (the browser chrome already reserves
+     that space there) and only becomes non-zero in standalone/fullscreen
+     mode — so this never adds blank space in regular rendering or on
+     desktop, and never hardcodes an iPhone-specific pixel value. Additive
+     to pe-shell-content's own existing top padding, not a replacement. */
+  .pfd-page { max-width:640px;padding-top:env(safe-area-inset-top); }
 
   .pfd-back-link { display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:2px 0;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;text-decoration:none;margin-bottom:8px; }
   .pfd-back-link:hover { color:var(--pe-accent); }
