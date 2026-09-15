@@ -10,6 +10,7 @@ import { fetchProfile } from "@/lib/profileApi";
 import { fetchWeatherForProfile } from "@/lib/weatherApi";
 import { evaluateWateringWeather } from "@/lib/weatherEngine";
 import { getEffectivePlantContext } from "@/lib/effectivePlantContext";
+import { gardenPlantDisplayName, gardenPlantLatinName, gardenPlantCategory } from "@/lib/gardenPlantDisplay";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
@@ -966,7 +967,7 @@ const MJ_DETAIL_STYLES = `
 `;
 
 function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated, onGoIdentifier }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // selectedId (not the plant object itself) is the only state kept for the
   // open detail view — the plant is always re-derived from the live
   // `jardin` array below, so any update to `jardin` (e.g. a successful
@@ -1031,8 +1032,8 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   const moisLabel = t("format.monthsShort")[moisIdx];
 
   const filtered = jardin.filter(p => {
-    const nom = (p.data && p.data.identite && p.data.identite.nom_commun || "").toLowerCase();
-    const cat = (p.data && p.data.identite && p.data.identite.categorie) || "";
+    const nom = (gardenPlantDisplayName(p, locale) || "").toLowerCase();
+    const cat = gardenPlantCategory(p, t) || "";
     const matchesZone =
       zoneFilter === "all" || (zoneFilter === "unassigned" ? !p.zoneId : p.zoneId === zoneFilter);
     return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase())) && matchesZone;
@@ -1434,9 +1435,9 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           ) : (
             <div className="mj-grid">
               {filtered.map((p) => {
-                const nom = p.data && p.data.identite && p.data.identite.nom_commun;
-                const nomLatin = p.data && p.data.identite && p.data.identite.nom_latin;
-                const categorie = p.data && p.data.identite && p.data.identite.categorie;
+                const nom = gardenPlantDisplayName(p, locale);
+                const nomLatin = gardenPlantLatinName(p);
+                const categorie = gardenPlantCategory(p, t);
                 const zoneName = zoneNameForPlant(p, zones.zones);
                 return (
                   <div
