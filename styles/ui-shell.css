@@ -24,20 +24,23 @@
   justify-content: flex-end;
   align-items: center;
   gap: 14px;
-  padding: 16px var(--pe-shell-gutter) 0;
+  /* env(safe-area-inset-top) is 0 on devices without a notch/Dynamic
+     Island, so this only adds clearance where one actually exists —
+     never a fixed iPhone-model offset. */
+  padding: calc(16px + env(safe-area-inset-top)) var(--pe-shell-gutter) 0;
   max-width: var(--pe-shell-max-width);
   margin: 0 auto;
 }
 
 @media (max-width: 1023px) {
   .pe-topbar {
-    padding: 14px 24px 0;
+    padding: calc(14px + env(safe-area-inset-top)) 24px 0;
   }
 }
 
 @media (max-width: 767px) {
   .pe-topbar {
-    padding: 14px 16px 0;
+    padding: calc(14px + env(safe-area-inset-top)) 16px 0;
   }
 }
 
@@ -343,6 +346,24 @@
 .pe-account-action:focus-visible {
   outline: 2px solid var(--pe-accent);
   outline-offset: 2px;
+}
+
+/* Phone width: the email address is what makes "email + Mon profil + Se
+   déconnecter" overflow/crowd, and it's the least actionable item of the
+   three — drop it, keep both actions visible, aligned and tappable. */
+@media (max-width: 480px) {
+  .pe-account-email {
+    display: none;
+  }
+
+  .pe-account-bar {
+    gap: 18px;
+  }
+
+  .pe-account-action {
+    min-height: 44px;
+    padding: 6px 4px;
+  }
 }
 
 /* ---------------------------------------------------------------------- */

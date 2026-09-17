@@ -38,4 +38,14 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required by @capacitor/camera's takePhoto(). chooseFromGallery()
+         needs no declared permission: it uses the system photo picker /
+         GET_CONTENT intent (see the plugin's own manifest <queries>), which
+         grants file access without READ_EXTERNAL_STORAGE. We never save to
+         the gallery, so WRITE_EXTERNAL_STORAGE isn't needed either. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Camera hardware is optional: the gallery-picker path still works
+         without it, so the app must not be excluded from camera-less
+         devices on the Play Store. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

@@ -1,5 +1,15 @@
+// Relative import (not the "@/" alias used elsewhere): this file is loaded
+// directly by plain `node --test` via lib/apiProxyHandler.test.js, which
+// only understands Node's native ESM resolution, not the Next.js/TS path
+// alias.
+import { classifyOrigin, isSameOriginReferer } from '../../lib/apiOrigin.js';
+
 const ALLOWED_MODEL = 'claude-sonnet-4-5';
 const MAX_TOKENS_CAP = 8000;
+
+// What the client actually sends: POST with a JSON body, nothing else.
+const CORS_ALLOWED_METHODS = 'POST';
+const CORS_ALLOWED_HEADERS = 'Content-Type';
 
 export const config = {
   api: {
@@ -9,33 +19,26 @@ export const config = {
   },
 };
 
-function isRequestFromAllowedOrigin(req) {
-  const host = req.headers.host;
-  if (!host) return false;
-
-  const originHeader = req.headers.origin;
-  if (originHeader) {
-    try {
-      return new URL(originHeader).host === host;
-    } catch {
-      return false;
-    }
-  }
-
-  const referer = req.headers.referer;
-  if (referer) {
-    try {
-      return new URL(referer).host === host;
-    } catch {
-      return false;
-    }
-  }
-
-  return false;
-}
-
 export default async function handler(req, res) {
+  const host = req.headers.host;
+  const originHeader = req.headers.origin;
+  const originClass = classifyOrigin(originHeader, host);
+
+  // Only Herbiose's own native app shells are cross-origin callers by
+  // design (they run from a local WebView origin, not the deployed host),
+  // so only that class ever gets CORS headers — and always the exact
+  // request origin, never `*`. Same-origin web requests need no CORS
+  // headers at all; the browser only cross-origin-checks the native case.
+  if (originClass === 'native') {
+    res.setHeader('Access-Control-Allow-Origin', originHeader);
+    res.setHeader('Vary', 'Origin');
+  }
+
   if (req.method === 'OPTIONS') {
+    if (originClass === 'native') {
+      res.setHeader('Access-Control-Allow-Methods', CORS_ALLOWED_METHODS);
+      res.setHeader('Access-Control-Allow-Headers', CORS_ALLOWED_HEADERS);
+    }
     res.setHeader('Allow', 'POST, OPTIONS');
     return res.status(204).end();
   }
@@ -45,7 +48,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!isRequestFromAllowedOrigin(req)) {
+  const isAllowed =
+    originClass === 'native' ||
+    originClass === 'same-origin' ||
+    (!originHeader && isSameOriginReferer(req.headers.referer, host));
+
+  if (!isAllowed) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 

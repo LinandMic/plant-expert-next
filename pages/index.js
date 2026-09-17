@@ -11,6 +11,8 @@ import { fetchWeatherForProfile } from "@/lib/weatherApi";
 import { evaluateWateringWeather } from "@/lib/weatherEngine";
 import { getEffectivePlantContext } from "@/lib/effectivePlantContext";
 import { gardenPlantDisplayName, gardenPlantLatinName, gardenPlantCategory } from "@/lib/gardenPlantDisplay";
+import { isNativePlatform, getWebOrigin } from "@/lib/platform";
+import { captureNativePhoto } from "@/lib/nativeCamera";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
 import CatalogPlantGardenDetail from "@/components/CatalogPlantGardenDetail";
@@ -152,6 +154,24 @@ IMPORTANT : Réponds UNIQUEMENT en JSON valide, sans backticks, sans texte avant
 }`;
 }
 
+// The native app is a static export bundled into the iOS/Android shell —
+// there is no local "/api/proxy" route to resolve against there, and a
+// relative fetch would hit the Capacitor WebView's own local origin
+// instead of the deployed backend. On native only, resolve against the
+// canonical HTTPS web origin (lib/platform.js); normal web keeps the
+// relative path untouched. Missing config fails loudly instead of quietly
+// falling back to a broken local URL — see AGENTS.md task requirements.
+function resolveProxyUrl() {
+  if (!isNativePlatform()) return "/api/proxy";
+  const webOrigin = getWebOrigin();
+  if (!webOrigin) {
+    throw new Error(
+      "NEXT_PUBLIC_WEB_ORIGIN is not configured — the native app cannot reach /api/proxy without it."
+    );
+  }
+  return `${webOrigin}/api/proxy`;
+}
+
 async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   const content = [];
   if (imageBase64) {
@@ -160,7 +180,7 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   } else {
     content.push({ type: "text", text: `Analyse complète de la plante : "${plantName}"` });
   }
-  const response = await fetch("/api/proxy", {
+  const response = await fetch(resolveProxyUrl(), {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation, usage), messages: [{ role: "user", content }] })
   });
@@ -275,6 +295,57 @@ const PLM_STYLES = `
   .plm-actions { display:flex;gap:8px;flex-wrap:wrap;margin-top:22px; }
 
   @media (max-width:480px) { .plm-panel { padding:20px; } }
+`;
+
+// Native-only replacement for the browser's file-picker dialog. Kept as a
+// small, self-contained sheet (same overlay/panel pattern as
+// PlantationModal above) rather than a broader Identifier redesign —
+// @capacitor/camera 8.x removed the old single "camera or library" native
+// prompt (see lib/nativeCamera.js), so something has to offer that choice.
+function NativePhotoSourceSheet({ onSelectCamera, onSelectGallery, onCancel }) {
+  const { t } = useI18n();
+  return (
+    <div className="pss-overlay" onClick={onCancel}>
+      <style>{PSS_STYLES}</style>
+      <div
+        className="pss-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pss-title"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="pss-title" id="pss-title">{t("identifier.sourceSheetTitle")}</div>
+        <button type="button" className="pss-option" onClick={onSelectCamera}>
+          <IconCamera size={17} /> {t("identifier.sourceSheetCamera")}
+        </button>
+        <button type="button" className="pss-option" onClick={onSelectGallery}>
+          {t("identifier.sourceSheetGallery")}
+        </button>
+        <button type="button" className="pss-cancel" onClick={onCancel}>
+          {t("identifier.sourceSheetCancel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const PSS_STYLES = `
+  .pss-overlay { position:fixed;inset:0;background:rgba(24,33,29,0.45);display:flex;align-items:flex-end;justify-content:center;padding:0;z-index:1000; }
+  .pss-panel { position:relative;width:100%;max-width:480px;background:var(--pe-surface);border-radius:var(--pe-radius-lg) var(--pe-radius-lg) 0 0;border:1px solid var(--pe-border);border-bottom:none;box-shadow:var(--pe-shadow-md);padding:20px 20px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px; }
+
+  .pss-title { font-family:var(--pe-font-display);font-weight:600;font-size:17px;color:var(--pe-text);margin-bottom:6px; }
+
+  .pss-option { display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 14px;border-radius:var(--pe-radius-md);border:1.5px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font-family:var(--pe-font-body);font-size:15px;font-weight:600;cursor:pointer;transition:border-color .15s,background-color .15s; }
+  .pss-option:hover { border-color:var(--pe-accent);background:var(--pe-sand); }
+  .pss-option:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+
+  .pss-cancel { min-height:48px;margin-top:8px;border-radius:var(--pe-radius-md);border:none;background:none;color:var(--pe-text-muted);font-family:var(--pe-font-body);font-size:15px;font-weight:600;cursor:pointer; }
+  .pss-cancel:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+
+  @media (min-width:640px) {
+    .pss-overlay { align-items:center; }
+    .pss-panel { border-radius:var(--pe-radius-lg);border-bottom:1px solid var(--pe-border);padding:20px; }
+  }
 `;
 
 function TagList({ items, color }) {
@@ -655,8 +726,28 @@ function IdentifierTab({ addPlant }) {
   const [plantation, setPlantation] = useState(null);
   const [identificationStatus, setIdentificationStatus] = useState(null);
   const [pendingFocus, setPendingFocus] = useState(null); // "photo" | "name" | null
+  const [showSourceSheet, setShowSourceSheet] = useState(false);
   const fileRef = useRef();
   const nameInputRef = useRef();
+
+  const handleFile = useCallback((file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    setImageFile(file); setImagePreview(URL.createObjectURL(file));
+    setResult(null); setError(null); setSaved(false); setIdentificationStatus(null);
+  }, []);
+
+  // Web keeps the existing hidden file-input flow untouched. Native gets a
+  // small in-app source sheet instead (@capacitor/camera 8.x deprecated the
+  // old single "prompt" API that used to show this choice natively — see
+  // lib/nativeCamera.js), never the file input, since there's no browser
+  // file-picker UI inside a Capacitor WebView.
+  const triggerPhotoPicker = useCallback(() => {
+    if (isNativePlatform()) {
+      setShowSourceSheet(true);
+    } else {
+      fileRef.current && fileRef.current.click();
+    }
+  }, []);
 
   // Runs strictly after React has committed the reset (result cleared, back
   // to the input-panel), instead of racing a requestAnimationFrame against
@@ -665,19 +756,27 @@ function IdentifierTab({ addPlant }) {
   // still-in-flight keyboard event from the button that was just clicked.
   useEffect(() => {
     if (pendingFocus === "photo") {
-      fileRef.current && fileRef.current.click();
+      triggerPhotoPicker();
       setPendingFocus(null);
     } else if (pendingFocus === "name") {
       nameInputRef.current && nameInputRef.current.focus();
       setPendingFocus(null);
     }
-  }, [pendingFocus]);
+  }, [pendingFocus, triggerPhotoPicker]);
 
-  const handleFile = useCallback((file) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    setImageFile(file); setImagePreview(URL.createObjectURL(file));
-    setResult(null); setError(null); setSaved(false); setIdentificationStatus(null);
-  }, []);
+  const handleNativeCapture = useCallback(async (source) => {
+    setShowSourceSheet(false);
+    const captured = await captureNativePhoto(source);
+    if (captured.status === "ok") {
+      handleFile(captured.file);
+    } else if (captured.status === "denied") {
+      setError(t("identifier.cameraPermissionDenied"));
+    } else if (captured.status === "error") {
+      setError(t("identifier.cameraError"));
+    }
+    // "cancelled": the user backed out of the native camera/gallery UI —
+    // no error, matches the requirement to handle cancellation silently.
+  }, [handleFile, t]);
 
   const doAnalyze = async (plantationCtx, usageCtx) => {
     setLoading(true); setError(null); setResult(null); setSaved(false); setShowModal(false); setIdentificationStatus(null);
@@ -741,6 +840,13 @@ function IdentifierTab({ addPlant }) {
           onSkip={() => { setPlantation(null); doAnalyze(null); }}
         />
       )}
+      {showSourceSheet && (
+        <NativePhotoSourceSheet
+          onSelectCamera={() => handleNativeCapture("camera")}
+          onSelectGallery={() => handleNativeCapture("gallery")}
+          onCancel={() => setShowSourceSheet(false)}
+        />
+      )}
       {!result && !loading && (
         <>
           <header className="pi-header">
@@ -756,11 +862,11 @@ function IdentifierTab({ addPlant }) {
                 role={imagePreview ? undefined : "button"}
                 tabIndex={imagePreview ? undefined : 0}
                 aria-label={imagePreview ? undefined : t("identifier.dropzoneAriaLabel")}
-                onClick={() => !imagePreview && fileRef.current && fileRef.current.click()}
+                onClick={() => !imagePreview && triggerPhotoPicker()}
                 onKeyDown={(e) => {
                   if (!imagePreview && (e.key === "Enter" || e.key === " ")) {
                     e.preventDefault();
-                    fileRef.current && fileRef.current.click();
+                    triggerPhotoPicker();
                   }
                 }}
                 onDragOver={e => e.preventDefault()}
@@ -776,7 +882,7 @@ function IdentifierTab({ addPlant }) {
                     <button
                       type="button"
                       className="pi-change-btn"
-                      onClick={e => { e.stopPropagation(); fileRef.current && fileRef.current.click(); }}
+                      onClick={e => { e.stopPropagation(); triggerPhotoPicker(); }}
                     >
                       <IconCamera size={15} /> {t("identifier.change")}
                     </button>
