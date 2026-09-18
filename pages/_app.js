@@ -1,6 +1,8 @@
 import Head from "next/head";
 import { useEffect } from "react";
 import { I18nProvider } from "@/lib/i18n";
+import { isNativePlatform, getWebOrigin } from "@/lib/platform";
+import { initNativeDeepLinks } from "@/lib/nativeDeepLink";
 import "@/styles/globals.css";
 import "@/styles/ui-shell.css";
 
@@ -9,8 +11,16 @@ import "@/styles/ui-shell.css";
 // a progressive enhancement: unsupported browsers (no navigator.serviceWorker)
 // and a failed registration are both silently no-ops — the app itself must
 // never depend on this succeeding.
+//
+// Never registered inside a native Capacitor shell: there is no service
+// worker use case there (no browser install prompt, no offline caching of
+// a remote origin — the native shell already ships the whole app locally),
+// and registering one against the local WebView origin would be at best
+// inert and at worst a confusing extra cache layer on top of the native
+// static export.
 function useServiceWorker() {
   useEffect(() => {
+    if (isNativePlatform()) return;
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
     const register = () => {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -31,6 +41,9 @@ function useServiceWorker() {
 
 export default function App({ Component, pageProps }) {
   useServiceWorker();
+  useEffect(() => {
+    initNativeDeepLinks(getWebOrigin());
+  }, []);
 
   return (
     <>
