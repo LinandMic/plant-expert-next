@@ -48,7 +48,7 @@ export default function App({ Component, pageProps }) {
   return (
     <>
       <Head>
-        <title>Herbiose — Your green expert</title>
+        <title>Almeo — Your green expert</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#f9f6ef" />
         <link rel="manifest" href="/manifest.json" />
@@ -57,7 +57,7 @@ export default function App({ Component, pageProps }) {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Herbiose" />
+        <meta name="apple-mobile-web-app-title" content="Almeo" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </Head>

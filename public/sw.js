@@ -1,4 +1,4 @@
-// Herbiose service worker — PWA foundation round 1.
+// Almeo service worker — PWA foundation round 1.
 //
 // Deliberately minimal: this exists to make the app installable, not to
 // provide offline behavior. It caches ONLY the fixed, truly-static PWA
@@ -9,7 +9,7 @@
 // content or stale data. A later round can add real offline/asset
 // caching deliberately; this round intentionally does not.
 
-const CACHE_NAME = "herbiose-static-v1";
+const CACHE_NAME = "almeo-static-v1";
 const STATIC_ASSETS = [
   "/manifest.json",
   "/icon-192.png",

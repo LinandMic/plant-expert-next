@@ -65,7 +65,7 @@ export default function AddToGardenModal({ plant, locale, user, zones, zonesLoad
       <style>{ATG_STYLES}</style>
       <div className="atg-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="atg-title">
         <IconButton icon={IconX} label={t("common.close")} onClick={onClose} className="atg-close-btn" />
-        <div className="atg-brand"><IconLeaf size={16} /> Herbiose</div>
+        <div className="atg-brand"><IconLeaf size={16} /> Almeo</div>
 
         {success ? (
           <>

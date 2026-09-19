@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Herbiose</string>
+	<string>Almeo</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,9 +25,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Herbiose utilise l'appareil photo pour identifier vos plantes à partir d'une photo.</string>
+	<string>Almeo utilise l'appareil photo pour identifier vos plantes à partir d'une photo.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Herbiose accède à votre photothèque pour identifier une plante à partir d'une photo existante.</string>
+	<string>Almeo accède à votre photothèque pour identifier une plante à partir d'une photo existante.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

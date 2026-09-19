@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.linandmic.herbiose',
-  appName: 'Herbiose',
+  appId: 'com.linandmic.almeo',
+  appName: 'Almeo',
   webDir: 'out'
 };
 

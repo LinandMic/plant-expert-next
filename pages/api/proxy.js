@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   const originHeader = req.headers.origin;
   const originClass = classifyOrigin(originHeader, host);
 
-  // Only Herbiose's own native app shells are cross-origin callers by
+  // Only Almeo's own native app shells are cross-origin callers by
   // design (they run from a local WebView origin, not the deployed host),
   // so only that class ever gets CORS headers — and always the exact
   // request origin, never `*`. Same-origin web requests need no CORS

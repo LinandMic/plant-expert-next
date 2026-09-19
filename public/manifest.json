@@ -1,7 +1,7 @@
 {
-  "name": "Herbiose",
-  "short_name": "Herbiose",
-  "description": "Herbiose, your green expert — identifiez vos plantes, organisez votre jardin et suivez leur entretien au fil des saisons.",
+  "name": "Almeo",
+  "short_name": "Almeo",
+  "description": "Almeo, your green expert — identifiez vos plantes, organisez votre jardin et suivez leur entretien au fil des saisons.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

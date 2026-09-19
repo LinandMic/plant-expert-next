@@ -75,7 +75,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="rp-page">
       <style>{RP_STYLES}</style>
-      <div className="rp-brand"><IconLeaf size={20} /> <span>Herbiose</span></div>
+      <div className="rp-brand"><IconLeaf size={20} /> <span>Almeo</span></div>
 
       <div className="rp-card">
         {status === "loading" && (

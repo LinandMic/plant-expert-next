@@ -1,4 +1,4 @@
-package com.linandmic.herbiose;
+package com.linandmic.almeo;
 
 import com.getcapacitor.BridgeActivity;
 

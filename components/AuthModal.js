@@ -69,7 +69,7 @@ export default function AuthModal({ auth, onClose, initialMode = "login" }) {
       >
         <IconButton icon={IconX} label={t("auth.close")} onClick={onClose} className="am-close-btn" />
 
-        <div className="am-brand"><IconLeaf size={16} /> Herbiose</div>
+        <div className="am-brand"><IconLeaf size={16} /> Almeo</div>
 
         {mode === "forgot" ? (
           <>
