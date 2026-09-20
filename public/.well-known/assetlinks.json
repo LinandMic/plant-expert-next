@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.linandmic.almeo",
+      "sha256_cert_fingerprints": [
+        "FF:98:D1:E1:24:6A:1B:32:52:F5:23:A1:C2:E6:98:21:A6:B2:3A:EC:CD:F7:0A:49:68:29:60:1C:FB:F5:85:71"
+      ]
+    }
+  }
+]
