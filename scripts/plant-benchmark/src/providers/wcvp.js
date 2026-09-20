@@ -187,7 +187,7 @@ function auditCandidates(candidates) {
   }));
 }
 
-export async function queryWcvp({ inputName, rawRoot }) {
+export async function queryWcvp({ inputName, rawRoot, fetchImpl = fetchJson }) {
   // Cultivars are queried on their botanical parent only — WCVP is not
   // expected, and must not be forced, to know a cultivar epithet (spec
   // §5/§18). This function never creates an artificial WCVP taxon for a
@@ -203,7 +203,7 @@ export async function queryWcvp({ inputName, rawRoot }) {
   // record (e.g. homonyms across ranks), so it is never trusted blindly
   // either.
   const exactUrl = buildExactLookupUrl(queryName);
-  const exactResult = await fetchJson(exactUrl, { providerName: "wcvp" });
+  const exactResult = await fetchImpl(exactUrl, { providerName: "wcvp" });
   writeRaw(rawRoot, "wcvp", `${slug}.exact`, { input_name: inputName, query_name: queryName, request_url: exactUrl, result: exactResult });
 
   if (!exactResult.ok) {
@@ -242,7 +242,7 @@ export async function queryWcvp({ inputName, rawRoot }) {
     // shouldFallbackToFullTextSearch's doc comment.)
     lookupStrategy = "full_text_fallback";
     const searchUrl = buildSearchUrl(queryName);
-    const searchResult = await fetchJson(searchUrl, { providerName: "wcvp" });
+    const searchResult = await fetchImpl(searchUrl, { providerName: "wcvp" });
     writeRaw(rawRoot, "wcvp", `${slug}.search`, { input_name: inputName, query_name: queryName, request_url: searchUrl, result: searchResult });
 
     if (!searchResult.ok) {
@@ -320,7 +320,7 @@ export async function queryWcvp({ inputName, rawRoot }) {
   let acceptedUsage = null;
   if (isSynonym && raw.acceptedKey) {
     const acceptedUrl = `${GBIF_BASE}/species/${raw.acceptedKey}`;
-    const acceptedResult = await fetchJson(acceptedUrl, { providerName: "wcvp" });
+    const acceptedResult = await fetchImpl(acceptedUrl, { providerName: "wcvp" });
     writeRaw(rawRoot, "wcvp", `${slug}.accepted`, { request_url: acceptedUrl, result: acceptedResult });
     if (acceptedResult.ok && acceptedResult.data) {
       acceptedUsage = usageFromRaw(acceptedResult.data);
@@ -337,7 +337,7 @@ export async function queryWcvp({ inputName, rawRoot }) {
   const synonymsSourceKey = isSynonym ? raw.acceptedKey : raw.key;
   if (synonymsSourceKey) {
     const synUrl = `${GBIF_BASE}/species/${synonymsSourceKey}/synonyms?limit=20`;
-    const synResult = await fetchJson(synUrl, { providerName: "wcvp" });
+    const synResult = await fetchImpl(synUrl, { providerName: "wcvp" });
     writeRaw(rawRoot, "wcvp", `${slug}.synonyms`, { request_url: synUrl, result: synResult });
     if (synResult.ok && Array.isArray(synResult.data && synResult.data.results)) {
       synonyms = synResult.data.results.map((s) => s.canonicalName || s.scientificName).filter(Boolean);

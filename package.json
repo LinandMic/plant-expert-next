@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:native": "BUILD_TARGET=native next build",
     "start": "next start",
     "test": "node --test lib/*.test.js",
     "plant:benchmark": "node scripts/plant-benchmark/src/index.js",
@@ -13,15 +14,21 @@
     "plant:ingestion:plan": "node scripts/plant-ingestion/src/planCli.js",
     "plant:ingestion:apply": "node scripts/plant-ingestion/src/applyCli.js",
     "plant:ingestion:verify": "node scripts/plant-ingestion/src/verifyCli.js",
-    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js scripts/plant-ingestion/test/plan/*.test.js scripts/plant-ingestion/test/apply/*.test.js"
+    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js scripts/plant-ingestion/test/plan/*.test.js scripts/plant-ingestion/test/apply/*.test.js scripts/plant-ingestion/test/editorial/*.test.js"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/camera": "^8.2.4",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@supabase/supabase-js": "^2.112.3",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

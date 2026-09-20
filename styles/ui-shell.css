@@ -1,4 +1,4 @@
-/* Plant Expert — AppShell / navigation / design-system component styles.
+/* Almeo — AppShell / navigation / design-system component styles.
    Centralized here (spec §5) instead of duplicated per-page <style> blocks.
    Only consumed by components/ui/* and the new Accueil dashboard in Phase 1. */
 
@@ -24,20 +24,23 @@
   justify-content: flex-end;
   align-items: center;
   gap: 14px;
-  padding: 16px var(--pe-shell-gutter) 0;
+  /* env(safe-area-inset-top) is 0 on devices without a notch/Dynamic
+     Island, so this only adds clearance where one actually exists —
+     never a fixed iPhone-model offset. */
+  padding: calc(16px + env(safe-area-inset-top)) var(--pe-shell-gutter) 0;
   max-width: var(--pe-shell-max-width);
   margin: 0 auto;
 }
 
 @media (max-width: 1023px) {
   .pe-topbar {
-    padding: 14px 24px 0;
+    padding: calc(14px + env(safe-area-inset-top)) 24px 0;
   }
 }
 
 @media (max-width: 767px) {
   .pe-topbar {
-    padding: 14px 16px 0;
+    padding: calc(14px + env(safe-area-inset-top)) 16px 0;
   }
 }
 
@@ -281,16 +284,32 @@
   width: 40px;
   height: 40px;
   border-radius: 13px;
-  background: var(--pe-accent);
-  color: var(--pe-white);
   align-items: center;
   justify-content: center;
   margin-top: -16px;
-  box-shadow: var(--pe-shadow-md);
+  border: 1.5px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Identifier is always the elevated central action (spec: never moved,
+   never demoted to a plain tab) but only looks "selected" when it actually
+   is — another tab being active must not still read as if Identifier were
+   the current page. Distinguished on more than color alone: solid fill
+   with no border (active) vs. a bordered outline chip (inactive) is a
+   shape/texture difference too, on top of aria-current already marking the
+   real active tab for assistive tech. */
+.pe-mobile-nav-item.is-emphasis:not(.is-active) .pe-mobile-nav-item-icon {
+  background: var(--pe-ivory);
+  color: var(--pe-accent);
+  border-color: var(--pe-sage-400);
+  box-shadow: var(--pe-shadow-sm);
 }
 
 .pe-mobile-nav-item.is-emphasis.is-active .pe-mobile-nav-item-icon {
   background: var(--pe-accent-strong);
+  color: var(--pe-white);
+  border-color: var(--pe-accent-strong);
+  box-shadow: var(--pe-shadow-md);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -327,6 +346,24 @@
 .pe-account-action:focus-visible {
   outline: 2px solid var(--pe-accent);
   outline-offset: 2px;
+}
+
+/* Phone width: the email address is what makes "email + Mon profil + Se
+   déconnecter" overflow/crowd, and it's the least actionable item of the
+   three — drop it, keep both actions visible, aligned and tappable. */
+@media (max-width: 480px) {
+  .pe-account-email {
+    display: none;
+  }
+
+  .pe-account-bar {
+    gap: 18px;
+  }
+
+  .pe-account-action {
+    min-height: 44px;
+    padding: 6px 4px;
+  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -449,8 +486,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   border: 1px solid var(--pe-border-strong);
   background: var(--pe-surface);

@@ -1,3 +1,5 @@
+import { PROMOTABLE_CATALOG_COLUMNS } from "../plan/catalogColumns.js";
+
 // Layer C, table 3: plant_catalog.
 //
 // Natural key: slug (real unique constraint: plant_catalog_slug_unique).
@@ -13,6 +15,24 @@
 // un-publish already-curated entries. So: these 3 fields are only ever set
 // on INSERT (first creation), and are NEVER included in an UPDATE — this
 // file does not even read them back for the diff comparison.
+//
+// SECOND CRITICAL safety rule (added after a real production regression on
+// Rhododendron simsii): a promotable trait column currently governed by a
+// manual_resolution selection (plant_trait_selections.decision_method =
+// "manual_resolution") is CURATOR-OWNED too, at the single-column level —
+// this file is the ONLY place a provider apply ever writes a trait column
+// to plant_catalog, so it is the only place that can (and must) check the
+// CURRENT DB state before writing. The provider plan itself was compiled
+// by Layer A/B, entirely before any editorial decision could exist, and
+// can be re-applied months after a curator has since overridden a trait —
+// so the plan is NEVER trusted alone for this: plant_trait_selections is
+// re-read fresh, every single call, right before the write decision (spec:
+// "un ancien provider plan peut être réappliqué plusieurs mois après").
+// Protection is per-trait, never per-row: a manual_resolution on plant_type
+// never blocks a genuine provider update to sun/height/spread/etc. And it
+// applies unconditionally — a provider-proposed null AND a provider-
+// proposed different-but-non-null value are both overridden the same way;
+// manual_resolution always wins.
 const CATALOG_INGESTION_FIELDS = [
   "display_name", "common_name", "entry_type", "cultivar_name",
   "plant_type", "growth_form", "height_min_cm", "height_max_cm", "spread_max_cm",
@@ -59,10 +79,68 @@ function orderSpeciesBeforeCultivars(catalogEntries) {
   return [...species, ...cultivars];
 }
 
-// upsertCatalogEntries({ client, catalogEntries, taxonIdByRef, dryRun }) -> { idByRef, created, updated, unchanged, errors }
+// fetchManualResolutionTraits({ client, catalogId }) -> { traits } | { error }
+// Read-only. The single source of truth for "which trait columns are
+// currently curator-owned" on this catalog row — always the live DB,
+// queried fresh on every call, never inferred from the plan.
+async function fetchManualResolutionTraits({ client, catalogId }) {
+  const { data, error } = await client
+    .from("plant_trait_selections")
+    .select("trait")
+    .eq("plant_catalog_id", catalogId)
+    .eq("decision_method", "manual_resolution");
+  if (error) return { error };
+  return { traits: new Set((data || []).map((r) => r.trait)) };
+}
+
+// applyManualResolutionProtection(row, existing, protectedTraits, catalogRef)
+//   -> { row, protectedFields }
+// Pure. For every trait currently under manual_resolution, the EXISTING DB
+// value wins over the plan's proposed value in `row` — never the reverse.
+// Only PROMOTABLE_CATALOG_COLUMNS are ever substituted: display_name/
+// common_name/entry_type/cultivar_name are catalog identity fields, never
+// trait-selection-backed (a plant_trait_selections row cannot reference
+// them — see the real FK/CHECK constraints), so this never touches them.
+// `protectedFields` lists only the traits that were ACTUALLY going to
+// differ (provider proposed something other than what's already there) —
+// a protected trait the provider's plan already agreed with isn't reported,
+// there was never a conflict to prevent.
+function applyManualResolutionProtection(row, existing, protectedTraits, catalogRef) {
+  if (protectedTraits.size === 0) return { row, protectedFields: [] };
+
+  const protectedRow = { ...row };
+  const protectedFields = [];
+  for (const trait of protectedTraits) {
+    if (!PROMOTABLE_CATALOG_COLUMNS.has(trait) || !(trait in protectedRow)) continue;
+    const providerValue = protectedRow[trait] ?? null;
+    const currentValue = existing[trait] ?? null;
+    protectedRow[trait] = currentValue;
+    if (JSON.stringify(providerValue) !== JSON.stringify(currentValue)) {
+      protectedFields.push({ catalog_ref: catalogRef, trait, provider_value: providerValue, current_value: currentValue });
+    }
+  }
+  return { row: protectedRow, protectedFields };
+}
+
+// upsertCatalogEntries({ client, catalogEntries, taxonIdByRef, dryRun })
+//   -> { idByRef, created, updated, unchanged, errors, protectedFields }
+//
+// protectedFields is additive to the existing created/updated/unchanged
+// row-level counts, never a new bucket of its own — a row whose ONLY
+// differing fields were all protected still correctly reports "unchanged"
+// (the substituted row has nothing left that differs), and
+// protectedFields explains why nothing was written for those specific
+// traits. A row with a genuine, non-protected difference alongside a
+// protected one still reports "updated" (the real write happens, but only
+// for the non-protected fields — see applyManualResolutionProtection).
+// This is deliberately never surfaced as its own created/updated/unchanged
+// count: the dry-run must never say "updated" for a difference that will
+// be ignored at apply time (spec) — protectedFields is the explicit reason
+// attached to whatever the row's real, honest status already is.
 export async function upsertCatalogEntries({ client, catalogEntries, taxonIdByRef, dryRun }) {
   const idByRef = new Map();
   const errors = [];
+  const protectedFields = [];
   let created = 0, updated = 0, unchanged = 0;
 
   for (const c of orderSpeciesBeforeCultivars(catalogEntries)) {
@@ -89,9 +167,11 @@ export async function upsertCatalogEntries({ client, catalogEntries, taxonIdByRe
       continue;
     }
 
-    const row = catalogRowFromPlan(c, taxonId, parentCatalogId);
+    let row = catalogRowFromPlan(c, taxonId, parentCatalogId);
 
     if (!existing) {
+      // A brand-new row can never have a manual_resolution yet (nothing to
+      // protect against) — no lookup needed.
       created += 1;
       if (dryRun) {
         idByRef.set(c.catalog_ref, null);
@@ -111,6 +191,19 @@ export async function upsertCatalogEntries({ client, catalogEntries, taxonIdByRe
     }
 
     idByRef.set(c.catalog_ref, existing.id);
+
+    const { traits: manualResolutionTraits, error: selError } = await fetchManualResolutionTraits({ client, catalogId: existing.id });
+    if (selError) {
+      // Never guess whether a field is protected when the check itself
+      // failed — refuse to write this row rather than risk silently
+      // overwriting a curator decision this lookup couldn't confirm.
+      errors.push(`plant_trait_selections lookup failed while checking manual_resolution protection for slug "${c.slug}": ${selError.message}`);
+      continue;
+    }
+    const protection = applyManualResolutionProtection(row, existing, manualResolutionTraits, c.catalog_ref);
+    row = protection.row;
+    protectedFields.push(...protection.protectedFields);
+
     if (!ingestionFieldsDiffer(existing, row)) {
       unchanged += 1;
       continue;
@@ -123,5 +216,5 @@ export async function upsertCatalogEntries({ client, catalogEntries, taxonIdByRe
     if (updateError) errors.push(`plant_catalog update failed for slug "${c.slug}": ${updateError.message}`);
   }
 
-  return { idByRef, created, updated, unchanged, errors };
+  return { idByRef, created, updated, unchanged, errors, protectedFields };
 }

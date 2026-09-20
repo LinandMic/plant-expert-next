@@ -10,10 +10,15 @@ import { IconHome, IconCamera, IconSprout, IconSearch, IconUser } from "@/compon
 // with "/" — each of these previously duplicated the same array by hand,
 // which is exactly how they drifted (Phase 4.1: two of the three links here
 // pointed at "/" instead of the real tab, so they always landed on Accueil).
-export const EXTERNAL_NAV_ITEMS = [
-  { key: "accueil", label: "Accueil", icon: IconHome, kind: "link", href: "/", placement: "main" },
-  { key: "identifier", label: "Identifier", icon: IconCamera, kind: "link", href: "/?tab=identifier", placement: "main", emphasis: true },
-  { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "link", href: "/?tab=jardin", placement: "main" },
-  { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
-  { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
-];
+//
+// getExternalNavItems(t): a function, not a constant, since the labels must
+// reflect the active locale — t comes from useI18n() at each call site.
+export function getExternalNavItems(t) {
+  return [
+    { key: "accueil", label: t("nav.accueil"), icon: IconHome, kind: "link", href: "/", placement: "main" },
+    { key: "identifier", label: t("nav.identifier"), icon: IconCamera, kind: "link", href: "/?tab=identifier", placement: "main", emphasis: true },
+    { key: "jardin", label: t("nav.jardin"), icon: IconSprout, kind: "link", href: "/?tab=jardin", placement: "main" },
+    { key: "trouver", label: t("nav.trouver"), icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
+    { key: "profil", label: t("nav.profil"), icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
+  ];
+}

@@ -14,6 +14,43 @@ l'application. Aucune de ces couches ne modifie `pages/`, `components/`,
 - **Layer C** (`src/applyCli.js`, `src/verifyCli.js`, `src/apply/*.js`) —
   **la seule couche qui écrit réellement dans Supabase**, documentée ici.
 
+### Sélection automatique déterministe (`src/selections.js`)
+
+Layer A ne propose une `trait_selection` automatique que pour un nombre
+volontairement restreint de traits — un `trait_selection` promeut une
+valeur vers une colonne réelle de `plant_catalog`
+(`PROMOTABLE_CATALOG_COLUMNS`), donc chaque trait doit avoir une règle de
+sélection déterministe et documentée avant d'y entrer :
+
+- `height_min_cm`
+- `height_max_cm`
+- `plant_type`
+- `growth_form`
+- `spread_max_cm`
+- `evergreen`
+- `flowering_months`
+- `sun` reste un cas à part (`proposeSun`) : il copie verbatim le
+  `normalized_value` déjà crosswalké par `normalization.js`, jamais un
+  second calcul indépendant.
+
+**Provider-neutre par construction** : aucune priorité Perenual/Trefle
+n'est codée nulle part. Une sélection n'est proposée que si **toutes** les
+observations non-`uncertain` de ce trait, tous fournisseurs confondus,
+s'accordent sur la même valeur normalisée — une vraie divergence entre
+fournisseurs bloque la proposition entière (un avertissement explicite est
+émis), jamais un arbitrage "Perenual gagne". C'est ce qui permet à Trefle
+seul de faire aboutir une sélection quand Perenual est indisponible
+(`plan_restricted`/`unresolved_under_plan`/`not_found`), sans code
+spécifique à un fournisseur.
+
+Tout autre trait peut avoir des `trait_observations` (donc rester
+consultable/traçable), mais n'aura jamais de `trait_selection` tant
+qu'aucune règle déterministe n'est ajoutée ici — notamment
+`water_need`, `edible`/`edible_fruit`/`edible_leaf`,
+`hardiness_min_rank`/`hardiness_max_rank`, `container_suitable` :
+aucun de ces mappings n'existe aujourd'hui et aucun ne doit être deviné
+depuis des connaissances horticoles générales.
+
 ## 1. Où créer le fichier local de variables d'environnement
 
 ```bash
@@ -70,6 +107,33 @@ dans Supabase.** C'est un dry-run complet : chaque étape effectue les
 mêmes lectures qu'un apply réel (pour un rapport fiable), mais aucun
 `insert`/`update` n'est jamais exécuté. Le flag `--apply` est la seule
 façon de déclencher une écriture réelle.
+
+### Traiter un autre lot que Acer (`--plants`/`--out`, `--bundle`/`--plan`)
+
+Layer A et Layer B acceptent n'importe quelle taille de lot — un ou
+plusieurs `input_name`/`type`, un ou plusieurs cultivars par espèce.
+Sans arguments, les deux CLIs se comportent exactement comme avant
+(fichiers `plants.json`/`output/acer-mini-batch.json`/
+`output/acer-transaction-plan.json` inchangés) :
+
+```bash
+# Lot pilote (6 plantes, voir pilot-batch-1.plants.json) :
+node scripts/plant-ingestion/src/index.js \
+  --plants scripts/plant-ingestion/pilot-batch-1.plants.json \
+  --out scripts/plant-ingestion/output/pilot-batch-1-bundle.json
+
+node scripts/plant-ingestion/src/planCli.js \
+  --bundle scripts/plant-ingestion/output/pilot-batch-1-bundle.json \
+  --plan scripts/plant-ingestion/output/pilot-batch-1-transaction-plan.json
+```
+
+Chaque famille de taxon (une espèce et tous ses cultivars présents dans
+le même fichier `--plants`) ne déclenche qu'**un seul** appel WCVP,
+partagé — jamais un appel par plante (`src/batchGrouping.js`, testé
+unitairement). Un cultivar dont l'espèce parente n'est pas présente dans
+le même fichier fait échouer le chargement explicitement, avant tout
+appel réseau — jamais une hypothèse silencieuse sur son
+`parent_catalog_ref`.
 
 ## 4. Stratégie d'écriture (upsert sur clés naturelles)
 
@@ -203,8 +267,8 @@ une décision explicite du curateur produit.
 `provider_observation`, `editorial`, ou `manual_resolution`. Layer B ne
 produit jamais `manual_resolution` dans un plan (voir
 `src/plan/compileSelections.js`) — cette valeur n'apparaît en DB que si un
-curateur a modifié la ligne à la main, après ingestion, via un outil de
-curation (hors périmètre de Layer C).
+curateur a modifié la ligne à la main, après ingestion, via l'outil de
+curation éditoriale (§4ter ci-dessous).
 
 - **Aucune sélection existante** → `INSERT` avec les valeurs du plan.
 - **Sélection existante avec `decision_method = "manual_resolution"` en
@@ -224,6 +288,353 @@ Ce comportement est couvert par `test/apply/upsertSelections.test.js`
 (9 scénarios numérotés dont le test 6, anti-clobber, qui vérifie qu'une
 `manual_resolution` n'est jamais écrasée même quand le plan recommande
 autre chose).
+
+## 4ter. Curation éditoriale contrôlée (`src/editorial/`, `src/editorialCli.js`)
+
+Un outil séparé pour compléter, à la main et de façon traçable, les traits
+qu'aucun provider ne fournit (ou fournit en conflit non résolu) — jamais un
+remplacement de Layer A/B/C, un **overlay**. Quatre notions distinctes, à ne
+jamais confondre :
+
+```
+provider ingestion  ≠  editorial observation  ≠  manual selection  ≠  publication
+(Layer A/B/C,           (un fait constaté,        (une décision parmi        (plant_catalog.
+ wcvp/perenual/trefle)   avec sa provenance —       les observations           publication_status,
+                         jamais une décision)       existantes — jamais        toujours séparée,
+                                                     une nouvelle donnée)       jamais automatique)
+```
+
+**`manual_resolution` est la SEULE décision humaine protégée.** Une
+sélection `decision_method="editorial"` resterait re-synchronisable
+automatiquement par un futur re-run (voir §4bis) — seule
+`manual_resolution` est jamais ré-écrasée par Layer C, quelle que soit la
+source de l'observation qu'elle pointe (provider ou éditoriale).
+
+### Modèle de provenance (schema_version 2)
+
+Sémantique figée par `supabase/migrations/20260902100000_add_editorial_provenance_v1.sql` :
+
+- `plant_trait_observations.license` = licence/statut de la **SOURCE
+  CONSULTÉE** (sens inchangé depuis l'origine — en pratique jamais peuplé
+  par aucun provider réel, `null` pour les 3 providers ; seul le chemin
+  éditorial le peuple).
+- `plant_trait_observations.curation_license` = licence/statut de **NOTRE
+  PROPRE observation/synthèse** — un champ **distinct**, jamais dérivé de
+  `license`, jamais utilisé pour le masquer.
+
+`curation_license` ne doit **jamais** masquer `license`/`source_url`/
+`source_title`/`source_publisher` — les deux coexistent toujours,
+indépendamment, jamais comparées ni fusionnées (`buildEditorialObservation.js`
+les écrit séparément ; `verifyEditorialPlan.js` les vérifie séparément).
+
+`curation_method` (colonne + CHECK côté schéma : `expert_knowledge` |
+`open_source_synthesis` | `restricted_source_paraphrase`) — le schéma est
+**plus permissif que le produit aujourd'hui** : `restricted_source_paraphrase`
+est prévu côté DB pour ne jamais nécessiter de migration future, mais
+**rejeté explicitement** par `validateEditorialInput.js`
+(`CURATION_METHOD_NOT_ENABLED`) — jamais accepté ni rétrogradé
+silencieusement vers une autre méthode.
+
+### Format d'entrée (`schema_version: 2`)
+
+Un ancien format (sans `schema_version`/`curation`) est **rejeté
+explicitement** (`SCHEMA_VERSION_UNSUPPORTED`), jamais réinterprété — un
+ancien `source.license` ne devient jamais silencieusement une
+`curation_license` (spec : "ne jamais interpréter silencieusement un
+ancien source.license comme curation_license").
+
+**`curation.method = "open_source_synthesis"`** — source externe
+obligatoire, `retrieved_at` inclus (le schéma autorise maintenant un
+`source_retrieved_at` non-null pour l'éditorial) :
+
+```json
+{
+  "schema_version": 2,
+  "catalog_ref": "lavandula_angustifolia_species",
+  "trait": "sun",
+  "raw_value": ["full_sun"],
+  "normalized_value": ["full_sun"],
+  "curation": { "method": "open_source_synthesis", "license": "proprietary_internal_curation_v1" },
+  "source": { "title": "...", "publisher": "...", "url": "...", "license": "...", "retrieved_at": "..." },
+  "review": { "note": "...", "decided_by": null }
+}
+```
+
+**`curation.method = "expert_knowledge"`** — pas de source externe
+(`source: null` obligatoire, jamais une source fabriquée), `review.note`
+obligatoire :
+
+```json
+{
+  "schema_version": 2,
+  "catalog_ref": "lavandula_angustifolia_species",
+  "trait": "water_need",
+  "raw_value": "moderate",
+  "normalized_value": "moderate",
+  "curation": { "method": "expert_knowledge", "license": "proprietary_internal_curation_v1" },
+  "source": null,
+  "review": { "note": "Justification obligatoire pour une décision sans source externe.", "decided_by": null }
+}
+```
+
+`curation.curated_by` (optionnel) alimente `plant_trait_observations.curated_by` ;
+`review.reviewed_by` (optionnel) alimente `plant_trait_observations.reviewed_by`.
+Deux champs **distincts** de `review.decided_by`, qui reste exclusivement
+`plant_trait_selections.decided_by` (niveau **sélection**, pas observation —
+spec : "Observation review ≠ selection decision").
+
+`--input` accepte un objet unique ou un tableau de plusieurs.
+
+### Modules purs (`src/editorial/`)
+
+- `editorialVocab.js` — vocabulaire dupliqué (jamais importé) de
+  `lib/plantFinderFormat.js` (`SUN_VALUES`, `PLANT_TYPE_VALUES`) + la forme
+  attendue de chaque trait promouvable (`TRAIT_KINDS`) + `EDITORIAL_SCHEMA_VERSION`
+  (=2) + `CURATION_METHODS_SCHEMA` (les 3 valeurs DB) vs
+  `CURATION_METHODS_ENABLED` (les 2 valeurs produit).
+- `validateEditorialInput.js` — validation pure, aucun accès DB :
+  `schema_version` doit valoir 2 (sinon `SCHEMA_VERSION_UNSUPPORTED`,
+  jamais de réinterprétation silencieuse), `trait` doit être un des 13
+  `PROMOTABLE_CATALOG_COLUMNS` (`soil` explicitement rejeté), valeur
+  conforme à `TRAIT_KINDS`, `curation.method` doit être dans
+  `CURATION_METHODS_ENABLED` (`restricted_source_paraphrase` → rejet
+  explicite `CURATION_METHOD_NOT_ENABLED`), `curation.license` toujours
+  obligatoire (jamais `"unknown"`). Branche ensuite sur `curation.method` :
+  `expert_knowledge` exige `source: null` (jamais une source fabriquée) et
+  `review.note` obligatoire ; `open_source_synthesis` exige
+  `source.title`/`publisher`/`url`/`license`/`retrieved_at`, tous
+  obligatoires (`license: "unknown"` toujours interdit).
+- `buildEditorialObservation.js` — transforme une entrée validée en objet
+  `plant_trait_observation`-like avec `provider="editorial"`,
+  `source_scope="editorial"`, `plant_source_record_id=null`,
+  `review_status="accepted"`, `reviewed_at=now()` — tous ces champs sont
+  **codés en dur**, jamais lus depuis l'entrée. Écrit `source_title`/
+  `source_publisher` séparément (plus seulement fusionnés dans
+  `attribution`, conservé pour compatibilité), `license` = licence de la
+  source (`null` pour `expert_knowledge`), `curation_license` = licence de
+  notre synthèse (toujours renseignée, jamais copiée depuis `license`),
+  `curation_method`, `curated_by`, `reviewed_by`. `source_retrieved_at`
+  vaut `null` pour `expert_knowledge`, `input.source.retrieved_at` pour
+  `open_source_synthesis` — la contrainte DB ne le force plus à `null`.
+- `buildManualSelection.js` — `decision_method="manual_resolution"` codé en
+  dur, jamais `"editorial"`.
+- `buildEditorialPlan.js` — combine plusieurs entrées en un petit plan
+  `{ mode: "editorial_plan", editorial_observations, manual_selections }` —
+  **ne crée jamais** de `taxa`/`taxon_names`/`source_records`/
+  `catalog_entries` ; référence uniquement des `catalog_ref` déjà
+  existants. S'auto-valide via `guardEditorialPlan()` avant de retourner
+  (même principe que `filterPlan.js` avec `guardPlan()`).
+- `checkEditorialAgainstDb.js` — vérifications **lecture seule** contre
+  Supabase (aucun write), utilisées par le CLI en mode preview sans
+  `--apply`/`--verify` : le `catalog_ref` existe-t-il réellement (via
+  `--catalog-map`, voir plus bas), une observation éditoriale identique
+  existe-t-elle déjà (no-op) ou en conflit (valeur différente), une
+  sélection `manual_resolution` existe-t-elle déjà (conflit protégé,
+  jamais résolu automatiquement).
+- `promoteCatalogTrait.js` — le SEUL endroit où une curation éditoriale
+  écrit dans `plant_catalog`. Émet un `UPDATE` portant sur **une seule
+  colonne** (`.update({ [trait]: value })`) — jamais une réutilisation de
+  `apply/upsertCatalogEntries.js`, qui fait un `UPDATE` pleine ligne sur
+  les 17 `CATALOG_INGESTION_FIELDS` à partir d'un `catalog_entries` complet
+  que l'overlay éditorial n'a jamais (et ne doit jamais avoir). Réutiliser
+  ce helper existant tel quel aurait silencieusement écrasé toutes les
+  autres colonnes trait avec des valeurs absentes/nulles — c'est
+  structurellement impossible ici, pas seulement évité par convention.
+- `applyEditorialPlan.js` — l'orchestrateur `--apply`/dry-run. Traite
+  chaque paire `(observation, selection)` **indépendamment** (pas de
+  cascade table par table comme `apply/applyPlan.js` — une entrée
+  éditoriale ne dépend d'aucune autre) : `catalog_ref -> plant_catalog.id`
+  → `upsertObservations` (réutilisé tel quel) → vérification d'un éventuel
+  conflit `manual_resolution` existant (lecture seule, comparaison par
+  **valeur**, pas seulement par id d'observation) → `upsertSelections`
+  (réutilisé tel quel) → `promoteCatalogTrait`. Une observation en échec
+  bloque la sélection ET la promotion ; une sélection en échec ou en
+  conflit bloque seulement la promotion — jamais masqué, toujours reporté
+  explicitement par entrée.
+- `verifyEditorialPlan.js` — vérification **lecture seule**, indépendante
+  de la comptabilité de `applyEditorialPlan()` (même principe que
+  `apply/verifyPlan.js` vis-à-vis de `applyPlan()`) : observation présente
+  avec la bonne `normalized_value`, `review_status="accepted"`, sélection
+  `manual_resolution` qui pointe bien dessus, `plant_catalog[trait]` qui
+  correspond, **et** `curation_method`/`curation_license`/`license`
+  vérifiés comme **trois valeurs indépendantes** (jamais l'une comparée à
+  l'autre — une régression qui les confondrait serait détectée ici).
+  `publication_status` est rapporté informationnellement, ou comparé
+  réellement si l'appelant fournit un instantané "avant" via
+  `expectedPublicationStatusByCatalogRef`.
+
+`apply/upsertObservations.js` (Layer C, réutilisé par `applyEditorialPlan.js`)
+a été étendu pour écrire les 7 nouvelles colonnes de provenance — une
+observation provider (qui ne les renseigne jamais) les reçoit toutes à
+`null` via `?? null`, forme strictement inchangée pour le chemin provider
+existant.
+
+### CLI (`src/editorialCli.js`)
+
+```
+node scripts/plant-ingestion/src/editorialCli.js \
+  --input <editorial.json> \
+  [--catalog-map <transaction-plan.json>] \
+  [--apply] [--verify]
+```
+
+Sans `--apply` ni `--verify` : **DRY-RUN** — toutes les lectures qu'un
+`--apply` ferait sont réellement exécutées (aperçu fidèle : créations,
+mises à jour, inchangés, conflits, échecs — table par table :
+`editorial_observations`, `manual_selections`, `catalog_promotions`, puis
+un `TOTAL`), mais **aucun write**. `--catalog-map` est optionnel pour ce
+mode : sans lui, le CLI valide et prévisualise le plan local sans jamais
+contacter Supabase.
+
+`--apply` et `--verify` sont mutuellement exclusifs et exigent tous deux
+`--catalog-map` (nécessaire pour résoudre `catalog_ref -> plant_catalog.id`).
+`--apply` affiche `"Mode: APPLY — editorial observations + protected manual
+selections + catalog promotion"` avant toute écriture. **Aucun `--apply`
+réel n'a été exécuté pendant ce chantier** — le chemin est implémenté et
+testé exclusivement via le faux client Supabase en mémoire
+(`test/apply/fakeSupabaseClient.js`), jamais invoqué contre un vrai projet.
+
+### Garanties absolues (par construction, pas par convention)
+
+- Ne modifie/supprime jamais une observation provider (`test 24`).
+- Ne transforme jamais une observation provider en éditoriale.
+- Ne crée jamais de `plant_source_records` pour une observation éditoriale
+  (`test 3`).
+- Ne modifie jamais `publication_status` ni `review_status` de
+  `plant_catalog` — `promoteCatalogTrait.js` n'écrit **jamais** qu'une
+  seule colonne trait, structurellement (`test 23`).
+- Ne remplace jamais automatiquement une `manual_resolution` existante
+  pointant vers une valeur différente — conflit explicite, aucune
+  écriture de sélection, aucune promotion catalog (`test 13`, `test 14`).
+- N'écrase jamais silencieusement une observation provider existante :
+  `upsertObservations.js` (réutilisé tel quel) est append-only par
+  construction, aucune ligne n'est jamais mise à jour, seulement créée ou
+  reconnue identique.
+- Ne masque jamais un échec partiel : observation échouée → sélection et
+  promotion jamais tentées ; sélection échouée → promotion jamais tentée ;
+  chaque étape échouée est reportée explicitement, jamais absorbée dans un
+  compte "réussi" (`test 20`, `test 21`, `test 22`).
+
+### Séquence complète pour une nouvelle fiche HOLD (future, pas exécutée ici)
+
+```
+1. provider sub-plan draft   (Layer A/B, --plants/--out puis --plan —
+                               produit un transaction plan "draft", jamais
+                               publié)
+2. editorial overlay          (curation manuelle des traits manquants —
+                               editorialCli.js sans --apply, puis --apply
+                               une fois validé — jamais avant que le sub-plan
+                               provider ci-dessus existe déjà, l'overlay
+                               référence un catalog_ref déjà créé)
+3. editorial verify            (editorialCli.js --verify — confirme
+                               observation + sélection + promotion catalog,
+                               lecture seule)
+4. quality check                (relire plant_catalog via
+                               `lib/plantQuality.js`'s
+                               `computePlantCompleteness()` — `draft` /
+                               `ready_searchable` / `ready_complete`, voir
+                               §4quater ci-dessous pour le détail)
+5. publication séparée          (acte humain distinct, hors périmètre de
+                               cet outil — jamais automatique, jamais
+                               déclenché par editorialCli.js)
+```
+
+**Important** : une entrée HOLD n'est jamais appliquée seule, en laissant
+une fiche provider incomplète en attente d'une curation future. La
+recherche/validation du contenu éditorial (sourcing, `source.url`/
+`title`/`publisher`/`license`) doit être **prête avant** de créer et
+d'appliquer le sub-plan provider — on ne crée le draft (étape 1) qu'une
+fois l'overlay éditorial (étape 2) prêt à le compléter dans la foulée,
+jamais un draft appliqué isolément en espérant une curation ultérieure.
+Contrainte technique dans l'autre sens : l'overlay ne peut résoudre son
+`catalog_ref` qu'une fois la ligne `plant_catalog` du draft réellement
+écrite (il ne crée jamais de `catalog_entries` lui-même) — les étapes 1 et
+2 se suivent donc immédiatement, jamais séparées par un intervalle où la
+fiche reste incomplète et visible en base.
+
+## 4quater. Niveaux de qualité (`lib/plantQuality.js`)
+
+`quality_status` (`draft` | `ready_searchable` | `ready_complete`) **≠**
+`plant_catalog.publication_status` (`draft` | `published` | `archived`).
+Ne jamais les confondre :
+
+- **`publication_status`** — colonne réelle en DB, workflow curateur
+  existant (voir §"Champs curateur protégés" plus haut). Contrôle si une
+  fiche est **réellement visible** publiquement (`plant_catalog_published_select`,
+  RLS). Change uniquement via une décision humaine explicite.
+- **`quality_status`** — **jamais stocké en DB**, toujours **calculé** à la
+  volée par `computePlantCompleteness()` à partir des colonnes déjà
+  présentes. Une **aide à décision**, jamais un déclencheur automatique de
+  publication — `computePlantCompleteness()` ne lit ni n'écrit jamais
+  `publication_status`, et rien dans ce chantier ne publie automatiquement
+  une fiche parce qu'elle devient `ready_searchable`.
+
+### Les 3 niveaux
+
+- **`draft`** — soit la taxonomie n'est pas encore résolue/acceptée
+  (`taxonomyResolved: false`, voir plus bas), soit aucun des 4 blocs
+  CRITICAL n'est renseigné.
+- **`ready_searchable`** — taxonomie résolue **et** au moins 1 des 4 blocs
+  CRITICAL renseigné. C'est déjà, aujourd'hui, tout ce que le code du
+  Finder exige réellement pour qu'une fiche publiée s'affiche et se
+  recherche honnêtement (`CoreField` affiche "Non renseigné", `Field` se
+  masque si absent, aucun filtre n'exclut la liste par défaut) — voir
+  l'audit produit de ce chantier pour le détail ligne à ligne du code
+  `lib/plantFinderApi.js`/`pages/plant-finder/*`.
+- **`ready_complete`** — les 4 blocs CRITICAL **et** les 3 blocs IMPORTANT
+  du score (`evergreen`, `water_need`, `flowering_months`) tous renseignés.
+
+Les 4 blocs CRITICAL : `plant_type`, `sun`, `height` (fusion de
+`height_min_cm`/`height_max_cm` — **un seul bloc**, présent dès que l'un
+des deux l'est), `spread` (`spread_max_cm`). `container_suitable` et
+`edible` sont délibérément **hors score** (pas universellement pertinents
+pour toute plante) ; `growth_form`/`hardiness_min_rank`/`hardiness_max_rank`
+aussi (confirmé sans aucun effet sur l'UI Finder actuelle — colonnes
+mortes côté affichage).
+
+### `computePlantCompleteness(entry, { taxonomyResolved })`
+
+Pure, sans DB, sans React/Next — importable depuis l'ingestion, un futur
+backoffice, ou (délibérément pas encore) l'UI publique. `entry` est un
+objet à la forme `plant_catalog` (colonnes réelles, `snake_case`) : la
+forme la moins transformée, déjà utilisée partout dans l'ingestion
+(`catalog.js`, `compileSelections.js`).
+
+`taxonomyResolved` vaut `true` par défaut : pour une ligne `plant_catalog`
+**réellement existante**, la taxonomie est déjà garantie résolue par le
+schéma lui-même (`plant_taxa.taxonomic_status` n'accepte que `'accepted'`
+via CHECK ; Layer B refuse de compiler un plan dont la taxonomie n'est pas
+`accepted`) — une ligne ne peut structurellement pas exister sinon. Le
+paramètre n'est utile que pour un **candidat qui n'est jamais devenu une
+ligne catalog** (ex. un cultivar `not_found` chez WCVP, comme
+Hydrangea macrophylla 'Endless Summer') — un appelant qui raisonne sur un
+tel candidat passe `{ taxonomyResolved: false }` explicitement, jamais
+deviné automatiquement.
+
+`isPresent(value)` : `null`/`undefined`/`""`/`[]`/`{}` = absent ;
+**`false` et `0` restent des valeurs renseignées**, jamais confondus avec
+une absence.
+
+Retour :
+```js
+{
+  quality_status: "draft" | "ready_searchable" | "ready_complete",
+  critical: { completed, total: 4, missing: [...] },
+  important: { completed, total: 3, missing: [...] },
+  completeness_percent, // sur 7 blocs (4 CRITICAL + 3 IMPORTANT)
+}
+```
+
+### Réutilisation future (non implémentée dans ce chantier)
+
+- **Backoffice curateur** : lister les fiches `draft`/`ready_searchable`
+  restant à compléter, trier par `completeness_percent`.
+- **Indicateur de complétude** : afficher `critical.missing`/
+  `important.missing` comme check-list actionnable pour un curateur.
+- **Contrôle de publication** : avertir (jamais bloquer automatiquement)
+  si un curateur tente de publier une fiche encore `draft`.
+- **Badges publics éventuels** : aucun aujourd'hui — `pages/plant-finder/*`
+  n'importe pas ce module, délibérément, dans ce chantier.
 
 ## 5. Idempotence
 
@@ -325,12 +736,28 @@ Si `npm run plant:ingestion:apply -- --apply` échoue en cours de route
 
 ## 9. Tests
 
-`npm run plant:ingestion:test` exécute tous les tests Layer A + B + C.
-Les tests Layer C (`test/apply/*.test.js`) n'ont **aucune dépendance à un
-vrai Supabase** — ils utilisent un faux client en mémoire
-(`test/apply/fakeSupabaseClient.js`) qui reproduit le sous-ensemble de
-l'API `supabase-js` réellement utilisé (`from().select()/insert()/update()`,
+`npm run plant:ingestion:test` exécute tous les tests Layer A + B + C, plus
+la curation éditoriale (`test/editorial.test.js` — validation/construction
+pures, format `schema_version: 2` inclus ; `test/editorialApply.test.js` —
+apply/promotion/verify, y compris `expert_knowledge`/`open_source_synthesis` ;
+`test/editorialMigration.test.js` — garde-fou textuel confirmant que la
+migration de provenance reste additive-only). Les tests Layer C
+(`test/apply/*.test.js`) et éditoriaux qui touchent Supabase n'ont
+**aucune dépendance à un vrai Supabase** — ils utilisent un faux client en
+mémoire (`test/apply/fakeSupabaseClient.js`) qui reproduit le sous-ensemble
+de l'API `supabase-js` réellement utilisé (`from().select()/insert()/update()`,
 `.eq()`/`.is()`, `.single()`/`.maybeSingle()`).
+
+La migration elle-même
+(`supabase/migrations/20260902100000_add_editorial_provenance_v1.sql`) a
+été validée une fois, manuellement, contre un PostgreSQL 16 local
+jetable (jamais Supabase) : les 2 migrations `plant_catalog` existantes
+appliquées, des lignes provider/éditoriales **pré-migration** insérées,
+cette migration appliquée par-dessus — les lignes pré-migration restent
+valides et inchangées, un nouveau `source_retrieved_at` non-null pour
+l'éditorial devient accepté (impossible avant), et un `curation_method`
+hors vocabulaire est rejeté par le `CHECK`. Base et rôles jetables
+supprimés immédiatement après.
 
 Un test d'intégration réel contre un vrai projet Supabase n'est exécuté
 que si des identifiants sont disponibles dans l'environnement — jamais

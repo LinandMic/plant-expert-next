@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { convertToCm } from "../../plant-benchmark/src/normalize.js";
-import { crosswalkSunValue, crosswalkSunArray, crosswalkRank, deriveProviderStatus } from "../src/crosswalks.js";
+import { crosswalkSunValue, crosswalkSunArray, crosswalkRank, crosswalkPlantTypeValue, deriveProviderStatus } from "../src/crosswalks.js";
 
 // Test #1: 20 feet -> 609.6 cm. Reuses the benchmark's own already-validated
 // convertToCm rather than duplicating unit math — also guards against
@@ -90,4 +90,35 @@ test("provider_status: a matching-quality value (not in the narrow set) becomes 
   for (const s of ["exact_scientific_match", "exact_cultivar_match", "ambiguous", "parent_taxon_match", "parent_only", "fuzzy_candidate"]) {
     assert.equal(deriveProviderStatus(s), "ok");
   }
+});
+
+// plant_type crosswalk — added after auditing mini-batch-2 (Betula/Buxus):
+// Perenual's `type` field was being copied verbatim into a proposed
+// selection with zero vocabulary check ("Tree", "Broadleaf evergreen" would
+// both have become real plant_catalog.plant_type values). This crosswalk
+// is deliberately case/whitespace-insensitive EXACT-match only against the
+// existing PLANT_TYPE_VALUES enum — never a semantic guess.
+test('plant_type crosswalk: Perenual "Tree" maps to canonical "tree"', () => {
+  assert.equal(crosswalkPlantTypeValue("Tree"), "tree");
+});
+
+test("plant_type crosswalk: every canonical value round-trips case-insensitively", () => {
+  for (const v of ["tree", "shrub", "perennial", "annual", "biennial", "grass", "climber", "groundcover", "fern", "bulb"]) {
+    assert.equal(crosswalkPlantTypeValue(v.toUpperCase()), v);
+    assert.equal(crosswalkPlantTypeValue(`  ${v}  `), v);
+  }
+});
+
+// Test #5: "Broadleaf evergreen" is real observed Perenual data (Camellia
+// japonica, Buxus sempervirens) but is NOT in our vocabulary and must NEVER
+// be guessed into "shrub" or "tree" — no safe, tested rule for that
+// inference exists (spec: this round's audit explicitly forbids it).
+test('#5: "Broadleaf evergreen" is never guessed into any canonical value — stays unmapped', () => {
+  assert.equal(crosswalkPlantTypeValue("Broadleaf evergreen"), null);
+});
+
+test("plant_type crosswalk: unrecognized/empty values stay null, never guessed", () => {
+  assert.equal(crosswalkPlantTypeValue("houseplant"), null);
+  assert.equal(crosswalkPlantTypeValue(""), null);
+  assert.equal(crosswalkPlantTypeValue(null), null);
 });

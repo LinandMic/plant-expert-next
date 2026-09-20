@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import GardenZoneSettings from "./GardenZoneSettings";
 import Button from "@/components/ui/Button";
 import { IconMapPin, IconAlertCircle } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n";
 
 const NAME_MAX_LENGTH = 120;
 
@@ -14,14 +15,15 @@ function normalizeName(raw) {
 // Mirrors the DB's own name constraints (garden_zones_name_not_blank_check,
 // garden_zones_name_max_length_check) so a rejection here would also have
 // been rejected server-side.
-function validateName(raw) {
+function validateName(raw, t) {
   const trimmed = normalizeName(raw);
-  if (!trimmed) return "Le nom de la zone est requis.";
-  if (trimmed.length > NAME_MAX_LENGTH) return `Le nom ne doit pas dépasser ${NAME_MAX_LENGTH} caractères.`;
+  if (!trimmed) return t("gardenZones.nameRequired");
+  if (trimmed.length > NAME_MAX_LENGTH) return t("gardenZones.nameTooLong", { max: NAME_MAX_LENGTH });
   return null;
 }
 
 export default function GardenZonesPanel({ zones, loading, error, createZone, updateZone, deleteZone }) {
+  const { t } = useI18n();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -42,7 +44,7 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
     e.preventDefault();
     if (creating) return;
     const trimmed = normalizeName(newName);
-    const validationError = validateName(trimmed);
+    const validationError = validateName(trimmed, t);
     if (validationError) {
       setCreateValidationError(validationError);
       return;
@@ -79,7 +81,7 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
     e.preventDefault();
     if (savingId) return;
     const trimmed = normalizeName(editName);
-    const validationError = validateName(trimmed);
+    const validationError = validateName(trimmed, t);
     if (validationError) {
       setEditValidationError(validationError);
       return;
@@ -110,14 +112,14 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
     <div className="gzp-panel">
       <style>{GZP_STYLES}</style>
 
-      <div className="gzp-title"><IconMapPin size={17} /> Zones du jardin</div>
+      <div className="gzp-title"><IconMapPin size={17} /> {t("gardenZones.title")}</div>
 
       {error && <div className="error-box"><IconAlertCircle size={14} /> {error}</div>}
 
       {loading && zones.length === 0 ? (
-        <div className="gzp-empty">Chargement de vos zones...</div>
+        <div className="gzp-empty">{t("gardenZones.loading")}</div>
       ) : zones.length === 0 ? (
-        <div className="gzp-empty">Organisez votre jardin par emplacement : massif, terrasse, potager...</div>
+        <div className="gzp-empty">{t("gardenZones.emptyHint")}</div>
       ) : (
         <div className="gzp-list">
           {zones.map((zone) => (
@@ -132,21 +134,21 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
                     maxLength={NAME_MAX_LENGTH}
                     autoFocus
                     disabled={savingId === zone.id}
-                    aria-label="Nom de la zone"
+                    aria-label={t("gardenZones.nameLabel")}
                   />
                   {editValidationError && <div className="gzp-item-error">{editValidationError}</div>}
                   <div className="gzp-form-actions">
                     <Button type="submit" disabled={savingId === zone.id}>
-                      {savingId === zone.id ? "Enregistrement..." : "Enregistrer"}
+                      {savingId === zone.id ? t("gardenZones.saving") : t("gardenZones.save")}
                     </Button>
                     <Button type="button" variant="secondary" onClick={cancelEdit} disabled={savingId === zone.id}>
-                      Annuler
+                      {t("gardenZones.cancel")}
                     </Button>
                   </div>
                 </form>
               ) : confirmDeleteId === zone.id ? (
                 <div className="gzp-delete-confirm">
-                  <span className="gzp-delete-confirm-text">Supprimer cette zone ?</span>
+                  <span className="gzp-delete-confirm-text">{t("gardenZones.confirmDelete")}</span>
                   <div className="gzp-form-actions">
                     <Button
                       type="button"
@@ -155,10 +157,10 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
                       onClick={() => confirmDelete(zone.id)}
                       disabled={deletingId === zone.id}
                     >
-                      {deletingId === zone.id ? "Suppression..." : "Supprimer"}
+                      {deletingId === zone.id ? t("gardenZones.deleting") : t("gardenZones.delete")}
                     </Button>
                     <Button type="button" variant="secondary" onClick={cancelDelete} disabled={deletingId === zone.id}>
-                      Annuler
+                      {t("gardenZones.cancel")}
                     </Button>
                   </div>
                 </div>
@@ -167,17 +169,17 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
                   <span className="gzp-item-name"><IconMapPin size={14} /> {zone.name}</span>
                   <div className="gzp-item-actions">
                     <button type="button" className="gzp-item-action" onClick={() => startEdit(zone)}>
-                      Modifier
+                      {t("gardenZones.edit")}
                     </button>
                     <button type="button" className="gzp-item-action" onClick={() => toggleSettings(zone.id)} aria-pressed={settingsOpenId === zone.id}>
-                      Paramètres
+                      {t("gardenZones.settings")}
                     </button>
                     <button
                       type="button"
                       className="gzp-item-action gzp-item-action-danger"
                       onClick={() => requestDelete(zone.id)}
                     >
-                      Supprimer
+                      {t("gardenZones.delete")}
                     </button>
                   </div>
                 </>
@@ -201,27 +203,27 @@ export default function GardenZonesPanel({ zones, loading, error, createZone, up
         <form className="gzp-create-form" onSubmit={handleCreateSubmit}>
           <input
             className="gzp-input"
-            placeholder="Massif terrasse, Haie côté rue, Potager..."
+            placeholder={t("gardenZones.namePlaceholder")}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             maxLength={NAME_MAX_LENGTH}
             autoFocus
             disabled={creating}
-            aria-label="Nom de la nouvelle zone"
+            aria-label={t("gardenZones.newNameLabel")}
           />
           {createValidationError && <div className="gzp-item-error">{createValidationError}</div>}
           <div className="gzp-form-actions">
             <Button type="submit" disabled={creating}>
-              {creating ? "Ajout..." : "Ajouter"}
+              {creating ? t("gardenZones.adding") : t("gardenZones.add")}
             </Button>
             <Button type="button" variant="secondary" onClick={cancelCreate} disabled={creating}>
-              Annuler
+              {t("gardenZones.cancel")}
             </Button>
           </div>
         </form>
       ) : (
         <button type="button" className="gzp-add-toggle" onClick={() => setShowCreateForm(true)}>
-          + Ajouter une zone
+          {t("gardenZones.addZone")}
         </button>
       )}
     </div>

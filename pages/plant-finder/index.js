@@ -5,6 +5,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import PlantFinderCard from "@/components/PlantFinderCard";
 import { searchPublishedPlants } from "@/lib/plantFinderApi";
+import { useI18n } from "@/lib/i18n";
 import {
   plantTypeLabel,
   sunLabel,
@@ -22,19 +23,24 @@ import {
   clearAllFilters,
 } from "@/lib/plantFinderFilters";
 import { IconSprig, IconX, IconFilter, IconSearch } from "@/components/ui/icons";
-import { EXTERNAL_NAV_ITEMS } from "@/components/ui/externalNavItems";
+import { getExternalNavItems } from "@/components/ui/externalNavItems";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const EMPTY_FILTERS = { query: "", plantType: null, sun: null, heightCategory: null };
 
 export default function PlantFinderPage() {
   const router = useRouter();
+  const { t } = useI18n();
   const [initialized, setInitialized] = useState(false);
   const [queryInput, setQueryInput] = useState("");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [plants, setPlants] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const requestIdRef = useRef(0);
 
@@ -63,13 +69,19 @@ export default function PlantFinderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryInput, initialized]);
 
-  // Fetch + sync the URL whenever the settled filter state changes.
+  // Fetch + sync the URL whenever the settled filter state changes. This is
+  // always a page-1 fetch — it replaces `plants`, never appends to it — so
+  // any in-flight/prior "Charger plus" pagination state is reset here too.
   useEffect(() => {
     if (!initialized) return;
 
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
+    setHasMore(false);
+    setTotal(0);
+    setLoadingMore(false);
+    setLoadMoreError(null);
 
     router.replace({ pathname: "/plant-finder", query: serializeFiltersToQuery(filters) }, undefined, { shallow: true });
 
@@ -79,19 +91,55 @@ export default function PlantFinderPage() {
       sun: filters.sun,
       heightCategory: filters.heightCategory,
     })
-      .then((results) => {
+      .then(({ plants: results, hasMore: more, total: matchedTotal }) => {
         if (requestIdRef.current !== requestId) return;
         setPlants(results);
+        setHasMore(more);
+        setTotal(matchedTotal);
         setLoading(false);
       })
       .catch(() => {
         if (requestIdRef.current !== requestId) return;
         // Never surface the raw Supabase error to the visitor.
-        setError("Impossible de charger les plantes pour le moment.");
+        setError(t("finder.loadError"));
         setLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized, filters]);
+
+  // "Charger plus" — appends the next page after the currently loaded rows,
+  // reusing the same requestIdRef race-safety guard as the page-1 fetch: a
+  // filter/query change bumps requestIdRef, so a late load-more response
+  // for a stale filter set is silently discarded instead of corrupting the
+  // (now different) result set.
+  function handleLoadMore() {
+    if (loadingMore || !hasMore) return;
+
+    const requestId = ++requestIdRef.current;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+
+    searchPublishedPlants({
+      query: filters.query,
+      plantType: filters.plantType,
+      sun: filters.sun,
+      heightCategory: filters.heightCategory,
+      offset: plants.length,
+    })
+      .then(({ plants: results, hasMore: more, total: matchedTotal }) => {
+        if (requestIdRef.current !== requestId) return;
+        setPlants((prev) => [...prev, ...results]);
+        setHasMore(more);
+        setTotal(matchedTotal);
+        setLoadingMore(false);
+      })
+      .catch(() => {
+        if (requestIdRef.current !== requestId) return;
+        // Keep the plants already loaded — only the next page failed.
+        setLoadMoreError(t("finder.loadMoreError"));
+        setLoadingMore(false);
+      });
+  }
 
   function handleTypeChange(e) {
     const value = e.target.value;
@@ -130,21 +178,21 @@ export default function PlantFinderPage() {
   const hasActiveCriteria = Boolean(filters.query || filters.plantType || activeSun.length > 0 || filters.heightCategory);
 
   const chips = [];
-  if (filters.plantType) chips.push({ key: "plantType", value: null, label: plantTypeLabel(filters.plantType) });
-  activeSun.forEach((value) => chips.push({ key: "sun", value, label: sunLabel(value) }));
-  if (filters.heightCategory) chips.push({ key: "height", value: null, label: heightCategoryLabel(filters.heightCategory) });
+  if (filters.plantType) chips.push({ key: "plantType", value: null, label: plantTypeLabel(filters.plantType, t) });
+  activeSun.forEach((value) => chips.push({ key: "sun", value, label: sunLabel(value, t) }));
+  if (filters.heightCategory) chips.push({ key: "height", value: null, label: heightCategoryLabel(filters.heightCategory, t) });
 
   const returnTo = new URLSearchParams(serializeFiltersToQuery(filters)).toString();
 
   return (
-    <AppShell navItems={EXTERNAL_NAV_ITEMS} activeKey="trouver">
+    <AppShell navItems={getExternalNavItems(t)} activeKey="trouver">
       <div className="pf2-page">
         <style>{FINDER_STYLES}</style>
 
         <header className="pf2-header">
-          <div className="pf2-eyebrow">TROUVER</div>
-          <h1 className="pf2-title">Trouvez la plante idéale</h1>
-          <p className="pf2-subtitle">Explorez le catalogue selon vos envies et les conditions de votre jardin.</p>
+          <div className="pf2-eyebrow">{t("finder.eyebrow")}</div>
+          <h1 className="pf2-title">{t("finder.title")}</h1>
+          <p className="pf2-subtitle">{t("finder.subtitle")}</p>
         </header>
 
         <div className="pf2-search-row">
@@ -153,14 +201,14 @@ export default function PlantFinderPage() {
             <input
               type="search"
               className="pf2-search-input"
-              placeholder="Rechercher une plante…"
-              aria-label="Rechercher une plante"
+              placeholder={t("finder.searchPlaceholder")}
+              aria-label={t("finder.searchAriaLabel")}
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               autoComplete="off"
             />
             {queryInput && (
-              <button type="button" className="pf2-search-clear" onClick={() => setQueryInput("")} aria-label="Effacer la recherche">
+              <button type="button" className="pf2-search-clear" onClick={() => setQueryInput("")} aria-label={t("finder.clearSearchAriaLabel")}>
                 <IconX size={15} />
               </button>
             )}
@@ -175,79 +223,79 @@ export default function PlantFinderPage() {
           onClick={() => setFiltersOpen((v) => !v)}
         >
           <IconFilter size={16} />
-          Filtres{activeCount > 0 ? ` (${activeCount})` : ""}
+          {t("finder.filtersToggle")}{activeCount > 0 ? ` (${activeCount})` : ""}
         </button>
 
         <div className="pf2-layout">
           <aside id="pf2-filters-panel" className={"pf2-sidebar" + (filtersOpen ? " open" : "")}>
             <Card className="pf2-sidebar-inner">
-              <div className="pf2-sidebar-title">Filtres</div>
+              <div className="pf2-sidebar-title">{t("finder.filtersTitle")}</div>
 
               <div className="pf2-filter-group">
-                <div className="pf2-filter-label" id="pf2-type-label">Type</div>
+                <div className="pf2-filter-label" id="pf2-type-label">{t("finder.type")}</div>
                 <div className="pf2-pill-row" role="group" aria-labelledby="pf2-type-label">
                   <label className="pf2-pill">
                     <input type="radio" name="pf2-type" value="" checked={!filters.plantType} onChange={handleTypeChange} />
-                    <span>Tous</span>
+                    <span>{t("finder.all")}</span>
                   </label>
                   {PLANT_TYPE_VALUES.map((value) => (
                     <label key={value} className="pf2-pill">
                       <input type="radio" name="pf2-type" value={value} checked={filters.plantType === value} onChange={handleTypeChange} />
-                      <span>{plantTypeLabel(value)}</span>
+                      <span>{plantTypeLabel(value, t)}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
               <fieldset className="pf2-filter-group pf2-fieldset">
-                <legend className="pf2-filter-label">Exposition</legend>
+                <legend className="pf2-filter-label">{t("finder.exposure")}</legend>
                 <div className="pf2-pill-row">
                   {SUN_VALUES.map((value) => (
                     <label key={value} className="pf2-pill">
                       <input type="checkbox" checked={activeSun.includes(value)} onChange={() => handleSunToggle(value)} />
-                      <span>{sunLabel(value)}</span>
+                      <span>{sunLabel(value, t)}</span>
                     </label>
                   ))}
                 </div>
               </fieldset>
 
               <div className="pf2-filter-group">
-                <div className="pf2-filter-label" id="pf2-height-label">Hauteur adulte</div>
+                <div className="pf2-filter-label" id="pf2-height-label">{t("finder.heightAdult")}</div>
                 <div className="pf2-pill-row" role="group" aria-labelledby="pf2-height-label">
                   <label className="pf2-pill">
                     <input type="radio" name="pf2-height" value="" checked={!filters.heightCategory} onChange={handleHeightChange} />
-                    <span>Toutes</span>
+                    <span>{t("finder.allFem")}</span>
                   </label>
                   {HEIGHT_CATEGORY_VALUES.map((value) => (
                     <label key={value} className="pf2-pill">
                       <input type="radio" name="pf2-height" value={value} checked={filters.heightCategory === value} onChange={handleHeightChange} />
-                      <span>{heightCategoryLabel(value)}</span>
+                      <span>{heightCategoryLabel(value, t)}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
               <div className="pf2-sidebar-actions">
-                <button type="button" className="pf2-reset-btn" onClick={handleResetFilters}>Réinitialiser les filtres</button>
-                <button type="button" className="pf2-clear-btn" onClick={handleClearAll}>Tout effacer</button>
+                <button type="button" className="pf2-reset-btn" onClick={handleResetFilters}>{t("finder.resetFilters")}</button>
+                <button type="button" className="pf2-clear-btn" onClick={handleClearAll}>{t("finder.clearAll")}</button>
               </div>
 
               <button type="button" className="pf2-panel-close-btn" onClick={() => setFiltersOpen(false)}>
-                Voir les résultats
+                {t("finder.viewResults")}
               </button>
             </Card>
           </aside>
 
           <div className="pf2-results">
             {chips.length > 0 && (
-              <div className="pf2-chips" aria-label="Filtres actifs">
+              <div className="pf2-chips" aria-label={t("finder.activeFilters")}>
                 {chips.map((chip) => (
                   <button
                     key={`${chip.key}-${chip.value || "single"}`}
                     type="button"
                     className="pf2-chip"
                     onClick={() => handleRemoveChip(chip.key, chip.value)}
-                    aria-label={`Retirer le filtre ${chip.label}`}
+                    aria-label={t("finder.removeFilterAriaLabel", { label: chip.label })}
                   >
                     {chip.label} <IconX size={12} />
                   </button>
@@ -256,13 +304,13 @@ export default function PlantFinderPage() {
             )}
 
             {!loading && !error && plants.length > 0 && (
-              <div className="pf2-result-count">{formatResultCount(plants.length)}</div>
+              <div className="pf2-result-count">{formatResultCount(total, t)}</div>
             )}
 
             {loading ? (
               <div className="pf2-loading" role="status" aria-live="polite">
                 <div className="pf2-spinner" aria-hidden="true" />
-                <div className="pf2-loading-title">Recherche en cours…</div>
+                <div className="pf2-loading-title">{t("finder.searching")}</div>
               </div>
             ) : error ? (
               <div className="pf2-error-box">{error}</div>
@@ -270,21 +318,33 @@ export default function PlantFinderPage() {
               <Card className="pf2-empty-card">
                 <IconSprig size={26} />
                 <div className="pf2-empty-title">
-                  {hasActiveCriteria ? "Aucune plante ne correspond" : "Aucune plante disponible pour le moment"}
+                  {hasActiveCriteria ? t("finder.noMatch") : t("finder.noneAvailable")}
                 </div>
                 {hasActiveCriteria && (
                   <>
-                    <p className="pf2-empty-sub">Essayez d&apos;élargir vos critères de recherche.</p>
-                    <Button variant="secondary" onClick={handleClearAll}>Réinitialiser les filtres</Button>
+                    <p className="pf2-empty-sub">{t("finder.expandCriteria")}</p>
+                    <Button variant="secondary" onClick={handleClearAll}>{t("finder.resetFilters")}</Button>
                   </>
                 )}
               </Card>
             ) : (
-              <div className="pf2-grid">
-                {plants.map((plant) => (
-                  <PlantFinderCard key={plant.id} plant={plant} returnTo={returnTo} />
-                ))}
-              </div>
+              <>
+                <div className="pf2-grid">
+                  {plants.map((plant) => (
+                    <PlantFinderCard key={plant.id} plant={plant} returnTo={returnTo} />
+                  ))}
+                </div>
+
+                {loadMoreError && <div className="pf2-error-box pf2-load-more-error">{loadMoreError}</div>}
+
+                {hasMore && (
+                  <div className="pf2-load-more-row">
+                    <Button variant="secondary" onClick={handleLoadMore} disabled={loadingMore}>
+                      {loadingMore ? t("finder.loadingMore") : t("finder.loadMore")}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -356,10 +416,14 @@ const FINDER_STYLES = `
 
   .pf2-grid { display:grid;grid-template-columns:1fr;gap:16px; }
 
+  .pf2-load-more-row { display:flex;justify-content:center;margin-top:24px; }
+  .pf2-load-more-error { margin-top:16px; }
+
   .pf2-card { position:relative;display:flex;gap:14px;align-items:center;padding:14px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);box-shadow:var(--pe-shadow-sm);text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s; }
   .pf2-card:hover { box-shadow:var(--pe-shadow-md);border-color:var(--pe-border-strong); }
   .pf2-card:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
-  .pf2-card-photo { flex-shrink:0;width:64px;height:64px;border-radius:var(--pe-radius-sm);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400); }
+  .pf2-card-photo { flex-shrink:0;width:64px;height:64px;border-radius:var(--pe-radius-sm);background:var(--pe-sand);display:flex;align-items:center;justify-content:center;color:var(--pe-sage-400);overflow:hidden; }
+  .pf2-card-photo-img { width:100%;height:100%;object-fit:cover;display:block; }
   .pf2-card-body { flex:1;min-width:0; }
   .pf2-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
   .pf2-card-name { font:var(--pe-text-h3);color:var(--pe-text); }

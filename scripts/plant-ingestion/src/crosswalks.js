@@ -3,6 +3,7 @@
 // value; it is dropped with an explicit warning instead (spec §11).
 
 import { isInformative } from "./informative.js";
+import { PLANT_TYPE_VALUES } from "./editorial/editorialVocab.js";
 
 // Perenual `sunlight` raw string -> our canonical plant_catalog.sun
 // vocabulary (aligned with garden_zones.exposure). ONLY the two mappings
@@ -48,6 +49,33 @@ export function crosswalkSunArray(rawArray) {
     }
   }
   return { canonical: allMapped ? mapped : null, warnings };
+}
+
+// Provider `plant_type`-ish raw string (Perenual's `type`, e.g. "Tree",
+// "Broadleaf evergreen") -> our canonical plant_catalog.plant_type
+// vocabulary (PLANT_TYPE_VALUES, duplicated from lib/plantFinderFormat.js —
+// see editorial/editorialVocab.js's own comment on that boundary).
+//
+// Real bug found auditing mini-batch-2 (Betula/Buxus, 2026-09): before this
+// crosswalk existed, plant_type went through the same raw passthrough as
+// any other "deterministic" trait (see selections.js's
+// proposeDeterministicNumericOrPassthrough) — a provider's raw string was
+// copied straight into a proposed selection with zero vocabulary check, so
+// "Tree" and "Broadleaf evergreen" would both have become real
+// plant_catalog.plant_type values verbatim (the latter already leaked into
+// production this way for Camellia japonica in an earlier, pre-normalization
+// round). This crosswalk is deliberately narrow: it ONLY recognizes an
+// EXACT match (case/whitespace-insensitive) against the existing,
+// already-validated PLANT_TYPE_VALUES enum — never a semantic guess. A
+// value like "Broadleaf evergreen" is real botanical information (a
+// grower's classification, genuinely ambiguous between shrub/tree without
+// a species-specific judgment this crosswalk has no basis to make) and is
+// deliberately left unmapped, exactly like an unmapped sun value above: the
+// raw observation is kept, no canonical value/selection is fabricated for
+// it.
+export function crosswalkPlantTypeValue(rawValue) {
+  const key = (rawValue || "").trim().toLowerCase();
+  return PLANT_TYPE_VALUES.includes(key) ? key : null;
 }
 
 // GBIF/WCVP `rank` string -> our plant_taxa.rank vocabulary

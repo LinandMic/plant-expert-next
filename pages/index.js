@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/router";
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/useAuth";
 import { tabFromQuery, tabToQuery } from "@/lib/homeTabRouting";
 import { useGarden } from "@/lib/useGarden";
@@ -9,8 +10,12 @@ import { fetchProfile } from "@/lib/profileApi";
 import { fetchWeatherForProfile } from "@/lib/weatherApi";
 import { evaluateWateringWeather } from "@/lib/weatherEngine";
 import { getEffectivePlantContext } from "@/lib/effectivePlantContext";
+import { gardenPlantDisplayName, gardenPlantLatinName, gardenPlantCategory } from "@/lib/gardenPlantDisplay";
+import { isNativePlatform, getWebOrigin } from "@/lib/platform";
+import { captureNativePhoto } from "@/lib/nativeCamera";
 import AuthModal from "@/components/AuthModal";
 import PlantContextEditor from "@/components/PlantContextEditor";
+import CatalogPlantGardenDetail from "@/components/CatalogPlantGardenDetail";
 import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
@@ -149,6 +154,24 @@ IMPORTANT : Réponds UNIQUEMENT en JSON valide, sans backticks, sans texte avant
 }`;
 }
 
+// The native app is a static export bundled into the iOS/Android shell —
+// there is no local "/api/proxy" route to resolve against there, and a
+// relative fetch would hit the Capacitor WebView's own local origin
+// instead of the deployed backend. On native only, resolve against the
+// canonical HTTPS web origin (lib/platform.js); normal web keeps the
+// relative path untouched. Missing config fails loudly instead of quietly
+// falling back to a broken local URL — see AGENTS.md task requirements.
+function resolveProxyUrl() {
+  if (!isNativePlatform()) return "/api/proxy";
+  const webOrigin = getWebOrigin();
+  if (!webOrigin) {
+    throw new Error(
+      "NEXT_PUBLIC_WEB_ORIGIN is not configured — the native app cannot reach /api/proxy without it."
+    );
+  }
+  return `${webOrigin}/api/proxy`;
+}
+
 async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   const content = [];
   if (imageBase64) {
@@ -157,7 +180,7 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   } else {
     content.push({ type: "text", text: `Analyse complète de la plante : "${plantName}"` });
   }
-  const response = await fetch("/api/proxy", {
+  const response = await fetch(resolveProxyUrl(), {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation, usage), messages: [{ role: "user", content }] })
   });
@@ -185,6 +208,7 @@ function resizeImage(file, maxSize = 1024) {
 }
 
 function PlantationModal({ onConfirm, onSkip }) {
+  const { t } = useI18n();
   const [step, setStep] = useState(1);
   const [plantation, setPlantation] = useState(null);
   const [usageSelected, setUsageSelected] = useState(null);
@@ -198,12 +222,12 @@ function PlantationModal({ onConfirm, onSkip }) {
     <div className="plm-overlay">
       <style>{PLM_STYLES}</style>
       <div className="plm-panel" role="dialog" aria-modal="true" aria-labelledby="plm-title">
-        <div className="plm-step">Étape {step}/2</div>
+        <div className="plm-step">{t("identifier.step", { step })}</div>
         {step === 1 && (
           <>
-            <div className="plm-title" id="plm-title">Contexte de plantation</div>
-            <div className="plm-sub">Les quantités eau et engrais seront adaptées</div>
-            <div className="plm-option-grid" role="group" aria-label="Contexte de plantation">
+            <div className="plm-title" id="plm-title">{t("identifier.plantationContextTitle")}</div>
+            <div className="plm-sub">{t("identifier.plantationContextSub")}</div>
+            <div className="plm-option-grid" role="group" aria-label={t("identifier.plantationContextTitle")}>
               {PLANTATION_TYPES.map(p => (
                 <button
                   type="button"
@@ -220,9 +244,9 @@ function PlantationModal({ onConfirm, onSkip }) {
         )}
         {step === 2 && (
           <>
-            <div className="plm-title" id="plm-title">Usage de la plante</div>
-            <div className="plm-sub">Les conseils de taille seront adaptés à cet usage</div>
-            <div className="plm-option-grid" role="group" aria-label="Usage de la plante">
+            <div className="plm-title" id="plm-title">{t("identifier.usageTitle")}</div>
+            <div className="plm-sub">{t("identifier.usageSub")}</div>
+            <div className="plm-option-grid" role="group" aria-label={t("identifier.usageTitle")}>
               {USAGE_TYPES.map(u => (
                 <button
                   type="button"
@@ -243,10 +267,10 @@ function PlantationModal({ onConfirm, onSkip }) {
             disabled={step === 1 ? !plantation : false}
             onClick={handleConfirm}
           >
-            {step === 1 ? <>Suivant <IconArrowRight size={16} /></> : "Obtenir les conseils adaptés"}
+            {step === 1 ? <>{t("identifier.next")} <IconArrowRight size={16} /></> : t("identifier.getAdaptedAdvice")}
           </Button>
           <Button type="button" variant="secondary" onClick={() => onSkip()}>
-            Passer (conseils généraux)
+            {t("identifier.skip")}
           </Button>
         </div>
       </div>
@@ -273,9 +297,61 @@ const PLM_STYLES = `
   @media (max-width:480px) { .plm-panel { padding:20px; } }
 `;
 
+// Native-only replacement for the browser's file-picker dialog. Kept as a
+// small, self-contained sheet (same overlay/panel pattern as
+// PlantationModal above) rather than a broader Identifier redesign —
+// @capacitor/camera 8.x removed the old single "camera or library" native
+// prompt (see lib/nativeCamera.js), so something has to offer that choice.
+function NativePhotoSourceSheet({ onSelectCamera, onSelectGallery, onCancel }) {
+  const { t } = useI18n();
+  return (
+    <div className="pss-overlay" onClick={onCancel}>
+      <style>{PSS_STYLES}</style>
+      <div
+        className="pss-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pss-title"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="pss-title" id="pss-title">{t("identifier.sourceSheetTitle")}</div>
+        <button type="button" className="pss-option" onClick={onSelectCamera}>
+          <IconCamera size={17} /> {t("identifier.sourceSheetCamera")}
+        </button>
+        <button type="button" className="pss-option" onClick={onSelectGallery}>
+          {t("identifier.sourceSheetGallery")}
+        </button>
+        <button type="button" className="pss-cancel" onClick={onCancel}>
+          {t("identifier.sourceSheetCancel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const PSS_STYLES = `
+  .pss-overlay { position:fixed;inset:0;background:rgba(24,33,29,0.45);display:flex;align-items:flex-end;justify-content:center;padding:0;z-index:1000; }
+  .pss-panel { position:relative;width:100%;max-width:480px;background:var(--pe-surface);border-radius:var(--pe-radius-lg) var(--pe-radius-lg) 0 0;border:1px solid var(--pe-border);border-bottom:none;box-shadow:var(--pe-shadow-md);padding:20px 20px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px; }
+
+  .pss-title { font-family:var(--pe-font-display);font-weight:600;font-size:17px;color:var(--pe-text);margin-bottom:6px; }
+
+  .pss-option { display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 14px;border-radius:var(--pe-radius-md);border:1.5px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font-family:var(--pe-font-body);font-size:15px;font-weight:600;cursor:pointer;transition:border-color .15s,background-color .15s; }
+  .pss-option:hover { border-color:var(--pe-accent);background:var(--pe-sand); }
+  .pss-option:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+
+  .pss-cancel { min-height:48px;margin-top:8px;border-radius:var(--pe-radius-md);border:none;background:none;color:var(--pe-text-muted);font-family:var(--pe-font-body);font-size:15px;font-weight:600;cursor:pointer; }
+  .pss-cancel:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
+
+  @media (min-width:640px) {
+    .pss-overlay { align-items:center; }
+    .pss-panel { border-radius:var(--pe-radius-lg);border-bottom:1px solid var(--pe-border);padding:20px; }
+  }
+`;
+
 function TagList({ items, color }) {
+  const { t } = useI18n();
   const c = color || "green";
-  if (!items || !items.length) return <p className="pdet-empty-text">Aucune donnée</p>;
+  if (!items || !items.length) return <p className="pdet-empty-text">{t("plantDetail.noData")}</p>;
   return (
     <div className="pdet-tag-list">
       {items.map((item, i) => (
@@ -305,12 +381,14 @@ function InfoCard({ icon: Icon, label, value }) {
 }
 
 function CalendrierGrid({ data }) {
+  const { t } = useI18n();
+  const monthsShort = t("format.monthsShort");
   const moisActuel = new Date().getMonth();
   return (
     <div className="pdet-cal-grid">
-      {MONTHS.map(([key, label], i) => (
+      {MONTHS.map(([key], i) => (
         <div key={key} className={"pdet-cal-cell" + (i === moisActuel ? " active" : "")}>
-          <div className="pdet-cal-month">{label}</div>
+          <div className="pdet-cal-month">{monthsShort[i]}</div>
           <div className="pdet-cal-text">{data[key] || "—"}</div>
         </div>
       ))}
@@ -318,17 +396,26 @@ function CalendrierGrid({ data }) {
   );
 }
 
-const PLANT_DETAIL_TABS = [
-  { key: "maladies", label: "Maladies", icon: IconAlertCircle },
-  { key: "taille", label: "Taille", icon: IconScissors },
-  { key: "nutriments", label: "Nutriments", icon: IconFlask },
-  { key: "arrosage", label: "Arrosage", icon: IconDroplet },
-  { key: "calendrier", label: "Calendrier", icon: IconCalendar },
-];
+// A function, not a module-level constant: the labels must reflect the
+// active locale, and this is evaluated outside React in several call sites
+// (PlanteFiche) where t comes from useI18n() at render time. `key` (used to
+// index r.maladies/r.taille/... which are AI-generated JSON) is never
+// translated — only the displayed label is.
+function getPlantDetailTabs(t) {
+  return [
+    { key: "maladies", label: t("plantDetail.tabs.maladies"), icon: IconAlertCircle },
+    { key: "taille", label: t("plantDetail.tabs.taille"), icon: IconScissors },
+    { key: "nutriments", label: t("plantDetail.tabs.nutriments"), icon: IconFlask },
+    { key: "arrosage", label: t("plantDetail.tabs.arrosage"), icon: IconDroplet },
+    { key: "calendrier", label: t("plantDetail.tabs.calendrier"), icon: IconCalendar },
+  ];
+}
 
 function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions, zoneId, zones, isAuthenticated, onSaveZone }) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState("maladies");
-  const tabs = onSaveContext ? [...PLANT_DETAIL_TABS, { key: "jardin", label: "Jardin", icon: IconSprout }] : PLANT_DETAIL_TABS;
+  const plantDetailTabs = getPlantDetailTabs(t);
+  const tabs = onSaveContext ? [...plantDetailTabs, { key: "jardin", label: t("plantDetail.tabs.jardin"), icon: IconSprout }] : plantDetailTabs;
   const r = result;
   const identite = r && r.identite;
   // zoneId/zones are only ever passed from the Mon Jardin context — reuses
@@ -345,7 +432,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
             {imagePreview ? (
               <img
                 src={imagePreview}
-                alt={identite && identite.nom_commun ? `Photo de ${identite.nom_commun}` : "Photo de la plante"}
+                alt={identite && identite.nom_commun ? t("plantDetail.photoOf", { name: identite.nom_commun }) : t("plantDetail.photoOfPlant")}
               />
             ) : (
               <IconSprig size={34} />
@@ -354,7 +441,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
           <div className="pdet-hero-text">
             {identite && identite.confiance && (
               <span className={"pdet-confidence pdet-confidence-" + identite.confiance}>
-                Confiance : {identite.confiance}
+                {t("plantDetail.confidence", { value: identite.confiance })}
               </span>
             )}
             {identite && identite.nom_commun && <h1 className="pdet-hero-name">{identite.nom_commun}</h1>}
@@ -366,10 +453,10 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
             </div>
             <div className="pdet-status-row">
               {alreadySaved && identificationStatus === "confirmed" && (
-                <span className="pdet-status-badge pdet-status-confirmed"><IconCheck size={13} /> Identification confirmée</span>
+                <span className="pdet-status-badge pdet-status-confirmed"><IconCheck size={13} /> {t("plantDetail.identificationConfirmed")}</span>
               )}
               {alreadySaved && identificationStatus === "uncertain" && (
-                <span className="pdet-status-badge pdet-status-uncertain"><IconHelpCircle size={13} /> Identification à confirmer</span>
+                <span className="pdet-status-badge pdet-status-uncertain"><IconHelpCircle size={13} /> {t("plantDetail.identificationUncertain")}</span>
               )}
               {plantation && <span className="pdet-context-pill">{plantation.label}</span>}
               {usage && <span className="pdet-context-pill">{usage.label}</span>}
@@ -381,23 +468,23 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
 
         <div className="pdet-save-row">
           {alreadySaved ? (
-            <span className="pdet-saved-badge"><IconCheck size={15} /> Dans Mon Jardin</span>
+            <span className="pdet-saved-badge"><IconCheck size={15} /> {t("plantDetail.inMyGarden")}</span>
           ) : identificationStatus === "rejected" ? (
-            <span className="pdet-blocked-note">Ajout à Mon Jardin bloqué — identification rejetée</span>
+            <span className="pdet-blocked-note">{t("plantDetail.addBlockedRejected")}</span>
           ) : (
-            <Button onClick={onSave}><IconSprout size={16} /> Ajouter à Mon Jardin</Button>
+            <Button onClick={onSave}><IconSprout size={16} /> {t("plantDetail.addToGarden")}</Button>
           )}
         </div>
 
         {identificationActions && identificationStatus && !alreadySaved && (
-          <div className="pdet-id-check" role="group" aria-label="Confirmer l'identification">
+          <div className="pdet-id-check" role="group" aria-label={t("plantDetail.confirmIdAriaLabel")}>
             <button
               type="button"
               aria-pressed={identificationStatus === "confirmed"}
               className={"pdet-id-check-btn" + (identificationStatus === "confirmed" ? " active-yes" : "")}
               onClick={identificationActions.onConfirm}
             >
-              <IconCheck size={15} /> Oui, c&apos;est ça
+              <IconCheck size={15} /> {t("plantDetail.yesThatsIt")}
             </button>
             <button
               type="button"
@@ -405,7 +492,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
               className={"pdet-id-check-btn" + (identificationStatus === "rejected" ? " active-no" : "")}
               onClick={identificationActions.onReject}
             >
-              <IconX size={15} /> Non
+              <IconX size={15} /> {t("plantDetail.no")}
             </button>
             <button
               type="button"
@@ -413,7 +500,7 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
               className={"pdet-id-check-btn" + (identificationStatus === "uncertain" ? " active-unsure" : "")}
               onClick={identificationActions.onUncertain}
             >
-              <IconHelpCircle size={15} /> Je ne sais pas
+              <IconHelpCircle size={15} /> {t("plantDetail.unsure")}
             </button>
           </div>
         )}
@@ -437,21 +524,21 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
 
       {identificationStatus === "rejected" && identificationActions && !alreadySaved && (
         <div className="pdet-content-card" style={{ marginBottom: 16 }}>
-          <div className="pdet-section-title"><IconX size={17} /> Identification rejetée</div>
+          <div className="pdet-section-title"><IconX size={17} /> {t("plantDetail.rejectedTitle")}</div>
           <div className="error-box" style={{ margin: "0 0 16px" }}>
-            Vous avez indiqué que ce résultat n&apos;était pas correct. Il ne peut pas être ajouté à Mon Jardin tel quel.
+            {t("plantDetail.rejectedMessage")}
           </div>
           <div className="pdet-rejected-actions">
-            <Button onClick={identificationActions.onRetakePhoto}><IconCamera size={16} /> Reprendre une photo</Button>
-            <Button variant="secondary" onClick={identificationActions.onSwitchToNameSearch}><IconSearch size={16} /> Identifier par nom</Button>
+            <Button onClick={identificationActions.onRetakePhoto}><IconCamera size={16} /> {t("plantDetail.retakePhoto")}</Button>
+            <Button variant="secondary" onClick={identificationActions.onSwitchToNameSearch}><IconSearch size={16} /> {t("plantDetail.identifyByName")}</Button>
           </div>
         </div>
       )}
       {identificationStatus === "uncertain" && !alreadySaved && (
         <div className="pdet-content-card" style={{ marginBottom: 16 }}>
-          <div className="pdet-section-title"><IconHelpCircle size={17} /> Identification à confirmer</div>
+          <div className="pdet-section-title"><IconHelpCircle size={17} /> {t("plantDetail.uncertainTitle")}</div>
           <div className="pdet-highlight-box">
-            Pour confirmer cette identification, essaie une nouvelle photo : la plante entière, une feuille, une fleur ou un fruit si disponible, et l&apos;écorce ou la tige si pertinent.
+            {t("plantDetail.uncertainMessage")}
           </div>
         </div>
       )}
@@ -459,64 +546,64 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
       <div className="pdet-content-card">
         {activeTab === "maladies" && r.maladies && (
           <div>
-            <div className="pdet-section-title"><IconAlertCircle size={17} /> Maladies &amp; Ravageurs</div>
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Vulnérabilités</div><TagList items={r.maladies.vulnerabilites} color="red" /></div>
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Symptômes</div><TagList items={r.maladies.symptomes_alerte} color="gold" /></div>
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Traitements</div><TagList items={r.maladies.traitements} color="green" /></div>
-            {r.maladies.conseil_urgence && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Urgence</div>{r.maladies.conseil_urgence}</div>}
+            <div className="pdet-section-title"><IconAlertCircle size={17} /> {t("plantDetail.diseasesTitle")}</div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.vulnerabilities")}</div><TagList items={r.maladies.vulnerabilites} color="red" /></div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.symptoms")}</div><TagList items={r.maladies.symptomes_alerte} color="gold" /></div>
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.treatments")}</div><TagList items={r.maladies.traitements} color="green" /></div>
+            {r.maladies.conseil_urgence && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.emergency")}</div>{r.maladies.conseil_urgence}</div>}
           </div>
         )}
         {activeTab === "taille" && r.taille && (
           <div>
-            <div className="pdet-section-title"><IconScissors size={17} /> Taille</div>
+            <div className="pdet-section-title"><IconScissors size={17} /> {t("plantDetail.pruningTitle")}</div>
             <div className="pdet-info-grid">
-              <InfoCard icon={IconCalendar} label="Période" value={r.taille.periode_ideale} />
-              <InfoCard label="Fréquence" value={r.taille.frequence} />
+              <InfoCard icon={IconCalendar} label={t("plantDetail.period")} value={r.taille.periode_ideale} />
+              <InfoCard label={t("plantDetail.frequency")} value={r.taille.frequence} />
             </div>
-            {r.taille.technique && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Technique</div>{r.taille.technique}</div>}
-            {r.taille.a_eviter && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">À éviter</div>{r.taille.a_eviter}</div>}
-            {r.taille.conseil_pro && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">Conseil pro</div>{r.taille.conseil_pro}</div>}
+            {r.taille.technique && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.technique")}</div>{r.taille.technique}</div>}
+            {r.taille.a_eviter && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">{t("plantDetail.toAvoid")}</div>{r.taille.a_eviter}</div>}
+            {r.taille.conseil_pro && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">{t("plantDetail.proTip")}</div>{r.taille.conseil_pro}</div>}
           </div>
         )}
         {activeTab === "nutriments" && r.nutriments && (
           <div>
-            <div className="pdet-section-title"><IconFlask size={17} /> Nutriments &amp; Engrais</div>
-            {plantation && <div className="pdet-context-banner">Conseils adaptés : {plantation.label}</div>}
-            <div className="pdet-subsection"><div className="pdet-subsection-title">Besoins</div><TagList items={r.nutriments.besoins_principaux} color="green" /></div>
+            <div className="pdet-section-title"><IconFlask size={17} /> {t("plantDetail.nutrientsTitle")}</div>
+            {plantation && <div className="pdet-context-banner">{t("plantDetail.adaptedAdviceFor", { label: plantation.label })}</div>}
+            <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.needs")}</div><TagList items={r.nutriments.besoins_principaux} color="green" /></div>
             <div className="pdet-info-grid" style={{ marginTop: 14 }}>
-              <InfoCard icon={IconFlask} label="Engrais recommandé" value={r.nutriments.engrais_recommande} />
-              <InfoCard icon={IconCalendar} label="Période" value={r.nutriments.periode_fertilisation} />
+              <InfoCard icon={IconFlask} label={t("plantDetail.recommendedFertilizer")} value={r.nutriments.engrais_recommande} />
+              <InfoCard icon={IconCalendar} label={t("plantDetail.fertilizationPeriod")} value={r.nutriments.periode_fertilisation} />
             </div>
-            {r.nutriments.frequence_apport && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Quantités et fréquence</div>{r.nutriments.frequence_apport}</div>}
-            {r.nutriments.signes_carence && r.nutriments.signes_carence.length > 0 && <div className="pdet-subsection"><div className="pdet-subsection-title">Signes de carence</div><TagList items={r.nutriments.signes_carence} color="gold" /></div>}
-            {r.nutriments.surdosage_risques && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">Risque surdosage</div>{r.nutriments.surdosage_risques}</div>}
+            {r.nutriments.frequence_apport && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.quantitiesAndFrequency")}</div>{r.nutriments.frequence_apport}</div>}
+            {r.nutriments.signes_carence && r.nutriments.signes_carence.length > 0 && <div className="pdet-subsection"><div className="pdet-subsection-title">{t("plantDetail.deficiencySigns")}</div><TagList items={r.nutriments.signes_carence} color="gold" /></div>}
+            {r.nutriments.surdosage_risques && <div className="pdet-highlight-box pdet-highlight-warn"><div className="pdet-highlight-label">{t("plantDetail.overdoseRisk")}</div>{r.nutriments.surdosage_risques}</div>}
           </div>
         )}
         {activeTab === "arrosage" && r.arrosage && (
           <div>
-            <div className="pdet-section-title"><IconDroplet size={17} /> Arrosage</div>
-            {plantation && <div className="pdet-context-banner">Conseils adaptés : {plantation.label}</div>}
+            <div className="pdet-section-title"><IconDroplet size={17} /> {t("plantDetail.wateringTitle")}</div>
+            {plantation && <div className="pdet-context-banner">{t("plantDetail.adaptedAdviceFor", { label: plantation.label })}</div>}
             <div className="pdet-info-grid">
-              <InfoCard icon={IconSun} label="Été" value={r.arrosage.frequence_ete} />
-              <InfoCard label="Hiver" value={r.arrosage.frequence_hiver} />
+              <InfoCard icon={IconSun} label={t("plantDetail.summer")} value={r.arrosage.frequence_ete} />
+              <InfoCard label={t("plantDetail.winter")} value={r.arrosage.frequence_hiver} />
             </div>
-            {r.arrosage.methode && <div className="pdet-highlight-box"><div className="pdet-highlight-label">Méthode</div>{r.arrosage.methode}</div>}
-            {r.arrosage.conseil_pratique && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">Conseil pratique</div>{r.arrosage.conseil_pratique}</div>}
+            {r.arrosage.methode && <div className="pdet-highlight-box"><div className="pdet-highlight-label">{t("plantDetail.method")}</div>{r.arrosage.methode}</div>}
+            {r.arrosage.conseil_pratique && <div className="pdet-highlight-box pdet-highlight-gold"><div className="pdet-highlight-label">{t("plantDetail.practicalAdvice")}</div>{r.arrosage.conseil_pratique}</div>}
             <div className="pdet-info-grid" style={{ marginTop: 10 }}>
-              <InfoCard icon={IconAlertCircle} label="Manque" value={r.arrosage.signes_manque} />
-              <InfoCard icon={IconAlertCircle} label="Excès" value={r.arrosage.signes_exces} />
+              <InfoCard icon={IconAlertCircle} label={t("plantDetail.lackSigns")} value={r.arrosage.signes_manque} />
+              <InfoCard icon={IconAlertCircle} label={t("plantDetail.excessSigns")} value={r.arrosage.signes_exces} />
             </div>
           </div>
         )}
         {activeTab === "calendrier" && r.calendrier && (
           <div>
-            <div className="pdet-section-title"><IconCalendar size={17} /> Calendrier annuel</div>
+            <div className="pdet-section-title"><IconCalendar size={17} /> {t("plantDetail.calendarTitle")}</div>
             <CalendrierGrid data={r.calendrier} />
           </div>
         )}
         {activeTab === "jardin" && onSaveContext && (
           <div>
-            <div className="pdet-section-title"><IconSprout size={17} /> Contexte du jardin</div>
+            <div className="pdet-section-title"><IconSprout size={17} /> {t("plantDetail.gardenContextTitle")}</div>
             <PlantContextEditor
               context={context}
               onSave={onSaveContext}
@@ -625,6 +712,7 @@ const PLANT_DETAIL_STYLES = `
 `;
 
 function IdentifierTab({ addPlant }) {
+  const { t } = useI18n();
   const [plantName, setPlantName] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -638,8 +726,28 @@ function IdentifierTab({ addPlant }) {
   const [plantation, setPlantation] = useState(null);
   const [identificationStatus, setIdentificationStatus] = useState(null);
   const [pendingFocus, setPendingFocus] = useState(null); // "photo" | "name" | null
+  const [showSourceSheet, setShowSourceSheet] = useState(false);
   const fileRef = useRef();
   const nameInputRef = useRef();
+
+  const handleFile = useCallback((file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    setImageFile(file); setImagePreview(URL.createObjectURL(file));
+    setResult(null); setError(null); setSaved(false); setIdentificationStatus(null);
+  }, []);
+
+  // Web keeps the existing hidden file-input flow untouched. Native gets a
+  // small in-app source sheet instead (@capacitor/camera 8.x deprecated the
+  // old single "prompt" API that used to show this choice natively — see
+  // lib/nativeCamera.js), never the file input, since there's no browser
+  // file-picker UI inside a Capacitor WebView.
+  const triggerPhotoPicker = useCallback(() => {
+    if (isNativePlatform()) {
+      setShowSourceSheet(true);
+    } else {
+      fileRef.current && fileRef.current.click();
+    }
+  }, []);
 
   // Runs strictly after React has committed the reset (result cleared, back
   // to the input-panel), instead of racing a requestAnimationFrame against
@@ -648,19 +756,27 @@ function IdentifierTab({ addPlant }) {
   // still-in-flight keyboard event from the button that was just clicked.
   useEffect(() => {
     if (pendingFocus === "photo") {
-      fileRef.current && fileRef.current.click();
+      triggerPhotoPicker();
       setPendingFocus(null);
     } else if (pendingFocus === "name") {
       nameInputRef.current && nameInputRef.current.focus();
       setPendingFocus(null);
     }
-  }, [pendingFocus]);
+  }, [pendingFocus, triggerPhotoPicker]);
 
-  const handleFile = useCallback((file) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    setImageFile(file); setImagePreview(URL.createObjectURL(file));
-    setResult(null); setError(null); setSaved(false); setIdentificationStatus(null);
-  }, []);
+  const handleNativeCapture = useCallback(async (source) => {
+    setShowSourceSheet(false);
+    const captured = await captureNativePhoto(source);
+    if (captured.status === "ok") {
+      handleFile(captured.file);
+    } else if (captured.status === "denied") {
+      setError(t("identifier.cameraPermissionDenied"));
+    } else if (captured.status === "error") {
+      setError(t("identifier.cameraError"));
+    }
+    // "cancelled": the user backed out of the native camera/gallery UI —
+    // no error, matches the requirement to handle cancellation silently.
+  }, [handleFile, t]);
 
   const doAnalyze = async (plantationCtx, usageCtx) => {
     setLoading(true); setError(null); setResult(null); setSaved(false); setShowModal(false); setIdentificationStatus(null);
@@ -671,12 +787,12 @@ function IdentifierTab({ addPlant }) {
       setResult(data);
       setIdentificationStatus(imageFile ? "unreviewed" : null);
     } catch (e) {
-      setError("Erreur d analyse. Vérifie ta connexion ou réessaie.");
+      setError(t("identifier.analyzeError"));
     } finally { setLoading(false); }
   };
 
   const handleAnalyze = () => {
-    if (!imageFile && !plantName.trim()) { setError("Fournis une photo ou un nom de plante."); return; }
+    if (!imageFile && !plantName.trim()) { setError(t("identifier.missingInput")); return; }
     setShowModal(true);
   };
 
@@ -724,12 +840,19 @@ function IdentifierTab({ addPlant }) {
           onSkip={() => { setPlantation(null); doAnalyze(null); }}
         />
       )}
+      {showSourceSheet && (
+        <NativePhotoSourceSheet
+          onSelectCamera={() => handleNativeCapture("camera")}
+          onSelectGallery={() => handleNativeCapture("gallery")}
+          onCancel={() => setShowSourceSheet(false)}
+        />
+      )}
       {!result && !loading && (
         <>
           <header className="pi-header">
-            <div className="pi-eyebrow">IDENTIFIER</div>
-            <h1 className="pi-title">Quelle est cette plante ?</h1>
-            <p className="pi-subtitle">Prenez ou importez une photo pour tenter de l&apos;identifier.</p>
+            <div className="pi-eyebrow">{t("identifier.eyebrow")}</div>
+            <h1 className="pi-title">{t("identifier.title")}</h1>
+            <p className="pi-subtitle">{t("identifier.subtitle")}</p>
           </header>
 
           <div className="pi-layout">
@@ -738,12 +861,12 @@ function IdentifierTab({ addPlant }) {
                 className={"pi-dropzone" + (imagePreview ? " has-image" : "")}
                 role={imagePreview ? undefined : "button"}
                 tabIndex={imagePreview ? undefined : 0}
-                aria-label={imagePreview ? undefined : "Choisir ou déposer une photo de plante"}
-                onClick={() => !imagePreview && fileRef.current && fileRef.current.click()}
+                aria-label={imagePreview ? undefined : t("identifier.dropzoneAriaLabel")}
+                onClick={() => !imagePreview && triggerPhotoPicker()}
                 onKeyDown={(e) => {
                   if (!imagePreview && (e.key === "Enter" || e.key === " ")) {
                     e.preventDefault();
-                    fileRef.current && fileRef.current.click();
+                    triggerPhotoPicker();
                   }
                 }}
                 onDragOver={e => e.preventDefault()}
@@ -753,23 +876,29 @@ function IdentifierTab({ addPlant }) {
                   <>
                     <img
                       src={imagePreview}
-                      alt={imageFile && imageFile.name ? `Photo sélectionnée : ${imageFile.name}` : "Photo sélectionnée"}
+                      alt={imageFile && imageFile.name ? t("identifier.selectedPhotoAltNamed", { name: imageFile.name }) : t("identifier.selectedPhotoAlt")}
                       className="pi-preview-img"
                     />
                     <button
                       type="button"
                       className="pi-change-btn"
-                      onClick={e => { e.stopPropagation(); fileRef.current && fileRef.current.click(); }}
+                      onClick={e => { e.stopPropagation(); triggerPhotoPicker(); }}
                     >
-                      <IconCamera size={15} /> Changer
+                      <IconCamera size={15} /> {t("identifier.change")}
                     </button>
                     {imageFile && imageFile.name && <div className="pi-filename">{imageFile.name}</div>}
                   </>
                 ) : (
                   <>
                     <span className="pi-dropzone-icon"><IconCamera size={26} /></span>
-                    <div className="pi-dropzone-title">Dépose une photo ici</div>
-                    <div className="pi-dropzone-sub">ou clique pour en choisir une</div>
+                    <div className="pi-dropzone-title">
+                      <span className="pi-copy-mobile">{t("identifier.dropzoneTitleMobile")}</span>
+                      <span className="pi-copy-desktop">{t("identifier.dropzoneTitleDesktop")}</span>
+                    </div>
+                    <div className="pi-dropzone-sub">
+                      <span className="pi-copy-mobile">{t("identifier.dropzoneSubMobile")}</span>
+                      <span className="pi-copy-desktop">{t("identifier.dropzoneSubDesktop")}</span>
+                    </div>
                   </>
                 )}
               </div>
@@ -780,21 +909,21 @@ function IdentifierTab({ addPlant }) {
                 style={{display:"none"}}
                 tabIndex={-1}
                 aria-hidden="true"
-                aria-label="Choisir une photo de plante"
+                aria-label={t("identifier.filePickerAriaLabel")}
                 onChange={e => e.target.files && handleFile(e.target.files[0])}
               />
 
-              <div className="pi-divider"><div className="pi-divider-line" /><span>ou</span><div className="pi-divider-line" /></div>
+              <div className="pi-divider"><div className="pi-divider-line" /><span>{t("identifier.or")}</span><div className="pi-divider-line" /></div>
 
               <div className="pi-name-field">
-                <label htmlFor="pi-plant-name" className="pi-name-label">Nom de la plante</label>
+                <label htmlFor="pi-plant-name" className="pi-name-label">{t("identifier.nameLabel")}</label>
                 <div className="pi-name-input-wrap">
                   <IconSearch size={16} />
                   <input
                     id="pi-plant-name"
                     ref={nameInputRef}
                     className="pi-name-input"
-                    placeholder="Ex. Lavande, Rosier..."
+                    placeholder={t("identifier.namePlaceholder")}
                     value={plantName}
                     onChange={e => setPlantName(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && handleAnalyze()}
@@ -803,7 +932,7 @@ function IdentifierTab({ addPlant }) {
               </div>
 
               <Button onClick={handleAnalyze} className="pi-analyze-btn">
-                <IconSearch size={16} /> Analyser
+                <IconSearch size={16} /> {t("identifier.analyze")}
               </Button>
 
               {error && <div className="error-box pi-error"><IconAlertCircle size={14} /> {error}</div>}
@@ -812,13 +941,13 @@ function IdentifierTab({ addPlant }) {
             <Card className="pi-tips-card">
               <div className="pi-tips-head">
                 <IconSprig size={18} />
-                <span>Pour de meilleurs résultats</span>
+                <span>{t("identifier.tipsTitle")}</span>
               </div>
               <ul className="pi-tips-list">
-                <li>Photographiez la plante de près</li>
-                <li>Privilégiez une image nette et bien éclairée</li>
-                <li>Montrez les feuilles ou les fleurs si elles sont visibles</li>
-                <li>Évitez une plante trop éloignée dans le cadre</li>
+                <li>{t("identifier.tip1")}</li>
+                <li>{t("identifier.tip2")}</li>
+                <li>{t("identifier.tip3")}</li>
+                <li>{t("identifier.tip4")}</li>
               </ul>
             </Card>
           </div>
@@ -827,13 +956,13 @@ function IdentifierTab({ addPlant }) {
       {loading && (
         <div className="pi-loading" role="status" aria-live="polite">
           <div className="pi-spinner" aria-hidden="true" />
-          <div className="pi-loading-title">Analyse en cours</div>
-          <div className="pi-loading-sub">{plantation ? "Adaptation pour " + plantation.label : "Identification et conseils"}...</div>
+          <div className="pi-loading-title">{t("identifier.analyzing")}</div>
+          <div className="pi-loading-sub">{plantation ? t("identifier.adaptingFor", { label: plantation.label }) : t("identifier.identifyingAndAdvice")}</div>
         </div>
       )}
       {result && !loading && (
         <div className="pi-result-wrap">
-          <div className="pi-reset-row"><button type="button" className="pi-reset-btn" onClick={reset}>← Nouvelle analyse</button></div>
+          <div className="pi-reset-row"><button type="button" className="pi-reset-btn" onClick={reset}>{t("identifier.newAnalysis")}</button></div>
           <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} identificationStatus={identificationStatus} identificationActions={identificationActions} />
           {saveError && <div className="error-box pi-error" style={{marginTop:12}}><IconAlertCircle size={14} /> {saveError}</div>}
         </div>
@@ -861,6 +990,15 @@ const IDENTIFIER_STYLES = `
   .pi-dropzone-icon { color:var(--pe-sage-400);display:flex;margin-bottom:6px; }
   .pi-dropzone-title { font:var(--pe-text-h3);color:var(--pe-text); }
   .pi-dropzone-sub { font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:400; }
+  /* Mobile gets tap-oriented copy ("Touchez..."), desktop keeps the
+     drag/drop wording — pure CSS toggle (no JS/hydration risk), same
+     768px breakpoint as the rest of the shell (AppShell/Sidebar/MobileNav). */
+  .pi-copy-desktop { display:none; }
+  .pi-copy-mobile { display:inline; }
+  @media (min-width:768px) {
+    .pi-copy-mobile { display:none; }
+    .pi-copy-desktop { display:inline; }
+  }
   @media (max-width:480px) { .pi-dropzone { min-height:220px;padding:16px; } }
 
   .pi-dropzone.has-image { display:block;padding:0;overflow:hidden;cursor:default;min-height:0; }
@@ -936,6 +1074,7 @@ const MJ_DETAIL_STYLES = `
 `;
 
 function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated, onGoIdentifier }) {
+  const { t, locale } = useI18n();
   // selectedId (not the plant object itself) is the only state kept for the
   // open detail view — the plant is always re-derived from the live
   // `jardin` array below, so any update to `jardin` (e.g. a successful
@@ -997,11 +1136,11 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
 
   const moisIdx = new Date().getMonth();
   const moisActuel = MONTHS[moisIdx][0];
-  const moisLabel = MONTHS[moisIdx][1];
+  const moisLabel = t("format.monthsShort")[moisIdx];
 
   const filtered = jardin.filter(p => {
-    const nom = (p.data && p.data.identite && p.data.identite.nom_commun || "").toLowerCase();
-    const cat = (p.data && p.data.identite && p.data.identite.categorie) || "";
+    const nom = (gardenPlantDisplayName(p, locale) || "").toLowerCase();
+    const cat = gardenPlantCategory(p, t) || "";
     const matchesZone =
       zoneFilter === "all" || (zoneFilter === "unassigned" ? !p.zoneId : p.zoneId === zoneFilter);
     return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase())) && matchesZone;
@@ -1043,7 +1182,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
 
   const handleOpenReminderModal = () => {
     if (reminders.requiresAuth) {
-      setReminderNotice({ type: "error", text: "Connectez-vous pour créer et synchroniser vos rappels sur tous vos appareils." });
+      setReminderNotice({ type: "error", text: t("garden.remindersAuthRequired") });
       return;
     }
     setReminderNotice(null);
@@ -1056,7 +1195,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
       setShowReminderModal(false);
       setSelectionMode(false);
       setSelectedIds(new Set());
-      setReminderNotice({ type: "success", text: "Rappels créés." });
+      setReminderNotice({ type: "success", text: t("garden.remindersCreated") });
     }
     return result;
   };
@@ -1112,15 +1251,35 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   });
 
   if (selectedPlant) {
+    // Two entirely different detail experiences by source (spec: this
+    // round's whole objective) — a catalog-sourced plant (added from Plant
+    // Finder) never has ai_data.identite/maladies/taille/.../calendrier,
+    // so PlanteFiche's AI-only tabs would render almost empty for it (the
+    // real-device bug this round fixes). ai_identification plants keep the
+    // exact same PlanteFiche branch, byte-for-byte unchanged below.
+    if (selectedPlant.source === "catalog") {
+      return (
+        <div className="mj-detail-page">
+          <style>{MJ_DETAIL_STYLES}</style>
+          <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>{t("garden.backToGarden")}</button>
+          <CatalogPlantGardenDetail
+            plant={selectedPlant}
+            zones={zones.zones}
+            onRemove={() => handleDelete(selectedPlant.id)}
+            deleteError={deleteError}
+          />
+        </div>
+      );
+    }
     return (
       <div className="mj-detail-page">
         <style>{MJ_DETAIL_STYLES}</style>
-        <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>← Mon Jardin</button>
+        <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>{t("garden.backToGarden")}</button>
         <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} />
         {deleteError && <div className="error-box mj-detail-error"><IconAlertCircle size={14} /> {deleteError}</div>}
         <div className="mj-detail-delete-row">
           <button type="button" className="mj-detail-delete-btn" onClick={() => handleDelete(selectedPlant.id)}>
-            <IconTrash size={15} /> Retirer du jardin
+            <IconTrash size={15} /> {t("garden.removeFromGarden")}
           </button>
         </div>
       </div>
@@ -1134,19 +1293,19 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   return (
     <div className="mj-page">
       <style>{GARDEN_STYLES}</style>
-      {migrating && <div className="context-banner">Synchronisation de votre jardin avec votre compte...</div>}
+      {migrating && <div className="context-banner">{t("garden.syncingBanner")}</div>}
       {error && <div className="error-box"><IconAlertCircle size={14} /> {error}</div>}
       {deleteError && <div className="error-box"><IconAlertCircle size={14} /> {deleteError}</div>}
 
       <header className="mj-header">
         <div>
-          <div className="mj-eyebrow">MON JARDIN</div>
-          <h1 className="mj-title">Votre jardin</h1>
-          <p className="mj-subtitle">Suivez vos plantes, leurs zones et leur entretien au fil des saisons.</p>
+          <div className="mj-eyebrow">{t("garden.eyebrow")}</div>
+          <h1 className="mj-title">{t("garden.title")}</h1>
+          <p className="mj-subtitle">{t("garden.subtitle")}</p>
         </div>
         {onGoIdentifier && (
           <Button onClick={onGoIdentifier} className="mj-header-cta">
-            <IconCamera size={17} /> Identifier une plante
+            <IconCamera size={17} /> {t("garden.identifyPlant")}
           </Button>
         )}
       </header>
@@ -1154,25 +1313,25 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
       {loading && jardin.length === 0 ? (
         <div className="mj-loading">
           <IconSprig size={26} />
-          <div className="mj-loading-title">Chargement de votre jardin…</div>
+          <div className="mj-loading-title">{t("garden.loading")}</div>
         </div>
       ) : jardin.length === 0 ? (
         <>
           <Card className="mj-empty-card">
             <IconSprig size={28} />
-            <div className="mj-empty-title">Votre jardin est vide</div>
-            <p className="mj-empty-sub">Identifiez une plante et ajoutez-la à Mon Jardin pour la retrouver ici.</p>
+            <div className="mj-empty-title">{t("garden.emptyTitle")}</div>
+            <p className="mj-empty-sub">{t("garden.emptySub")}</p>
             {onGoIdentifier && (
-              <Button variant="secondary" onClick={onGoIdentifier}>
-                <IconCamera size={16} /> Identifier une plante
+              <Button onClick={onGoIdentifier}>
+                <IconCamera size={16} /> {t("garden.identifyPlant")}
               </Button>
             )}
           </Card>
           {isAuthenticated && (
             <section className="mj-section">
               <button type="button" className="mj-section-toggle" onClick={() => setZonesOpen((v) => !v)}>
-                <span className="mj-section-toggle-label"><IconMapPin size={17} /> Zones du jardin</span>
-                <span className="mj-section-toggle-action">{zonesOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+                <span className="mj-section-toggle-label"><IconMapPin size={17} /> {t("garden.zonesTitle")}</span>
+                <span className="mj-section-toggle-action">{zonesOpen ? t("garden.hide") : t("garden.view")} <IconChevronRight size={15} /></span>
               </button>
               {zonesOpen && (
                 <Card className="mj-section-body">
@@ -1195,40 +1354,40 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             <Card className="mj-stat-card">
               <span className="mj-stat-icon"><IconSprout size={18} /></span>
               <div className="mj-stat-value">{jardin.length}</div>
-              <div className="mj-stat-label">plante{jardin.length > 1 ? "s" : ""}</div>
+              <div className="mj-stat-label">{jardin.length > 1 ? t("garden.statPlants") : t("garden.statPlant")}</div>
             </Card>
             <Card className="mj-stat-card">
               <span className="mj-stat-icon"><IconBell size={18} /></span>
               <div className="mj-stat-value">{tasksCount}</div>
-              <div className="mj-stat-label">tâche{tasksCount > 1 ? "s" : ""} à venir</div>
+              <div className="mj-stat-label">{tasksCount > 1 ? t("garden.statTasksUpcoming") : t("garden.statTaskUpcoming")}</div>
             </Card>
             <Card className="mj-stat-card">
               <span className="mj-stat-icon"><IconSun size={18} /></span>
               <div className="mj-stat-value">{wateringTasksCount}</div>
-              <div className="mj-stat-label">arrosage{wateringTasksCount > 1 ? "s" : ""}</div>
+              <div className="mj-stat-label">{wateringTasksCount > 1 ? t("garden.statWaterings") : t("garden.statWatering")}</div>
             </Card>
             {isAuthenticated && (
               <Card className="mj-stat-card">
                 <span className="mj-stat-icon"><IconMapPin size={18} /></span>
                 <div className="mj-stat-value">{zones.zones.length}</div>
-                <div className="mj-stat-label">zone{zones.zones.length > 1 ? "s" : ""}</div>
+                <div className="mj-stat-label">{zones.zones.length > 1 ? t("garden.statZones") : t("garden.statZone")}</div>
               </Card>
             )}
           </div>
           {weatherLocationName && (
             <div className="mj-weather-line">
-              {weatherLoading ? "Météo…" : <>Météo pour <strong>{weatherLocationName}</strong></>}
+              {weatherLoading ? t("garden.weatherLoading") : <>{t("garden.weatherFor")} <strong>{weatherLocationName}</strong></>}
             </div>
           )}
 
           {isAuthenticated && hasZones && (
-            <div className="mj-zones-row" role="tablist" aria-label="Filtrer par zone">
+            <div className="mj-zones-row" role="tablist" aria-label={t("garden.filterByZone")}>
               <button
                 type="button"
                 className={"mj-zone-chip" + (zoneFilter === "all" ? " active" : "")}
                 onClick={() => setZoneFilter("all")}
               >
-                Toutes les zones
+                {t("garden.allZones")}
               </button>
               {zones.zones.map((z) => (
                 <button
@@ -1245,10 +1404,10 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                 className={"mj-zone-chip" + (zoneFilter === "unassigned" ? " active" : "")}
                 onClick={() => setZoneFilter("unassigned")}
               >
-                Sans zone
+                {t("garden.noZone")}
               </button>
               <button type="button" className="mj-zone-manage-btn" onClick={() => setZonesOpen((v) => !v)}>
-                Gérer les zones
+                {t("garden.manageZones")}
               </button>
             </div>
           )}
@@ -1256,7 +1415,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           {isAuthenticated && zonesOpen && (
             <section className="mj-section">
               <button type="button" className="mj-section-collapse-btn" onClick={() => setZonesOpen(false)}>
-                Masquer les zones
+                {t("garden.hideZones")}
               </button>
               <Card className="mj-section-body">
                 <GardenZonesPanel
@@ -1276,12 +1435,12 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
               <IconSearch size={17} />
               <input
                 className="mj-search-input"
-                placeholder="Rechercher une plante..."
+                placeholder={t("garden.searchPlaceholder")}
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
               />
               {searchQ && (
-                <button type="button" className="mj-search-clear" onClick={() => setSearchQ("")} aria-label="Effacer la recherche">
+                <button type="button" className="mj-search-clear" onClick={() => setSearchQ("")} aria-label={t("garden.clearSearchAriaLabel")}>
                   <IconX size={15} />
                 </button>
               )}
@@ -1295,7 +1454,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                 className={"mj-cat-chip" + (filterCat === c ? " active" : "")}
                 onClick={() => setFilterCat(c)}
               >
-                {c}
+                {c === "Tout" ? t("garden.all") : c}
               </button>
             ))}
           </div>
@@ -1304,20 +1463,20 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             <Card className="mj-dash-card" onClick={() => setTasksOpen((v) => !v)}>
               <span className="mj-dash-icon"><IconBell size={19} /></span>
               <div className="mj-dash-text">
-                <div className="mj-dash-title">Tâches</div>
-                <div className="mj-dash-sub">{tasksCount} à venir</div>
+                <div className="mj-dash-title">{t("dashboard.tasks")}</div>
+                <div className="mj-dash-sub">{t("garden.tasksUpcoming", { count: tasksCount })}</div>
               </div>
-              <span className="mj-dash-action">{tasksOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+              <span className="mj-dash-action">{tasksOpen ? t("garden.hide") : t("garden.view")} <IconChevronRight size={15} /></span>
             </Card>
             <Card className="mj-dash-card" onClick={() => setAFaireOpen((v) => !v)}>
               <span className="mj-dash-icon"><IconCalendar size={19} /></span>
               <div className="mj-dash-text">
-                <div className="mj-dash-title">À faire en {moisLabel}</div>
+                <div className="mj-dash-title">{t("garden.todoInMonth", { month: moisLabel })}</div>
                 <div className="mj-dash-sub">
-                  {moisTasks.length > 0 ? `${moisTasks.length} plante${moisTasks.length > 1 ? "s" : ""}` : "rien de particulier"}
+                  {moisTasks.length > 0 ? (moisTasks.length > 1 ? t("garden.plantsCountShort", { count: moisTasks.length }) : t("garden.plantCountShort", { count: moisTasks.length })) : t("garden.nothingParticular")}
                 </div>
               </div>
-              <span className="mj-dash-action">{aFaireOpen ? "Masquer" : "Voir"} <IconChevronRight size={15} /></span>
+              <span className="mj-dash-action">{aFaireOpen ? t("garden.hide") : t("garden.view")} <IconChevronRight size={15} /></span>
             </Card>
           </div>
 
@@ -1339,7 +1498,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             <section className="mj-section">
               <Card className="mj-section-body mj-mois-card">
                 {moisTasks.length === 0 ? (
-                  <div className="mj-mois-vide">Rien de particulier ce mois-ci.</div>
+                  <div className="mj-mois-vide">{t("garden.nothingParticularThisMonth")}</div>
                 ) : (
                   <div className="mj-mois-list">
                     {moisTasks.map((p) => (
@@ -1357,20 +1516,20 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           <div className="mj-select-bar">
             {!selectionMode ? (
               <button type="button" className="mj-select-toggle-btn" onClick={() => setSelectionMode(true)}>
-                Sélectionner
+                {t("garden.select")}
               </button>
             ) : (
               <>
                 <button type="button" className="mj-select-toggle-btn" onClick={handleSelectAll}>
-                  {allVisibleSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                  {allVisibleSelected ? t("garden.deselectAll") : t("garden.selectAll")}
                 </button>
                 <span className="mj-select-count">
-                  {selectedIds.size} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+                  {selectedIds.size > 1 ? t("garden.selectedCountPlural", { count: selectedIds.size }) : t("garden.selectedCount", { count: selectedIds.size })}
                 </span>
-                <button type="button" className="mj-select-toggle-btn" onClick={handleCancelSelection}>Annuler</button>
+                <button type="button" className="mj-select-toggle-btn" onClick={handleCancelSelection}>{t("garden.cancel")}</button>
                 {selectedIds.size > 0 && (
                   <Button onClick={handleOpenReminderModal} className="mj-select-reminder-btn">
-                    <IconBell size={16} /> Créer des rappels
+                    <IconBell size={16} /> {t("garden.createReminders")}
                   </Button>
                 )}
               </>
@@ -1390,22 +1549,22 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
           {filtered.length === 0 ? (
             <Card className="mj-empty-card">
               <IconSprig size={26} />
-              <div className="mj-empty-title">Aucune plante ne correspond</div>
+              <div className="mj-empty-title">{t("garden.noMatchTitle")}</div>
               <p className="mj-empty-sub">
                 {activeZoneName
-                  ? <>Aucun résultat pour la zone « {activeZoneName} » avec ces filtres.</>
-                  : "Essayez une autre recherche ou réinitialisez les filtres."}
+                  ? t("garden.noMatchForZone", { zone: activeZoneName })
+                  : t("garden.noMatchGeneric")}
               </p>
               {hasActiveFilters && (
-                <Button variant="secondary" onClick={handleResetFilters}>Réinitialiser les filtres</Button>
+                <Button variant="secondary" onClick={handleResetFilters}>{t("garden.resetFilters")}</Button>
               )}
             </Card>
           ) : (
             <div className="mj-grid">
               {filtered.map((p) => {
-                const nom = p.data && p.data.identite && p.data.identite.nom_commun;
-                const nomLatin = p.data && p.data.identite && p.data.identite.nom_latin;
-                const categorie = p.data && p.data.identite && p.data.identite.categorie;
+                const nom = gardenPlantDisplayName(p, locale);
+                const nomLatin = gardenPlantLatinName(p);
+                const categorie = gardenPlantCategory(p, t);
                 const zoneName = zoneNameForPlant(p, zones.zones);
                 return (
                   <div
@@ -1420,7 +1579,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                         checked={selectedIds.has(p.id)}
                         onChange={() => toggleSelected(p.id)}
                         onClick={(e) => e.stopPropagation()}
-                        aria-label={nom ? `Sélectionner ${nom}` : "Sélectionner cette plante"}
+                        aria-label={nom ? t("garden.selectPlantAriaLabel", { name: nom }) : t("garden.selectPlantAriaLabelGeneric")}
                       />
                     )}
                     <div className="mj-card-photo">
@@ -1442,14 +1601,14 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                     {!selectionMode && (
                       confirmDeleteId === p.id ? (
                         <div className="mj-delete-confirm" onClick={(e) => e.stopPropagation()}>
-                          <span className="mj-delete-confirm-text">Supprimer cette plante ?</span>
+                          <span className="mj-delete-confirm-text">{t("garden.confirmDeletePlant")}</span>
                           <div className="mj-delete-confirm-actions">
-                            <button type="button" className="mj-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>Supprimer</button>
-                            <button type="button" className="mj-delete-confirm-no" onClick={handleCancelDeleteClick}>Annuler</button>
+                            <button type="button" className="mj-delete-confirm-yes" onClick={(e) => handleConfirmDeleteClick(e, p.id)}>{t("garden.delete")}</button>
+                            <button type="button" className="mj-delete-confirm-no" onClick={handleCancelDeleteClick}>{t("garden.cancel")}</button>
                           </div>
                         </div>
                       ) : (
-                        <button type="button" className="mj-card-delete" onClick={(e) => handleRequestDelete(e, p.id)} aria-label="Supprimer cette plante">
+                        <button type="button" className="mj-card-delete" onClick={(e) => handleRequestDelete(e, p.id)} aria-label={t("garden.deletePlantAriaLabel")}>
                           <IconTrash size={15} />
                         </button>
                       )
@@ -1459,7 +1618,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
               })}
             </div>
           )}
-          <div className="mj-count">{jardin.length} plante{jardin.length > 1 ? "s" : ""} dans votre jardin</div>
+          <div className="mj-count">{jardin.length > 1 ? t("garden.countInGardenPlural", { count: jardin.length }) : t("garden.countInGarden", { count: jardin.length })}</div>
         </>
       )}
     </div>
@@ -1473,9 +1632,20 @@ const GARDEN_STYLES = `
   .mj-title { margin-top:6px;font-family:var(--pe-font-display);font-weight:600;font-size:clamp(26px,3.2vw,40px);color:var(--pe-text);line-height:1.1; }
   .mj-subtitle { margin-top:8px;font:var(--pe-text-body);color:var(--pe-text-muted);max-width:480px; }
   .mj-header-cta { flex-shrink:0;display:inline-flex;align-items:center;gap:8px;white-space:nowrap; }
-  @media (max-width:640px) { .mj-header { flex-direction:column;align-items:stretch;gap:14px;padding-bottom:16px;margin-bottom:22px; } .mj-header-cta { align-self:flex-start; } }
+  @media (max-width:640px) {
+    .mj-header { flex-direction:column;align-items:stretch;gap:14px;padding-bottom:16px;margin-bottom:22px; }
+    .mj-header-cta { align-self:flex-start; }
+    /* The empty-state card below already carries its own full-emphasis
+       "Identifier une plante" CTA (see mj-empty-card) — on mobile, right
+       above it, this header CTA would otherwise be a second identical
+       filled button. De-emphasized to a lighter/outlined look here only
+       (same label, same onGoIdentifier action, nothing behavioral changes)
+       so the card's button reads as the one obvious primary action. */
+    .mj-header-cta.pe-btn-primary { background:transparent;color:var(--pe-accent);border-color:var(--pe-border-strong);box-shadow:none; }
+  }
 
   .mj-loading, .mj-empty-card { padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--pe-text-muted);font:var(--pe-text-body); }
+  @media (max-width:480px) { .mj-empty-card { padding:26px 20px;gap:10px; } }
   .mj-loading svg, .mj-empty-card svg { color:var(--pe-sage-400); }
   .mj-empty-title { font:var(--pe-text-h3);color:var(--pe-text); }
   .mj-empty-sub { max-width:360px; }
@@ -1492,10 +1662,10 @@ const GARDEN_STYLES = `
   .mj-weather-line strong { color:var(--pe-text);font-weight:600; }
 
   .mj-zones-row { display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;margin-bottom:18px;padding-bottom:2px; }
-  .mj-zone-chip { flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;min-height:38px; }
+  .mj-zone-chip { flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text);font:var(--pe-text-small);font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;min-height:44px; }
   .mj-zone-chip:hover { border-color:var(--pe-border-strong); }
   .mj-zone-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
-  .mj-zone-manage-btn { flex-shrink:0;padding:9px 14px;border-radius:999px;border:1px dashed var(--pe-border-strong);background:transparent;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:38px; }
+  .mj-zone-manage-btn { flex-shrink:0;padding:9px 14px;border-radius:999px;border:1px dashed var(--pe-border-strong);background:transparent;color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:44px; }
   .mj-zone-manage-btn:hover { color:var(--pe-text);border-color:var(--pe-accent); }
 
   .mj-section { margin-bottom:18px; }
@@ -1515,7 +1685,7 @@ const GARDEN_STYLES = `
   .mj-search-clear:hover { color:var(--pe-text); }
 
   .mj-cats-row { display:flex;gap:8px;overflow-x:auto;margin-bottom:22px;padding-bottom:2px; }
-  .mj-cat-chip { flex-shrink:0;padding:8px 15px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:38px; white-space:nowrap; }
+  .mj-cat-chip { flex-shrink:0;padding:8px 15px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:44px; white-space:nowrap; }
   .mj-cat-chip:hover { border-color:var(--pe-border-strong);color:var(--pe-text); }
   .mj-cat-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
 
@@ -1592,17 +1762,18 @@ function wait(ms) {
 }
 
 function AccountBar({ auth, onLogin }) {
+  const { t } = useI18n();
   if (auth.loading) return null;
   return (
     <div className="pe-account-bar">
       {auth.user ? (
         <>
           <span className="pe-account-email">{auth.user.email}</span>
-          <a className="pe-account-action" href="/profile">Mon profil</a>
-          <button className="pe-account-action" onClick={() => auth.signOut()}>Se déconnecter</button>
+          <a className="pe-account-action" href="/profile">{t("account.myProfile")}</a>
+          <button className="pe-account-action" onClick={() => auth.signOut()}>{t("account.logout")}</button>
         </>
       ) : (
-        <button className="pe-account-action" onClick={onLogin}>Se connecter</button>
+        <button className="pe-account-action" onClick={onLogin}>{t("account.login")}</button>
       )}
     </div>
   );
@@ -1610,6 +1781,7 @@ function AccountBar({ auth, onLogin }) {
 
 export default function Home() {
   const router = useRouter();
+  const { t } = useI18n();
   const [activeNav, setActiveNav] = useState("accueil");
   const [navInitialized, setNavInitialized] = useState(false);
   const auth = useAuth();
@@ -1822,232 +1994,19 @@ export default function Home() {
   }, [auth.loading, profileLoading, weatherRequestKey]);
 
   const navItems = [
-    { key: "accueil", label: "Accueil", icon: IconHome, kind: "tab", placement: "main", onClick: () => setActiveNav("accueil") },
-    { key: "identifier", label: "Identifier", icon: IconCamera, kind: "tab", placement: "main", emphasis: true, onClick: () => setActiveNav("identifier") },
-    { key: "jardin", label: "Mon jardin", icon: IconSprout, kind: "tab", placement: "main", onClick: () => setActiveNav("jardin"), badge: garden.jardin.length > 0 ? garden.jardin.length : null },
-    { key: "trouver", label: "Trouver", icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
-    { key: "profil", label: "Profil", icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
+    { key: "accueil", label: t("nav.accueil"), icon: IconHome, kind: "tab", placement: "main", onClick: () => setActiveNav("accueil") },
+    { key: "identifier", label: t("nav.identifier"), icon: IconCamera, kind: "tab", placement: "main", emphasis: true, onClick: () => setActiveNav("identifier") },
+    { key: "jardin", label: t("nav.jardin"), icon: IconSprout, kind: "tab", placement: "main", onClick: () => setActiveNav("jardin"), badge: garden.jardin.length > 0 ? garden.jardin.length : null },
+    { key: "trouver", label: t("nav.trouver"), icon: IconSearch, kind: "link", href: "/plant-finder", placement: "main" },
+    { key: "profil", label: t("nav.profil"), icon: IconUser, kind: "link", href: "/profile", placement: "bottom" },
   ];
 
   return (
     <AppShell navItems={navItems} activeKey={activeNav} topBar={<AccountBar auth={auth} onLogin={() => openAuthModal("login")} />}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        :root { --ink:#0f1f0f;--forest:#1e3a1e;--moss:#3a6b3a;--sage:#7aad7a;--mist:#e8f0e8;--paper:#f4f2ed;--cream:#faf8f3;--gold:#c4962a;--rust:#8b3a1e;--r:14px;--shadow:0 4px 20px rgba(15,31,15,0.1); }
-        body { font-family:'Outfit',sans-serif;background:var(--paper);color:var(--ink); }
-        .tab-page { padding:16px 16px 20px;max-width:680px;margin:0 auto; }
-        .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;display:flex;align-items:flex-end; }
-        .modal { background:white;border-radius:20px 20px 0 0;padding:28px 20px 36px;width:100%;max-height:85vh;overflow-y:auto; }
-        .modal-title { font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--forest);font-weight:700;margin-bottom:4px; }
-        .modal-sub { color:#999;font-size:13px;margin-bottom:20px; }
-        .plantation-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px; }
-        .plantation-btn { display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:2px solid rgba(0,0,0,0.1);border-radius:12px;background:var(--cream);cursor:pointer;font-family:'Outfit',sans-serif;transition:all 0.15s; }
-        .plantation-btn.active { border-color:var(--moss);background:var(--mist); }
-        .plantation-icon { font-size:28px; }
-        .plantation-label { font-size:12px;font-weight:500;color:var(--ink);text-align:center;line-height:1.3; }
-        .modal-actions { display:flex;flex-direction:column;gap:8px; }
-        .btn-modal-confirm { background:var(--forest);color:white;border:none;border-radius:12px;padding:14px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer; }
-        .btn-modal-confirm:disabled { opacity:0.4;cursor:not-allowed; }
-        .btn-modal-skip { background:none;border:1px solid rgba(0,0,0,0.12);border-radius:12px;padding:12px;font-family:'Outfit',sans-serif;font-size:14px;color:#888;cursor:pointer; }
-        .modal-step { font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--sage);font-weight:600;margin-bottom:6px; }
-        .input-panel { background:white;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow); }
-        .drop-zone { border:2px dashed rgba(58,107,58,0.25);border-radius:10px;margin:16px;padding:28px 16px;text-align:center;cursor:pointer;background:var(--mist);position:relative;overflow:hidden; }
-        .drop-zone.has-image { padding:0;border-style:solid; }
-        .drop-preview { width:100%;height:200px;object-fit:cover;display:block;border-radius:8px; }
-        .drop-overlay { position:absolute;inset:0;background:rgba(15,31,15,0.5);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s;border-radius:8px; }
-        .drop-zone:hover .drop-overlay { opacity:1; }
-        .drop-overlay span { color:white;font-size:13px;font-weight:500; }
-        .drop-icon { font-size:36px;display:block;margin-bottom:8px; }
-        .drop-title { font-family:'Cormorant Garamond',serif;font-size:17px;color:var(--forest);font-weight:600; }
-        .drop-sub { font-size:12px;color:#999;margin-top:3px; }
-        .divider { display:flex;align-items:center;gap:10px;padding:0 16px; }
-        .divider-line { flex:1;height:1px;background:rgba(0,0,0,0.07); }
-        .divider-text { font-size:11px;color:#bbb;text-transform:uppercase;letter-spacing:1px; }
-        .name-row { display:flex;gap:8px;padding:12px 16px 16px; }
-        .plant-input { flex:1;border:1.5px solid rgba(0,0,0,0.12);border-radius:10px;padding:11px 14px;font-family:'Outfit',sans-serif;font-size:15px;outline:none;background:var(--cream); }
-        .plant-input:focus { border-color:var(--moss); }
-        .btn-analyze { background:var(--forest);color:white;border:none;border-radius:10px;padding:11px 18px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap; }
-        .error-box { background:#fff5f5;border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:12px 14px;color:var(--rust);font-size:14px;margin:0 16px 16px; }
-        .loading-state { text-align:center;padding:60px 20px; }
-        .leaf-spin { font-size:48px;display:inline-block;animation:spin 2s linear infinite;margin-bottom:14px; }
-        @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
-        .loading-title { font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--forest); }
-        .loading-sub { color:#888;font-size:14px;margin-top:4px; }
-        .result-panel { animation:fadeIn 0.4s ease; }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
-        .reset-row { display:flex;justify-content:flex-end;margin-bottom:12px; }
-        .btn-reset { background:none;border:1px solid rgba(0,0,0,0.12);border-radius:8px;padding:6px 12px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;color:#888; }
-        .plant-hero { background:var(--forest);border-radius:var(--r);overflow:hidden;box-shadow:0 8px 32px rgba(15,31,15,0.2); }
-        .hero-content { padding:20px 18px 0;display:flex;gap:14px;align-items:flex-start; }
-        .hero-img-wrap { width:84px;height:84px;border-radius:10px;overflow:hidden;flex-shrink:0;border:2px solid rgba(255,255,255,0.2); }
-        .hero-img { width:100%;height:100%;object-fit:cover; }
-        .hero-no-img { width:84px;height:84px;border-radius:10px;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:38px;flex-shrink:0; }
-        .hero-text { flex:1; }
-        .confidence-badge { display:inline-block;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;margin-bottom:5px; }
-        .conf-élevée { background:rgba(122,173,122,0.25);color:var(--sage); }
-        .conf-moyenne { background:rgba(196,150,42,0.2);color:#f0d890; }
-        .conf-faible { background:rgba(139,58,30,0.2);color:#e8a080; }
-        .hero-name { font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:700;color:white;line-height:1.1; }
-        .hero-latin { font-style:italic;color:rgba(255,255,255,0.5);font-size:12px;margin-top:2px; }
-        .hero-family { color:rgba(255,255,255,0.3);font-size:10px;margin-top:2px;text-transform:uppercase;letter-spacing:0.8px; }
-        .plantation-tag { display:inline-block;background:rgba(122,173,122,0.2);color:var(--sage);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:500;margin-top:6px; }
-        .hero-desc { color:rgba(255,255,255,0.65);font-size:13px;line-height:1.6;padding:12px 18px;font-weight:300; }
-        .hero-save { padding:0 18px 12px; }
-        .btn-save { background:var(--sage);color:var(--forest);border:none;border-radius:8px;padding:9px 18px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer; }
-        .saved-badge { color:var(--sage);font-size:13px;font-weight:500; }
-        .tabs-wrap { padding:0 18px;border-top:1px solid rgba(255,255,255,0.08); }
-        .tabs { display:flex;overflow-x:auto;scrollbar-width:none; }
-        .tabs::-webkit-scrollbar { display:none; }
-        .tab { display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 12px 9px;color:rgba(255,255,255,0.4);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;white-space:nowrap;font-size:11px;font-weight:500;background:none;border-left:none;border-right:none;border-top:none;font-family:'Outfit',sans-serif; }
-        .tab-icon { font-size:15px; }
-        .tab.active { color:var(--sage);border-bottom-color:var(--sage); }
-        .tab-content { background:white;border-radius:var(--r);margin-top:12px;padding:18px;box-shadow:var(--shadow); }
-        .section-title { font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--forest);margin-bottom:14px;font-weight:700; }
-        .context-banner { background:var(--mist);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--moss);font-weight:500;margin-bottom:14px; }
-        .subsection { margin-top:14px; }
-        .subsection-title { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--sage);margin-bottom:7px; }
-        .tag-list { display:flex;flex-direction:column;gap:5px; }
-        .tag { display:flex;align-items:flex-start;gap:8px;padding:8px 11px;border-radius:8px;font-size:13px;line-height:1.5; }
-        .tag-dot { width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:4px; }
-        .tag-green { background:#f0f7f0;color:#2d5a2d; } .tag-green .tag-dot { background:var(--moss); }
-        .tag-red { background:#fff5f3;color:#6b1e1e; } .tag-red .tag-dot { background:var(--rust); }
-        .tag-gold { background:#fffbf0;color:#6b4f1e; } .tag-gold .tag-dot { background:var(--gold); }
-        .highlight-box { background:var(--mist);border-left:3px solid var(--moss);border-radius:0 8px 8px 0;padding:11px 13px;margin:12px 0;font-size:13px;color:var(--forest);line-height:1.6; }
-        .highlight-label { font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--sage);font-weight:600;margin-bottom:3px; }
-        .info-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px; }
-        .info-card { background:var(--cream);border-radius:10px;padding:11px;display:flex;align-items:flex-start;gap:8px; }
-        .info-icon { font-size:18px;flex-shrink:0; }
-        .info-label { font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:#999;font-weight:600;margin-bottom:2px; }
-        .info-value { font-size:12px;color:var(--ink);font-weight:500;line-height:1.4; }
-        .empty-text { color:#bbb;font-size:13px;font-style:italic; }
-        .cal-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:6px; }
-        .cal-cell { background:var(--cream);border-radius:8px;padding:8px 6px;text-align:center; }
-        .cal-cell-active { background:var(--mist);border:1.5px solid var(--sage); }
-        .cal-month { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sage);margin-bottom:3px; }
-        .cal-text { font-size:11px;color:var(--ink);line-height:1.3; }
-        .empty-jardin { text-align:center;padding:80px 20px; }
-        .empty-icon { font-size:56px;margin-bottom:14px; }
-        .empty-title { font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--forest);margin-bottom:6px; }
-        .empty-sub { color:#999;font-size:14px; }
-        .mois-card { background:var(--forest);border-radius:var(--r);padding:16px 18px;margin-bottom:16px;box-shadow:var(--shadow); }
-        .mois-title { font-family:'Cormorant Garamond',serif;font-size:18px;color:white;font-weight:700;margin-bottom:12px; }
-        .mois-item { display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08); }
-        .mois-item:last-child { border-bottom:none; }
-        .mois-plante { font-size:13px;font-weight:600;color:var(--sage); }
-        .mois-tache { font-size:13px;color:rgba(255,255,255,0.7); }
-        .mois-vide { color:rgba(255,255,255,0.4);font-size:13px;font-style:italic; }
-        .mois-title-row { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px; }
-        .mois-title-row .mois-title { margin-bottom:0; }
-        .mois-collapse-btn { background:none;border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.85);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:20px; }
-        .jardin-summary { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px; }
-        .jardin-summary-chip { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest); }
-        .jardin-summary-chip-btn { background:var(--cream);border:1px solid rgba(0,0,0,0.06);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--forest);font-family:'Outfit',sans-serif;cursor:pointer; }
-        .jardin-section-toggle { width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid rgba(0,0,0,0.08);border-radius:var(--r);padding:12px 16px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--forest);cursor:pointer;margin-bottom:16px;box-shadow:var(--shadow); }
-        .jardin-section-toggle-action { color:var(--moss);font-size:12px;font-weight:600; }
-        .jardin-section { margin-bottom:16px; }
-        .jardin-section-collapse-btn { background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:0;margin-bottom:8px;display:block; }
-        .filters-row { margin-bottom:10px; }
-        .search-input { width:100%;border:1.5px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;font-family:'Outfit',sans-serif;font-size:14px;outline:none;background:white; }
-        .cats-row { display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;margin-bottom:14px; }
-        .cats-row::-webkit-scrollbar { display:none; }
-        .cat-btn { border:1px solid rgba(0,0,0,0.1);background:white;border-radius:20px;padding:5px 12px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;white-space:nowrap;color:#666; }
-        .cat-btn.active { background:var(--moss);color:white;border-color:var(--moss); }
-        .jardin-grid { display:flex;flex-direction:column;gap:10px; }
-        .jardin-card { background:white;border-radius:var(--r);display:flex;gap:12px;padding:12px;box-shadow:var(--shadow);cursor:pointer;position:relative;border:1px solid rgba(0,0,0,0.06); }
-        .jardin-card-img { width:68px;height:68px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--mist);display:flex;align-items:center;justify-content:center; }
-        .jardin-card-body { flex:1;min-width:0; }
-        .jardin-card-name { font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:700;color:var(--ink); }
-        .jardin-card-latin { font-size:11px;color:#aaa;font-style:italic;margin-top:1px; }
-        .jardin-card-cat { display:inline-block;background:var(--mist);color:var(--moss);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:500;margin-top:4px; }
-        .jardin-card-plantation { font-size:11px;color:var(--gold);margin-top:3px; }
-        .tache-badge { display:block;margin-top:5px;font-size:11px;color:var(--gold);font-weight:500; }
-        .jardin-card-chevron { align-self:center;font-size:20px;line-height:1;color:#ccc;padding-right:26px;flex-shrink:0; }
-        .jardin-delete { position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;color:#ccc;font-size:14px;padding:4px;border-radius:4px; }
-        .jardin-delete:hover { background:#ffebee;color:var(--rust); }
-        .jardin-delete-confirm { position:absolute;inset:0;background:rgba(255,255,255,0.97);border-radius:var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px;z-index:3;text-align:center; }
-        .jardin-delete-confirm-text { font-size:13px;font-weight:600;color:var(--ink); }
-        .jardin-delete-confirm-actions { display:flex;gap:8px; }
-        .jardin-delete-confirm-yes { background:var(--rust);color:white;border:none;border-radius:8px;padding:7px 14px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer; }
-        .jardin-delete-confirm-no { background:none;border:1px solid rgba(0,0,0,0.12);border-radius:8px;padding:7px 14px;font-family:'Outfit',sans-serif;font-size:12px;color:#666;cursor:pointer; }
-        .jardin-count { text-align:center;color:#bbb;font-size:12px;margin-top:14px; }
-        .back-btn { display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-bottom:16px;font-weight:500; }
-        .btn-danger { background:#ffebee;color:var(--rust);border:1px solid rgba(139,58,30,0.2);border-radius:8px;padding:9px 16px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer; }
-        .auth-tabs { display:flex;gap:6px;margin-bottom:18px; }
-        .auth-tab { flex:1;padding:9px;text-align:center;border-radius:10px;border:1.5px solid rgba(0,0,0,0.1);background:var(--cream);font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:#888;cursor:pointer; }
-        .auth-tab.active { border-color:var(--moss);background:var(--mist);color:var(--forest); }
-        .auth-field { margin-bottom:12px; }
-        .auth-field .plant-input { width:100%; }
-        .auth-label { font-size:11px;font-weight:600;color:var(--forest);margin-bottom:5px;display:block; }
-        .auth-success-box { background:var(--mist);border-radius:8px;padding:12px 14px;color:var(--forest);font-size:13px;margin-bottom:16px;line-height:1.5; }
-        .modal .error-box { margin:0 0 16px; }
-        .id-status-badge { display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-bottom:5px; }
-        .id-status-confirmed { background:rgba(122,173,122,0.25);color:var(--sage); }
-        .id-status-uncertain { background:rgba(196,150,42,0.2);color:#f0d890; }
-        .id-blocked-note { color:rgba(255,255,255,0.55);font-size:13px;font-style:italic; }
-        .identification-check { padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap; }
-        .id-check-btn { flex:1;min-width:90px;padding:9px 10px;border:1.5px solid rgba(255,255,255,0.25);border-radius:20px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.85);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all 0.15s; }
-        .id-check-btn.active-yes { background:var(--sage);color:var(--forest);border-color:var(--sage); }
-        .id-check-btn.active-no { background:var(--rust);color:white;border-color:var(--rust); }
-        .id-check-btn.active-unsure { background:var(--gold);color:var(--forest);border-color:var(--gold); }
-        .jardin-select-bar { display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px; }
-        .jardin-select-count { font-size:13px;color:var(--moss);font-weight:600; }
-        .jardin-card-selected { border-color:var(--moss);box-shadow:0 0 0 2px var(--moss) inset; }
-        .jardin-select-checkbox { position:absolute;top:8px;left:8px;width:20px;height:20px;accent-color:var(--moss);cursor:pointer;z-index:2;background:white;border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.25); }
-        .reminder-type-row { border:1.5px solid rgba(0,0,0,0.1);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--cream); }
-        .reminder-type-header { display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'Outfit',sans-serif; }
-        .reminder-type-header input[type="checkbox"] { width:18px;height:18px;accent-color:var(--moss);cursor:pointer; }
-        .reminder-type-icon { font-size:18px; }
-        .reminder-type-label { font-size:14px;font-weight:600;color:var(--ink); }
-        .reminder-type-config { margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,0,0,0.08); }
-        .reminders-overview { background:white;border-radius:var(--r);padding:16px 18px;margin-bottom:16px;box-shadow:var(--shadow); }
-        .reminders-overview-title { font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--forest);font-weight:700;margin-bottom:12px; }
-        .reminders-empty { color:#aaa;font-size:13px;font-style:italic; }
-        .reminders-date-group { margin-bottom:14px; }
-        .reminders-date-group:last-child { margin-bottom:0; }
-        .reminders-date-label { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--sage);margin-bottom:6px; }
-        .reminders-type-group { padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06); }
-        .reminders-type-group:last-child { border-bottom:none; }
-        .reminders-type-line { display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:13px;font-weight:600;color:var(--ink); }
-        .reminders-snoozed-tag { font-weight:500;color:var(--gold);font-style:italic; }
-        .reminders-plant-names { font-size:12px;color:#999;margin-top:2px; }
-        .reminders-manage-btn { margin-left:auto;background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px; }
-        .reminders-item-list { margin-top:8px;display:flex;flex-direction:column;gap:10px; }
-        .reminders-item-row { background:var(--cream);border-radius:8px;padding:8px 10px; }
-        .reminders-item-name { font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px; }
-        .reminders-item-actions { display:flex;gap:6px;flex-wrap:wrap; }
-        .reminders-action-btn { background:white;border:1px solid rgba(0,0,0,0.12);border-radius:14px;padding:5px 10px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--ink);cursor:pointer; }
-        .reminders-action-btn:disabled { opacity:0.45;cursor:not-allowed; }
-        .reminders-action-confirm { background:var(--forest);color:white;border-color:var(--forest); }
-        .reminders-snooze-form { display:flex;flex-direction:column;gap:6px; }
-        .reminders-snooze-form .plant-input { width:100%; }
-        .reminders-item-error { color:var(--rust);font-size:11px;margin-top:4px; }
-        .reminders-group-actions { margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed rgba(0,0,0,0.12); }
-        .reminders-group-busy { font-size:12px;color:#999;font-style:italic; }
-        .reminders-group-confirm-text { display:block;font-size:12px;color:var(--ink);margin-bottom:6px; }
-        .reminders-weather-location { font-size:12px;color:var(--sage);font-weight:600;margin-bottom:10px; }
-        .reminders-weather-attribution { font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:10px; }
-        .reminders-weather-attribution a { color:#aaa;text-decoration:underline; }
-        .reminders-weather-hint { margin-top:8px;padding-top:8px;border-top:1px dashed rgba(0,0,0,0.1);display:flex;flex-direction:column;gap:6px; }
-        .reminders-weather-text { font-size:12px;color:var(--moss);line-height:1.4; }
-        .zones-panel { background:white;border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow); }
-        .zones-panel-title { font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--forest);font-weight:700;margin-bottom:10px; }
-        .zones-empty-text { color:#999;font-size:13px;margin-bottom:12px;line-height:1.5; }
-        .zones-list { display:flex;flex-direction:column;gap:8px;margin-bottom:12px; }
-        .zones-item { display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--cream);border-radius:10px;padding:10px 12px; }
-        .zones-item-name { font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-        .zones-item-actions { display:flex;gap:10px;flex-shrink:0; }
-        .zones-item-action { background:none;border:none;color:var(--moss);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;padding:2px 4px; }
-        .zones-item-action-danger { color:var(--rust); }
-        .zones-edit-form { flex:1;display:flex;flex-direction:column;gap:6px; }
-        .zones-edit-actions { display:flex;gap:8px; }
-        .zones-delete-confirm { flex:1;display:flex;flex-direction:column;gap:6px; }
-        .zones-delete-confirm-text { font-size:13px;font-weight:600;color:var(--ink); }
-        .zones-item-error { color:var(--rust);font-size:11px; }
-        .zones-create-form { display:flex;flex-direction:column;gap:8px;margin-top:4px; }
-        .zones-add-btn { background:none;border:1.5px dashed rgba(58,107,58,0.3);border-radius:10px;padding:10px;width:100%;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--moss);cursor:pointer;margin-top:4px; }
-        .zone-settings-panel { background:var(--mist);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px; }
-        @media(max-width:400px){.info-grid{grid-template-columns:1fr}}
+        .error-box { background:#fff0ec;border:1px solid rgba(201,106,74,0.22);border-radius:var(--pe-radius-sm);padding:12px 14px;color:var(--pe-terracotta,#c96a4a);font:var(--pe-text-small);margin:0 16px 16px; }
+        .context-banner { background:var(--pe-sand);border-radius:var(--pe-radius-sm);padding:8px 12px;font:var(--pe-text-small);color:var(--pe-accent);font-weight:600;margin-bottom:14px; }
+        .auth-success-box { background:var(--pe-sand);border-radius:var(--pe-radius-sm);padding:12px 14px;color:var(--pe-accent);font:var(--pe-text-small);margin-bottom:16px;line-height:1.5; }
       `}</style>
 
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} initialMode={authModalMode} />}
@@ -2073,7 +2032,7 @@ export default function Home() {
 
       <p className="pe-ai-disclaimer">
         <IconInfo size={13} />
-        <span>Conseils IA à titre indicatif. Consultez un horticulteur pour cas spécifiques.</span>
+        <span>{t("app.aiDisclaimer")}</span>
       </p>
     </AppShell>
   );

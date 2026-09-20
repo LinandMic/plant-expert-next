@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Almeo</string>
+    <string name="title_activity_main">Almeo</string>
+    <string name="package_name">com.linandmic.almeo</string>
+    <string name="custom_url_scheme">com.linandmic.almeo</string>
+</resources>

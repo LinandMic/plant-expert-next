@@ -60,7 +60,7 @@ function completedStep(result) {
 // downstream can still look up refs without crashing (finding nothing,
 // which is correct — nothing was created).
 function skippedStep(reason) {
-  return { status: "skipped", reason, created: 0, updated: 0, unchanged: 0, errors: [], idByRef: new Map() };
+  return { status: "skipped", reason, created: 0, updated: 0, unchanged: 0, errors: [], idByRef: new Map(), protectedFields: [] };
 }
 
 function finalizeReport({ dryRun, steps }) {
@@ -71,8 +71,9 @@ function finalizeReport({ dryRun, steps }) {
       unchanged: acc.unchanged + step.unchanged,
       errors: acc.errors + step.errors.length,
       skipped: acc.skipped + (step.status === "skipped" ? 1 : 0),
+      protectedFields: acc.protectedFields.concat(step.protectedFields ?? []),
     }),
-    { created: 0, updated: 0, unchanged: 0, errors: 0, skipped: 0 }
+    { created: 0, updated: 0, unchanged: 0, errors: 0, skipped: 0, protectedFields: [] }
   );
 
   return {

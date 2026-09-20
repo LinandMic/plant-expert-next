@@ -1,5 +1,6 @@
 import { formatHeightRange, sunLabels, entryTypeLabel, plantTypeLabel, plantFinderDisplayTitle } from "@/lib/plantFinderFormat";
 import { IconSprig, IconChevronRight } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n";
 
 // returnTo: an optional already-serialized query string (q=...&type=...)
 // carrying the list page's current search/filter state, so the detail
@@ -10,22 +11,34 @@ import { IconSprig, IconChevronRight } from "@/components/ui/icons";
 // LIST_SELECT) — every card shows the same sober botanical fallback rather
 // than a broken image or an invented photo.
 //
-// display_name is the scientific/cultivar name (always present); common_name
-// is the optional French vernacular name. When present, common_name leads as
-// the card's title and display_name becomes the italic scientific subtitle —
-// when absent, display_name is shown alone as the title.
+// display_name is the scientific/cultivar name (always present); the
+// preferred vernacular name for the active locale (plant_common_names, via
+// plantFinderDisplayTitle) is the optional common name. When present, it
+// leads as the card's title and display_name becomes the italic scientific
+// subtitle — when absent, display_name is shown alone as the title.
+//
+// plant.imageUrl is nullable (most catalog rows have none yet — no image
+// was ever fetched/generated automatically, see plantFinderApi.js). When
+// present, it renders as a real photo; otherwise the same sober botanical
+// placeholder as before — the thumbnail box itself stays a fixed size
+// either way, so card height never depends on whether an image exists.
 export default function PlantFinderCard({ plant, returnTo }) {
+  const { t, locale } = useI18n();
   const height = formatHeightRange(plant.heightMinCm, plant.heightMaxCm);
-  const sun = sunLabels(plant.sun);
-  const badgeLabel = entryTypeLabel(plant.entryType);
-  const plantType = plantTypeLabel(plant.plantType);
+  const sun = sunLabels(plant.sun, t);
+  const badgeLabel = entryTypeLabel(plant.entryType, t);
+  const plantType = plantTypeLabel(plant.plantType, t);
   const href = `/plant-finder/${encodeURIComponent(plant.slug)}${returnTo ? `?from=${encodeURIComponent(returnTo)}` : ""}`;
-  const { title, scientificSubtitle } = plantFinderDisplayTitle(plant);
+  const { title, scientificSubtitle } = plantFinderDisplayTitle(plant, locale);
 
   return (
     <a href={href} className="pf2-card">
       <div className="pf2-card-photo">
-        <IconSprig size={26} />
+        {plant.imageUrl ? (
+          <img src={plant.imageUrl} alt={plant.imageAlt || title} className="pf2-card-photo-img" loading="lazy" />
+        ) : (
+          <IconSprig size={26} />
+        )}
       </div>
       <div className="pf2-card-body">
         <div className="pf2-card-top">

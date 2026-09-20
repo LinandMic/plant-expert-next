@@ -1,0 +1,7 @@
+[
+  { "input_name": "Quercus robur", "type": "species" },
+  { "input_name": "Taxus baccata", "type": "species" },
+  { "input_name": "Salvia officinalis", "type": "species" },
+  { "input_name": "Digitalis purpurea", "type": "species" },
+  { "input_name": "Cenchrus alopecuroides", "type": "species" }
+]
