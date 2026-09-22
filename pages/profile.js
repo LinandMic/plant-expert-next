@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import AppShell from "@/components/ui/AppShell";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { useAuth } from "@/lib/useAuth";
 import { fetchProfile, updateProfile } from "@/lib/profileApi";
 import { getExternalNavItems } from "@/components/ui/externalNavItems";
-import { IconUser, IconMapPin, IconHome } from "@/components/ui/icons";
+import { IconUser, IconMapPin, IconHome, IconAlertCircle } from "@/components/ui/icons";
 import { useI18n, SUPPORTED_LOCALES } from "@/lib/i18n";
+import DeleteAccountModal from "@/components/DeleteAccountModal";
 
 const SPACE_TYPE_IDS = ["jardin", "terrasse", "balcon", "interieur", "mixte"];
 
@@ -56,6 +58,7 @@ function LanguageSwitcher() {
 
 export default function ProfilePage() {
   const auth = useAuth();
+  const router = useRouter();
   const { t } = useI18n();
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
@@ -63,6 +66,17 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // After a confirmed, successful deletion: clear the session (so no
+  // stale authenticated state lingers anywhere else in the app) and send
+  // the user back to the ALMEO home — never leave them sitting on the
+  // now-meaningless profile form for an account that no longer exists.
+  const handleAccountDeleted = async () => {
+    setShowDeleteModal(false);
+    await auth.signOut();
+    router.push("/");
+  };
 
   useEffect(() => {
     if (auth.loading) return;
@@ -213,9 +227,25 @@ export default function ProfilePage() {
                 </div>
               </form>
             )}
+
+            {!loading && (
+              <Card className="pro-section pro-danger-zone">
+                <div className="pro-section-head pro-danger-head">
+                  <IconAlertCircle size={18} /><span>{t("profile.deleteAccount.sectionTitle")}</span>
+                </div>
+                <p className="pro-danger-desc">{t("profile.deleteAccount.description")}</p>
+                <Button type="button" className="pro-danger-btn" onClick={() => setShowDeleteModal(true)}>
+                  {t("profile.deleteAccount.button")}
+                </Button>
+              </Card>
+            )}
           </>
         )}
       </div>
+
+      {showDeleteModal && (
+        <DeleteAccountModal onClose={() => setShowDeleteModal(false)} onDeleted={handleAccountDeleted} />
+      )}
     </AppShell>
   );
 }
@@ -250,6 +280,11 @@ const PROFILE_STYLES = `
 
   .pro-error-box { background:#fff5f5;border:1px solid rgba(139,58,30,0.2);border-radius:var(--pe-radius-md);padding:14px 16px;color:var(--pe-terracotta,#8b3a1e);font:var(--pe-text-body); }
   .pro-success-box { background:var(--pe-sand);border-radius:var(--pe-radius-md);padding:14px 16px;color:var(--pe-accent);font:var(--pe-text-body); }
+
+  .pro-danger-zone { border-color:rgba(139,58,30,0.25); }
+  .pro-section-head.pro-danger-head { color:var(--pe-terracotta,#8b3a1e); }
+  .pro-danger-desc { margin:0 0 16px;color:var(--pe-text-muted);font:var(--pe-text-body);max-width:520px; }
+  .pro-danger-btn.pe-btn-primary { background:var(--pe-terracotta,#8b3a1e);border-color:var(--pe-terracotta,#8b3a1e);color:#fff; }
 
   .pro-actions { display:flex; }
   .pro-save-btn { min-width:200px; }
