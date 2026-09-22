@@ -819,6 +819,13 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, mone
       onRequireAuth();
       return;
     }
+    // Convenience only: the proxy remains the authority. The status RPC
+    // already includes an eligible Free monthly credit in availableCredits,
+    // so zero here really means there is nothing usable right now.
+    if (monetizationStatus && monetizationStatus.availableCredits <= 0) {
+      setError(t("identifier.noCredits"));
+      return;
+    }
     setShowModal(true);
   };
 
