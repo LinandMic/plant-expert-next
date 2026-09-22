@@ -9,6 +9,7 @@ import {
   IconSearch,
   IconSprout,
   IconSprig,
+  IconHelpCircle,
 } from "@/components/ui/icons";
 import {
   normalizeList,
@@ -136,6 +137,20 @@ function DisconnectedHome({ onLogin, onSignup, onGoIdentifier, previewPlants, t 
 // buildConnectedHomeModel() first, so a missing/loading/malformed source
 // always degrades to an empty state for its own section — never to the
 // whole dashboard disappearing.
+function AssistantEntryCard({ onOpenAssistant, t }) {
+  return (
+    <section className="ad-section">
+      <Card onClick={onOpenAssistant} className="ad-assistant-card">
+        <div className="ad-assistant-icon"><IconHelpCircle size={20} /></div>
+        <div className="ad-action-text">
+          <div className="ad-action-title">{t("assistant.homeEntryTitle")}</div>
+          <div className="ad-action-desc">{t("assistant.homeEntryDesc")}</div>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
 function ConnectedHome({
   firstName,
   gardenLoading,
@@ -144,6 +159,7 @@ function ConnectedHome({
   model,
   onGoIdentifier,
   onGoJardin,
+  onOpenAssistant,
   t,
 }) {
   const { plants, dueCount, overdueCount, todayWeather, weatherCity } = model;
@@ -172,6 +188,8 @@ function ConnectedHome({
           </div>
         </div>
       </section>
+
+      <AssistantEntryCard onOpenAssistant={onOpenAssistant} t={t} />
 
       <section className="ad-section">
         <SectionHeader title={t("dashboard.inYourGarden")} actionLabel={plants.length > 0 ? t("dashboard.seeAll") : null} onAction={onGoJardin} />
@@ -289,6 +307,9 @@ const DASHBOARD_STYLES = `
   .ad-plant-photo img { width:100%;height:100%;object-fit:cover;display:block; }
   .ad-plant-name { padding:10px 12px;font:var(--pe-text-small);color:var(--pe-text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 
+  .ad-assistant-card { padding:16px 18px;display:flex;flex-direction:row;align-items:center;gap:14px;text-align:left;width:100%;background:var(--pe-sand);border-color:transparent; }
+  .ad-assistant-icon { flex-shrink:0;color:var(--pe-accent); }
+
   .ad-actions-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:14px; }
   @media (max-width:900px) { .ad-actions-grid { grid-template-columns:repeat(2,1fr); } }
   .ad-action-card { padding:18px;display:flex;flex-direction:row;align-items:center;gap:14px;text-align:left; }
@@ -321,6 +342,7 @@ export default function AccueilDashboard({
   onGoJardin,
   onLogin,
   onSignup,
+  onOpenAssistant,
 }) {
   const { t } = useI18n();
   const today = todayLocalDateString();
@@ -354,6 +376,7 @@ export default function AccueilDashboard({
           model={model}
           onGoIdentifier={onGoIdentifier}
           onGoJardin={onGoJardin}
+          onOpenAssistant={onOpenAssistant}
           t={t}
         />
       ) : (
