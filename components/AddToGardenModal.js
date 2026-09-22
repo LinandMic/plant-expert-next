@@ -4,6 +4,7 @@ import IconButton from "@/components/ui/IconButton";
 import Button from "@/components/ui/Button";
 import { useI18n } from "@/lib/i18n";
 import * as gardenApi from "@/lib/gardenApi";
+import { FREE_GARDEN_LIMIT_REACHED, monetizationErrorCode } from "@/lib/monetizationErrors";
 
 // AddToGardenModal — the "catalog plant -> My Garden" flow (see this
 // round's audit: the existing add-to-garden path, gardenApi.insertPlant /
@@ -54,9 +55,13 @@ export default function AddToGardenModal({ plant, locale, user, zones, zonesLoad
       });
       setSubmitting(false);
       setSuccess(true);
-    } catch {
+    } catch (e) {
       setSubmitting(false);
-      setError(t("finder.addToGardenError"));
+      setError(
+        monetizationErrorCode(e) === FREE_GARDEN_LIMIT_REACHED
+          ? t("finder.freeGardenLimitReached")
+          : t("finder.addToGardenError")
+      );
     }
   };
 
