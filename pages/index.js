@@ -5,6 +5,8 @@ import { useAuth } from "@/lib/useAuth";
 import { tabFromQuery, tabToQuery } from "@/lib/homeTabRouting";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
+import { useMonetization } from "@/lib/useMonetization";
+import { FREE_GARDEN_LIMIT_REACHED, FREE_REMINDER_PLANT_LIMIT_REACHED } from "@/lib/monetizationErrors";
 import { useGardenZones } from "@/lib/useGardenZones";
 import { fetchProfile } from "@/lib/profileApi";
 import { fetchWeatherForProfile } from "@/lib/weatherApi";
@@ -189,8 +191,19 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage, acce
     },
     body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation, usage), messages: [{ role: "user", content }] })
   });
-  if (!response.ok) throw new Error(`API error ${response.status}`);
-  const data = await response.json();
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    // A malformed upstream response is handled like any other analysis
+    // failure; the server-side proxy has already refunded the credit.
+  }
+  if (!response.ok) {
+    const err = new Error(`API error ${response.status}`);
+    err.code = data && data.code ? data.code : null;
+    throw err;
+  }
+  if (!data) throw new Error("INVALID_ANALYSIS_RESPONSE");
   const text = data.content.map(b => b.text || "").join("");
   const clean = text.replace(/```json|```/g, "").trim(); const start = clean.indexOf("{"); const end = clean.lastIndexOf("}"); return JSON.parse(clean.slice(start, end + 1));
 }
@@ -716,7 +729,7 @@ const PLANT_DETAIL_STYLES = `
   @media (max-width:480px) { .pdet-rejected-actions { flex-direction:column; } .pdet-rejected-actions .pe-btn { width:100%; } }
 `;
 
-function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth }) {
+function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, monetizationStatus, onMonetizationChanged }) {
   const { t } = useI18n();
   const [plantName, setPlantName] = useState("");
   const [imageFile, setImageFile] = useState(null);
@@ -792,8 +805,11 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth }) {
       setResult(data);
       setIdentificationStatus(imageFile ? "unreviewed" : null);
     } catch (e) {
-      setError(t("identifier.analyzeError"));
-    } finally { setLoading(false); }
+      setError(e && e.code === "NO_CREDITS" ? t("identifier.noCredits") : t("identifier.analyzeError"));
+    } finally {
+      setLoading(false);
+      if (onMonetizationChanged) void onMonetizationChanged();
+    }
   };
 
   const handleAnalyze = () => {
@@ -801,6 +817,13 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth }) {
     if (authLoading) return;
     if (!accessToken) {
       onRequireAuth();
+      return;
+    }
+    // Convenience only: the proxy remains the authority. The status RPC
+    // already includes an eligible Free monthly credit in availableCredits,
+    // so zero here really means there is nothing usable right now.
+    if (monetizationStatus && monetizationStatus.availableCredits <= 0) {
+      setError(t("identifier.noCredits"));
       return;
     }
     setShowModal(true);
@@ -811,7 +834,15 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth }) {
     setSaveError(null);
     const plante = { id: Date.now(), dateAjout: new Date().toISOString(), imagePreview, plantation, usage, data: result, identificationStatus };
     const { error: err } = await addPlant(plante);
-    if (err) { setSaveError(err); return; }
+    if (err) {
+      setSaveError(
+        err === FREE_GARDEN_LIMIT_REACHED
+          ? t("garden.freeGardenLimitReached")
+          : err
+      );
+      return;
+    }
+    if (onMonetizationChanged) void onMonetizationChanged();
     setSaved(true);
   };
 
@@ -863,6 +894,14 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth }) {
             <div className="pi-eyebrow">{t("identifier.eyebrow")}</div>
             <h1 className="pi-title">{t("identifier.title")}</h1>
             <p className="pi-subtitle">{t("identifier.subtitle")}</p>
+            {monetizationStatus && (
+              <div className="pi-monetization-status" aria-live="polite">
+                <span className="pi-plan-pill">
+                  {monetizationStatus.tier === "premium" ? t("monetization.premium") : t("monetization.free")}
+                </span>
+                <span>{t("monetization.analysesAvailable", { count: monetizationStatus.availableCredits })}</span>
+              </div>
+            )}
           </header>
 
           <div className="pi-layout">
@@ -986,6 +1025,8 @@ const IDENTIFIER_STYLES = `
   .pi-eyebrow { font:var(--pe-text-small);color:var(--pe-accent);text-transform:uppercase;letter-spacing:1.2px;font-weight:700; }
   .pi-title { margin-top:6px;font-family:var(--pe-font-display);font-weight:600;font-size:clamp(26px,3.2vw,40px);color:var(--pe-text);line-height:1.1; }
   .pi-subtitle { margin-top:8px;font:var(--pe-text-body);color:var(--pe-text-muted);max-width:480px; }
+  .pi-monetization-status { display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;font:var(--pe-text-small);color:var(--pe-text-muted);font-weight:600; }
+  .pi-plan-pill { display:inline-flex;align-items:center;min-height:28px;padding:4px 10px;border-radius:999px;background:var(--pe-sand);color:var(--pe-accent);font-weight:700; }
   @media (max-width:640px) { .pi-header { padding-bottom:16px;margin-bottom:22px; } }
 
   .pi-layout { display:grid;grid-template-columns:1.7fr 1fr;gap:20px;align-items:start; }
@@ -1201,6 +1242,9 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
 
   const handleSubmitReminders = async (configs) => {
     const result = await reminders.createBulk(Array.from(selectedIds), configs);
+    if (result.error === FREE_REMINDER_PLANT_LIMIT_REACHED) {
+      return { error: t("garden.freeReminderLimitReached") };
+    }
     if (!result.error) {
       setShowReminderModal(false);
       setSelectionMode(false);
@@ -1795,6 +1839,7 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("accueil");
   const [navInitialized, setNavInitialized] = useState(false);
   const auth = useAuth();
+  const monetization = useMonetization(auth.user, auth.loading);
   const garden = useGarden(auth.user, auth.loading, PLANTATION_TYPES, USAGE_TYPES);
   const reminders = useReminders(auth.user, auth.loading);
   const gardenZones = useGardenZones(auth.user, auth.loading);
@@ -2043,6 +2088,8 @@ export default function Home() {
           accessToken={auth.accessToken}
           authLoading={auth.loading}
           onRequireAuth={() => openAuthModal("signup")}
+          monetizationStatus={monetization.status}
+          onMonetizationChanged={monetization.refresh}
         />
       )}
       {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} onGoIdentifier={() => setActiveNav("identifier")} />}
