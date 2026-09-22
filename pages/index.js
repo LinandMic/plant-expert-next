@@ -172,7 +172,7 @@ function resolveProxyUrl() {
   return `${webOrigin}/api/proxy`;
 }
 
-async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
+async function analyzeWithClaude(imageBase64, plantName, plantation, usage, accessToken) {
   const content = [];
   if (imageBase64) {
     content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } });
@@ -180,8 +180,13 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage) {
   } else {
     content.push({ type: "text", text: `Analyse complète de la plante : "${plantName}"` });
   }
+  if (!accessToken) throw new Error("AUTH_REQUIRED");
   const response = await fetch(resolveProxyUrl(), {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation, usage), messages: [{ role: "user", content }] })
   });
   if (!response.ok) throw new Error(`API error ${response.status}`);
@@ -711,7 +716,7 @@ const PLANT_DETAIL_STYLES = `
   @media (max-width:480px) { .pdet-rejected-actions { flex-direction:column; } .pdet-rejected-actions .pe-btn { width:100%; } }
 `;
 
-function IdentifierTab({ addPlant }) {
+function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth }) {
   const { t } = useI18n();
   const [plantName, setPlantName] = useState("");
   const [imageFile, setImageFile] = useState(null);
@@ -783,7 +788,7 @@ function IdentifierTab({ addPlant }) {
     try {
       let b64 = null;
       if (imageFile) { b64 = await resizeImage(imageFile); setImagePreview(`data:image/jpeg;base64,${b64}`); }
-      const data = await analyzeWithClaude(b64, plantName.trim(), plantationCtx, usageCtx);
+      const data = await analyzeWithClaude(b64, plantName.trim(), plantationCtx, usageCtx, accessToken);
       setResult(data);
       setIdentificationStatus(imageFile ? "unreviewed" : null);
     } catch (e) {
@@ -793,6 +798,11 @@ function IdentifierTab({ addPlant }) {
 
   const handleAnalyze = () => {
     if (!imageFile && !plantName.trim()) { setError(t("identifier.missingInput")); return; }
+    if (authLoading) return;
+    if (!accessToken) {
+      onRequireAuth();
+      return;
+    }
     setShowModal(true);
   };
 
@@ -2027,7 +2037,14 @@ export default function Home() {
           onSignup={() => openAuthModal("signup")}
         />
       )}
-      {activeNav === "identifier" && <IdentifierTab addPlant={garden.addPlant} />}
+      {activeNav === "identifier" && (
+        <IdentifierTab
+          addPlant={garden.addPlant}
+          accessToken={auth.accessToken}
+          authLoading={auth.loading}
+          onRequireAuth={() => openAuthModal("signup")}
+        />
+      )}
       {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} onGoIdentifier={() => setActiveNav("identifier")} />}
 
       <p className="pe-ai-disclaimer">
