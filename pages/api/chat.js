@@ -16,25 +16,47 @@
 //   session consumes exactly one existing consume_ai_credit() call,
 //   keyed on the session id itself as the idempotent request_key — so
 //   the credit RPC's own row-locking already prevents two concurrent
-//   "first messages" from double-charging (see the migration's own
-//   comment for the full argument). Follow-up messages in the same still-
-//   active session consume no additional credit.
-// - session lifecycle/limits are enforced authoritatively server-side via
-//   the ai_chat_sessions table and its open_chat_session /
-//   record_chat_message_result / close_chat_session RPCs (see that
-//   migration) — never trusted from the client, never kept in process
-//   memory (serverless instances are not stable session storage).
-// - if the FIRST Anthropic call of a newly-charged session fails before a
-//   usable reply, the credit is refunded and the session is permanently
-//   closed (close_reason "first_call_refunded"); the client must mint a
-//   new session id to retry. If a LATER message fails after at least one
-//   successful reply, nothing is refunded and the session stays open for
-//   a retry.
+//   "first messages" from double-charging. Follow-up messages in the
+//   same still-active session consume no additional credit.
+// - session lifecycle/limits are enforced authoritatively server-side,
+//   and made safe under CONCURRENT requests, via an explicit reserve /
+//   reconcile / release protocol against the ai_chat_sessions table (see
+//   that migration's own comment for the full argument):
+//     1. reserve_chat_message — BEFORE calling Anthropic, atomically
+//        validates the session AND reserves message-count/token capacity
+//        together, under one row lock. This is what actually prevents
+//        two concurrent requests for the same session from both passing
+//        the 10-message/20k-token check before either's usage lands —
+//        a separate "check, then later increment" (the previous
+//        revision's design) could not guarantee that, because the check
+//        and the increment were in different transactions with a slow
+//        Anthropic call in between.
+//     2. reconcile_chat_message — AFTER a successful reply, atomically
+//        replaces the reservation's conservative token estimate with
+//        Anthropic's real usage, records the credit charge, and closes
+//        the session if a limit is now reached. Idempotent.
+//     3. release_chat_message_reservation — used only for a LATER
+//        (non-credit-charging) message whose call failed, so a failed
+//        attempt never permanently costs part of the session's budget.
+//        Idempotent.
+// - if the FIRST Anthropic call of a newly-charged session fails, the
+//   credit is refunded and the session permanently closed — with
+//   close_reason "first_call_refunded" if the refund itself succeeded,
+//   or "first_call_refund_failed" if it did NOT (a durable, queryable
+//   fact instead of only a server log line — see FIX 4). Either way the
+//   client must mint a new session id to retry. If a LATER message fails
+//   after at least one successful reply, nothing is refunded, the
+//   reservation is released, and the session stays open for a retry.
+// - every Anthropic call attempt (success or failure) is durably logged
+//   to ai_chat_usage — model, tokens, status — never message/prompt
+//   content. A reconcile failure after a successful reply is ALSO logged
+//   there (status "reconcile_failed") rather than only console.error'd,
+//   so it is not silently lost.
 // - returns plain conversational text — no JSON-prefill trick, unlike
 //   proxy.js.
 import { classifyOrigin, isSameOriginReferer } from "../../lib/apiOrigin.js";
 import { createSupabaseAdminClient, getSupabaseAdminConfig } from "../../lib/supabaseAdmin.js";
-import { CHAT_MODEL, CHAT_SESSION_LIMITS } from "../../lib/chatConfig.js";
+import { CHAT_MODEL, CHAT_SESSION_LIMITS, CHAT_USAGE_STATUS } from "../../lib/chatConfig.js";
 import { resolveChatContext } from "../../lib/chatContext.js";
 import { buildChatSystemPrompt } from "../../lib/chatSystemPrompt.js";
 
@@ -71,11 +93,15 @@ function extractBearerToken(authorizationHeader) {
   return token || null;
 }
 
+function nonNegativeIntOrNull(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
 function nonNegativeIntOrZero(value) {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
-// validateMessages(rawMessages) -> { ok, messages, lastUserText, error }
+// validateMessages(rawMessages) -> { ok, messages, error }
 // Whitelists shape only: an array of { role: "user"|"assistant", content:
 // <string> } — never image/multimodal blocks (this endpoint is text-only
 // in V1), bounded in count and in the latest user turn's length.
@@ -215,36 +241,78 @@ export function createChatHandler({
       return res.status(status).json({ error: "Invalid context", code: resolvedContext.error });
     }
 
+    // --- FIX 1: atomic reservation, replacing the old check-then-later-
+    // increment. This single RPC call validates ownership/status/
+    // inactivity AND reserves message-count/token capacity together,
+    // under one row lock, so it cannot be raced by a concurrent request
+    // for the same session id.
     const inactivitySeconds = Math.round(CHAT_SESSION_LIMITS.INACTIVITY_TIMEOUT_MS / 1000);
 
-    let sessionState;
+    let reservation;
     try {
-      const { data, error } = await admin.rpc("open_chat_session", {
+      const { data, error } = await admin.rpc("reserve_chat_message", {
         p_session_id: sessionId,
         p_user_id: userId,
         p_inactivity_timeout_seconds: inactivitySeconds,
         p_max_user_messages: CHAT_SESSION_LIMITS.MAX_USER_MESSAGES,
         p_max_cumulative_tokens: CHAT_SESSION_LIMITS.MAX_CUMULATIVE_TOKENS,
+        p_estimated_tokens: CHAT_SESSION_LIMITS.RESERVATION_TOKEN_ESTIMATE,
       });
       if (error) throw error;
-      sessionState = data;
+      reservation = data;
     } catch (error) {
-      console.error("chat: failed to open session:", error.message);
+      console.error("chat: failed to reserve message slot:", error.message);
       return res.status(500).json({ error: "Assistant is not available right now." });
     }
 
-    if (!sessionState || sessionState.ok !== true) {
-      const code = (sessionState && sessionState.code) || "SESSION_STATE_MISSING";
+    if (!reservation || reservation.ok !== true) {
+      const code = (reservation && reservation.code) || "SESSION_STATE_MISSING";
       if (code === "FORBIDDEN") return res.status(403).json({ error: "Forbidden", code });
       if (code === "SESSION_CLOSED") {
-        return res.status(409).json({ error: "Session closed", code, close_reason: sessionState.close_reason });
+        return res.status(409).json({ error: "Session closed", code, close_reason: reservation.close_reason });
       }
-      console.error("chat: unexpected open_chat_session state:", code);
+      console.error("chat: unexpected reserve_chat_message state:", code);
       return res.status(500).json({ error: "Assistant is not available right now." });
     }
 
-    const isFirstChargeAttempt = sessionState.credit_charged !== true;
+    const reservationId = reservation.reservation_id;
+    const isFirstChargeAttempt = reservation.credit_charged !== true;
     let creditSource = null;
+
+    async function releaseReservation() {
+      try {
+        const { error } = await admin.rpc("release_chat_message_reservation", {
+          p_session_id: sessionId,
+          p_user_id: userId,
+          p_reservation_id: reservationId,
+        });
+        if (error) throw error;
+      } catch (error) {
+        console.error("chat: failed to release reservation:", error.message);
+      }
+    }
+
+    // --- FIX 3: durable per-call telemetry — model/tokens/status only,
+    // never message or prompt content. Logged only for outcomes of an
+    // actual (or attempted) Anthropic call; NO_CREDITS/FORBIDDEN/
+    // SESSION_CLOSED/invalid-body never reach here, since no cost was
+    // incurred and nothing needs reconciling for them.
+    async function recordUsage(row) {
+      try {
+        const { error } = await admin.from("ai_chat_usage").insert({
+          reservation_id: reservationId,
+          session_id: sessionId,
+          user_id: userId,
+          model: CHAT_MODEL,
+          is_first_message: isFirstChargeAttempt,
+          credit_source: creditSource,
+          ...row,
+        });
+        if (error) throw error;
+      } catch (error) {
+        console.error("chat: failed to record chat usage telemetry:", error.message);
+      }
+    }
 
     if (isFirstChargeAttempt) {
       let consumption;
@@ -257,10 +325,12 @@ export function createChatHandler({
         consumption = data;
       } catch (error) {
         console.error("chat: failed to consume AI credit:", error.message);
+        await releaseReservation();
         return res.status(500).json({ error: "Assistant is not available right now." });
       }
 
       if (!consumption || consumption.ok !== true) {
+        await releaseReservation();
         if (consumption && consumption.code === "NO_CREDITS") {
           return res.status(402).json({
             error: "NO_CREDITS",
@@ -283,10 +353,37 @@ export function createChatHandler({
       messages: messagesResult.messages,
     };
 
-    async function handleFirstCallFailure() {
+    // --- FIX 4: refund failure is durable, not just a console.error. The
+    // session is ALWAYS permanently closed after a first-call failure
+    // (never left refundable-and-reusable), but the close_reason records
+    // whether the refund itself actually succeeded, and a telemetry row
+    // is written either way so a lost credit is queryable, not only
+    // logged.
+    async function handleFirstCallFailure(upstreamStatus) {
       const refunded = await refundCredit(admin, userId, sessionId);
-      await closeSessionPermanently(admin, userId, sessionId, "first_call_refunded");
+      const closeReason = refunded ? "first_call_refunded" : "first_call_refund_failed";
+      await closeSessionPermanently(admin, userId, sessionId, closeReason);
+      await recordUsage({
+        status: refunded ? CHAT_USAGE_STATUS.REFUNDED : CHAT_USAGE_STATUS.REFUND_FAILED,
+        upstream_status: upstreamStatus,
+        input_tokens: null,
+        output_tokens: null,
+        cache_creation_input_tokens: null,
+        cache_read_input_tokens: null,
+      });
       return refunded;
+    }
+
+    async function handleLaterCallFailure(upstreamStatus) {
+      await releaseReservation();
+      await recordUsage({
+        status: CHAT_USAGE_STATUS.UPSTREAM_FAILED,
+        upstream_status: upstreamStatus,
+        input_tokens: null,
+        output_tokens: null,
+        cache_creation_input_tokens: null,
+        cache_read_input_tokens: null,
+      });
     }
 
     let response;
@@ -302,7 +399,8 @@ export function createChatHandler({
       });
     } catch (error) {
       console.error("chat: Anthropic request failed:", error);
-      if (isFirstChargeAttempt) await handleFirstCallFailure();
+      if (isFirstChargeAttempt) await handleFirstCallFailure(null);
+      else await handleLaterCallFailure(null);
       return res.status(502).json({
         error: "Upstream request failed",
         code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
@@ -314,7 +412,8 @@ export function createChatHandler({
       data = await response.json();
     } catch (error) {
       console.error("chat: invalid Anthropic JSON response:", error.message);
-      if (isFirstChargeAttempt) await handleFirstCallFailure();
+      if (isFirstChargeAttempt) await handleFirstCallFailure(response.status || null);
+      else await handleLaterCallFailure(response.status || null);
       return res.status(502).json({
         error: "Upstream request failed",
         code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
@@ -322,7 +421,8 @@ export function createChatHandler({
     }
 
     if (!response.ok) {
-      if (isFirstChargeAttempt) await handleFirstCallFailure();
+      if (isFirstChargeAttempt) await handleFirstCallFailure(response.status || null);
+      else await handleLaterCallFailure(response.status || null);
       return res.status(response.status || 502).json({
         error: "Upstream request failed",
         code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
@@ -330,7 +430,8 @@ export function createChatHandler({
     }
 
     if (!data || !Array.isArray(data.content) || !data.content[0] || typeof data.content[0].text !== "string") {
-      if (isFirstChargeAttempt) await handleFirstCallFailure();
+      if (isFirstChargeAttempt) await handleFirstCallFailure(response.status || null);
+      else await handleLaterCallFailure(response.status || null);
       return res.status(502).json({
         error: "Upstream response was incomplete",
         code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
@@ -339,28 +440,48 @@ export function createChatHandler({
 
     const assistantText = data.content[0].text;
     const usage = data && typeof data.usage === "object" ? data.usage : {};
-    const tokenCount = nonNegativeIntOrZero(usage.input_tokens) + nonNegativeIntOrZero(usage.output_tokens);
+    const inputTokens = nonNegativeIntOrZero(usage.input_tokens);
+    const outputTokens = nonNegativeIntOrZero(usage.output_tokens);
+    const cacheCreationTokens = nonNegativeIntOrNull(usage.cache_creation_input_tokens);
+    const cacheReadTokens = nonNegativeIntOrNull(usage.cache_read_input_tokens);
+    const tokenCount = inputTokens + outputTokens;
 
+    // --- FIX 2: reconciliation, with a durable trace on failure instead
+    // of a bare console.error. A successful, paid-for, delivered reply
+    // must never silently vanish from authoritative accounting — if
+    // reconcile_chat_message itself errors, that failure is written to
+    // ai_chat_usage (status "reconcile_failed") with the reservation id
+    // and actual token usage preserved, so it can be found and
+    // reconciled later, rather than only appearing in a server log.
     let sessionResult;
+    let reconcileFailed = false;
     try {
-      const { data: recordData, error } = await admin.rpc("record_chat_message_result", {
+      const { data: reconcileData, error } = await admin.rpc("reconcile_chat_message", {
         p_session_id: sessionId,
         p_user_id: userId,
+        p_reservation_id: reservationId,
+        p_actual_tokens: tokenCount,
         p_credit_charged: isFirstChargeAttempt,
         p_credit_source: creditSource,
-        p_token_count: tokenCount,
         p_max_user_messages: CHAT_SESSION_LIMITS.MAX_USER_MESSAGES,
         p_max_cumulative_tokens: CHAT_SESSION_LIMITS.MAX_CUMULATIVE_TOKENS,
       });
       if (error) throw error;
-      sessionResult = recordData;
+      sessionResult = reconcileData;
     } catch (error) {
-      // The reply already succeeded and must reach the user — a metering
-      // failure here must never turn a successful reply into a user-facing
-      // error, same principle as proxy.js's recordUsage().
-      console.error("chat: failed to record message result:", error.message);
+      console.error("chat: failed to reconcile message result:", error.message);
+      reconcileFailed = true;
       sessionResult = null;
     }
+
+    await recordUsage({
+      status: reconcileFailed ? CHAT_USAGE_STATUS.RECONCILE_FAILED : CHAT_USAGE_STATUS.SUCCEEDED,
+      upstream_status: response.status || 200,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_creation_input_tokens: cacheCreationTokens,
+      cache_read_input_tokens: cacheReadTokens,
+    });
 
     return res.status(200).json({
       session_id: sessionId,
