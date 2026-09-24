@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+// Release signing scaffold — no real credentials exist yet. Real values
+// live ONLY in android/keystore.properties, a local, gitignored file
+// (see android/keystore.properties.example and
+// docs/android-release-signing.md). This file is never committed and is
+// not present in a fresh checkout, so hasReleaseSigningConfig is false
+// until a developer creates it locally with a real keystore's details.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasReleaseSigningConfig = keystorePropertiesFile.exists()
+if (hasReleaseSigningConfig) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.linandmic.almeo"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,11 +29,59 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Left populated only when keystore.properties exists locally.
+    // Referencing signingConfigs.release with unset properties never
+    // errors at configuration time — Gradle only validates a
+    // signingConfig's completeness when a signing/packaging task
+    // actually tries to use it, which the guard below prevents from
+    // happening silently/unsigned.
+    signingConfigs {
+        release {
+            if (hasReleaseSigningConfig) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigningConfig) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+// Fail safely: a release build/bundle must never silently complete
+// "successfully" while producing an unsigned, apparently release-ready
+// artifact — not even one named "-unsigned.apk" left behind by an
+// intermediate packaging task. Checking inside a single task's doFirst
+// (assembleRelease/bundleRelease only) is not enough: AGP's own
+// intermediate tasks (packageRelease, etc.) run and produce output
+// *before* those aggregator tasks execute. Instead, this hooks
+// gradle.taskGraph.whenReady, which runs once the whole task graph for
+// this invocation is known but before ANY task in it has executed — if
+// any release-signing/packaging/assembling task is anywhere in that
+// graph and android/keystore.properties is missing, the build stops
+// immediately with zero tasks run and zero artifacts produced. Debug
+// builds, `cap sync android`, and every other task are completely
+// unaffected, since none of their task names match.
+gradle.taskGraph.whenReady { graph ->
+    def releaseArtifactRequested = graph.allTasks.any { task ->
+        def name = task.name
+        name.contains("Release") &&
+            (name.startsWith("assemble") || name.startsWith("bundle") || name.startsWith("package") || name.startsWith("sign"))
+    }
+    if (releaseArtifactRequested && !hasReleaseSigningConfig) {
+        throw new GradleException(
+            "Release signing is not configured: android/keystore.properties is missing.\n" +
+            "See android/keystore.properties.example and docs/android-release-signing.md " +
+            "for how to create it once a real release keystore exists. Debug builds are unaffected."
+        )
     }
 }
 
