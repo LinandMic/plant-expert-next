@@ -22,6 +22,7 @@ import ReminderBulkModal from "@/components/ReminderBulkModal";
 import RemindersOverview from "@/components/RemindersOverview";
 import GardenZonesPanel from "@/components/GardenZonesPanel";
 import AccueilDashboard from "@/components/AccueilDashboard";
+import ChatModal from "@/components/ChatModal";
 import AppShell from "@/components/ui/AppShell";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -429,7 +430,7 @@ function getPlantDetailTabs(t) {
   ];
 }
 
-function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions, zoneId, zones, isAuthenticated, onSaveZone }) {
+function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadySaved, context, onSaveContext, identificationStatus, identificationActions, zoneId, zones, isAuthenticated, onSaveZone, plantId, onAskAlmeo }) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState("maladies");
   const plantDetailTabs = getPlantDetailTabs(t);
@@ -491,6 +492,32 @@ function PlanteFiche({ result, imagePreview, plantation, usage, onSave, alreadyS
             <span className="pdet-blocked-note">{t("plantDetail.addBlockedRejected")}</span>
           ) : (
             <Button onClick={onSave}><IconSprout size={16} /> {t("plantDetail.addToGarden")}</Button>
+          )}
+          {onAskAlmeo && identificationStatus !== "rejected" && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (alreadySaved && plantId) {
+                  onAskAlmeo({ mode: "plant", plantId }, identite && identite.nom_commun);
+                } else {
+                  onAskAlmeo(
+                    {
+                      mode: "identification",
+                      identification: {
+                        commonName: identite && identite.nom_commun,
+                        latinName: identite && identite.nom_latin,
+                        category: identite && identite.categorie,
+                        plantationLabel: plantation && plantation.label,
+                        usageLabel: usage && usage.label,
+                      },
+                    },
+                    identite && identite.nom_commun
+                  );
+                }
+              }}
+            >
+              <IconHelpCircle size={16} /> {t("plantDetail.askAlmeo")}
+            </Button>
           )}
         </div>
 
@@ -665,7 +692,7 @@ const PLANT_DETAIL_STYLES = `
 
   .pdet-hero-desc { margin-top:16px;font:var(--pe-text-body);color:var(--pe-text-muted); }
 
-  .pdet-save-row { margin-top:18px; }
+  .pdet-save-row { margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center; }
   .pdet-saved-badge { display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:999px;background:var(--pe-sand);color:var(--pe-accent);font:var(--pe-text-small);font-weight:700; }
   .pdet-blocked-note { display:inline-block;padding:9px 4px;color:var(--pe-text-muted);font:var(--pe-text-small); }
 
@@ -729,7 +756,7 @@ const PLANT_DETAIL_STYLES = `
   @media (max-width:480px) { .pdet-rejected-actions { flex-direction:column; } .pdet-rejected-actions .pe-btn { width:100%; } }
 `;
 
-function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, monetizationStatus, onMonetizationChanged }) {
+function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, monetizationStatus, onMonetizationChanged, onAskAlmeo }) {
   const { t } = useI18n();
   const [plantName, setPlantName] = useState("");
   const [imageFile, setImageFile] = useState(null);
@@ -1012,7 +1039,7 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, mone
       {result && !loading && (
         <div className="pi-result-wrap">
           <div className="pi-reset-row"><button type="button" className="pi-reset-btn" onClick={reset}>{t("identifier.newAnalysis")}</button></div>
-          <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} identificationStatus={identificationStatus} identificationActions={identificationActions} />
+          <PlanteFiche result={result} imagePreview={imagePreview} plantation={plantation} usage={usage} onSave={handleSave} alreadySaved={saved} identificationStatus={identificationStatus} identificationActions={identificationActions} onAskAlmeo={onAskAlmeo} />
           {saveError && <div className="error-box pi-error" style={{marginTop:12}}><IconAlertCircle size={14} /> {saveError}</div>}
         </div>
       )}
@@ -1124,7 +1151,7 @@ const MJ_DETAIL_STYLES = `
   .mj-detail-delete-btn:hover { border-color:var(--pe-terracotta,#8b3a1e);color:var(--pe-terracotta,#8b3a1e); }
 `;
 
-function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated, onGoIdentifier }) {
+function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loading, migrating, error, reminders, weather, weatherLoading, zones, isAuthenticated, onGoIdentifier, onAskAlmeo }) {
   const { t, locale } = useI18n();
   // selectedId (not the plant object itself) is the only state kept for the
   // open detail view — the plant is always re-derived from the live
@@ -1329,7 +1356,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
       <div className="mj-detail-page">
         <style>{MJ_DETAIL_STYLES}</style>
         <button type="button" className="mj-detail-back" onClick={() => setSelectedId(null)}>{t("garden.backToGarden")}</button>
-        <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} />
+        <PlanteFiche result={selectedPlant.data} imagePreview={selectedPlant.imagePreview} plantation={selectedPlant.plantation} usage={selectedPlant.usage} onSave={() => {}} alreadySaved={true} context={selectedPlant.context} onSaveContext={(ctx) => updateContext(selectedPlant.id, ctx)} identificationStatus={selectedPlant.identificationStatus} zoneId={selectedPlant.zoneId} zones={zones.zones} isAuthenticated={isAuthenticated} onSaveZone={(newZoneId) => updatePlantZone(selectedPlant.id, newZoneId)} plantId={selectedPlant.id} onAskAlmeo={onAskAlmeo} />
         {deleteError && <div className="error-box mj-detail-error"><IconAlertCircle size={14} /> {deleteError}</div>}
         <div className="mj-detail-delete-row">
           <button type="button" className="mj-detail-delete-btn" onClick={() => handleDelete(selectedPlant.id)}>
@@ -1845,6 +1872,11 @@ export default function Home() {
   const gardenZones = useGardenZones(auth.user, auth.loading);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState("login");
+  // null when closed; otherwise { context: {mode, plantId?, identification?},
+  // title?: string } — see components/ChatModal.js. `context` is the only
+  // part ever sent to pages/api/chat.js; `title` is display-only.
+  const [chatModal, setChatModal] = useState(null);
+  const openAssistant = (context, title) => setChatModal({ context, title: title || null });
   const openAuthModal = (mode) => {
     setAuthModalMode(mode);
     setShowAuthModal(true);
@@ -2065,6 +2097,9 @@ export default function Home() {
       `}</style>
 
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} initialMode={authModalMode} />}
+      {chatModal && (
+        <ChatModal context={chatModal.context} title={chatModal.title} onClose={() => setChatModal(null)} />
+      )}
 
       {activeNav === "accueil" && (
         <AccueilDashboard
@@ -2080,6 +2115,7 @@ export default function Home() {
           onGoJardin={() => setActiveNav("jardin")}
           onLogin={() => openAuthModal("login")}
           onSignup={() => openAuthModal("signup")}
+          onOpenAssistant={() => openAssistant({ mode: "general" })}
         />
       )}
       {activeNav === "identifier" && (
@@ -2090,9 +2126,10 @@ export default function Home() {
           onRequireAuth={() => openAuthModal("signup")}
           monetizationStatus={monetization.status}
           onMonetizationChanged={monetization.refresh}
+          onAskAlmeo={openAssistant}
         />
       )}
-      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} onGoIdentifier={() => setActiveNav("identifier")} />}
+      {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} onGoIdentifier={() => setActiveNav("identifier")} onAskAlmeo={openAssistant} />}
 
       <p className="pe-ai-disclaimer">
         <IconInfo size={13} />
