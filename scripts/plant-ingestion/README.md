@@ -46,10 +46,26 @@ spécifique à un fournisseur.
 Tout autre trait peut avoir des `trait_observations` (donc rester
 consultable/traçable), mais n'aura jamais de `trait_selection` tant
 qu'aucune règle déterministe n'est ajoutée ici — notamment
-`water_need`, `edible`/`edible_fruit`/`edible_leaf`,
+`edible`/`edible_fruit`/`edible_leaf`,
 `hardiness_min_rank`/`hardiness_max_rank`, `container_suitable` :
 aucun de ces mappings n'existe aujourd'hui et aucun ne doit être deviné
 depuis des connaissances horticoles générales.
+
+`water_need` is the one exception with a **locked editorial vocabulary**
+(product decision — see `editorialVocab.js`'s `WATER_NEED_VALUES`:
+`low`/`moderate`/`high`, lowercase English, enforced the same way
+`plant_type`/`sun` already are), even though it still has **no automatic
+Layer A/B selection rule** — a raw provider value is never auto-promoted
+into this vocabulary; only a curator, through the editorial overlay below,
+maps evidence into one of the three canonical values. `water_need`
+represents the ROUTINE need of an ESTABLISHED plant under otherwise
+suitable conditions — a coarse product category, never an irrigation
+frequency. Establishment-phase watering (e.g. "water weekly for the first
+season") belongs in that observation's source evidence / review note, never
+in the canonical value itself. Mapping principle: "low"/"minimum"/
+"drought-tolerant once established" → `low`; "average"/"moderate" →
+`moderate`; "high"/"consistently moist" → `high` — never forced when the
+evidence doesn't support it.
 
 ## 1. Où créer le fichier local de variables d'environnement
 
@@ -376,6 +392,12 @@ obligatoire :
   "review": { "note": "Justification obligatoire pour une décision sans source externe.", "decided_by": null }
 }
 ```
+
+`normalized_value` for `water_need` must now be exactly one of
+`WATER_NEED_VALUES` (`low`/`moderate`/`high`, see §"Sélection automatique
+déterministe" above) — any other string is rejected by
+`validateEditorialInput` with `NORMALIZED_VALUE_INVALID`, the same way an
+out-of-vocabulary `plant_type`/`sun` already is.
 
 `curation.curated_by` (optionnel) alimente `plant_trait_observations.curated_by` ;
 `review.reviewed_by` (optionnel) alimente `plant_trait_observations.reviewed_by`.
