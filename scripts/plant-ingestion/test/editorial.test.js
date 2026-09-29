@@ -113,6 +113,20 @@ test("7: flowering_months accepts integers 1-12 and rejects out-of-range values"
   assert.ok(hasErrorCode(bad, "NORMALIZED_VALUE_INVALID"));
 });
 
+// 7b. water_need vocabulaire verrouillé
+test("7b: water_need accepts the locked low/moderate/high vocabulary and rejects anything else", () => {
+  for (const value of ["low", "moderate", "high"]) {
+    const ok = validateEditorialInput(validInput({ trait: "water_need", raw_value: value, normalized_value: value }));
+    assert.deepEqual(ok, [], `expected "${value}" to be accepted`);
+  }
+  const wrongCase = validateEditorialInput(validInput({ trait: "water_need", raw_value: "Average", normalized_value: "Average" }));
+  assert.ok(hasErrorCode(wrongCase, "NORMALIZED_VALUE_INVALID"), "capitalized values outside the locked vocabulary must be rejected");
+  const freeText = validateEditorialInput(
+    validInput({ trait: "water_need", raw_value: "drought-tolerant once established", normalized_value: "drought-tolerant once established" })
+  );
+  assert.ok(hasErrorCode(freeText, "NORMALIZED_VALUE_INVALID"), "free-text water_need values are no longer accepted");
+});
+
 // 8. source_url manquante (open_source_synthesis)
 test("8: a missing source.url is rejected for curation.method=open_source_synthesis", () => {
   const input = validInput();
