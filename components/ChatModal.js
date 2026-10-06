@@ -157,6 +157,7 @@ export default function ChatModal({ onClose, context, title }) {
           <input
             className="cm-input"
             type="text"
+            aria-label={t("assistant.inputLabel")}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

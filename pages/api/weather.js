@@ -3,11 +3,21 @@
 // resulting coordinates. The browser never talks to Open-Meteo directly and
 // never sends latitude/longitude — only free-text city/region/country, which
 // this route resolves itself so a client can't spoof coordinates.
+//
+// Origin/CORS: uses the exact same lib/apiOrigin.js classifyOrigin() /
+// isSameOriginReferer() policy as pages/api/proxy.js, pages/api/chat.js,
+// and pages/api/account/delete.js — same-origin web or the exact native
+// Capacitor origins, nothing invented here. This route needs no
+// Authorization header (it's unauthenticated by design, same as before
+// this fix), so its CORS_ALLOWED_HEADERS is narrower than proxy/chat's.
+import { classifyOrigin, isSameOriginReferer } from "../../lib/apiOrigin.js";
 
 const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_FIELD_LENGTH = 200;
+const CORS_ALLOWED_METHODS = "POST";
+const CORS_ALLOWED_HEADERS = "Content-Type";
 
 // aujourd'hui + 3 jours à venir, plus les 3 jours passés.
 const PAST_DAYS = 3;
@@ -29,31 +39,6 @@ export const config = {
     },
   },
 };
-
-function isRequestFromAllowedOrigin(req) {
-  const host = req.headers.host;
-  if (!host) return false;
-
-  const originHeader = req.headers.origin;
-  if (originHeader) {
-    try {
-      return new URL(originHeader).host === host;
-    } catch {
-      return false;
-    }
-  }
-
-  const referer = req.headers.referer;
-  if (referer) {
-    try {
-      return new URL(referer).host === host;
-    } catch {
-      return false;
-    }
-  }
-
-  return false;
-}
 
 function cleanField(value) {
   if (typeof value !== "string") return "";
@@ -110,25 +95,6 @@ function numOrNull(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-async function fetchJsonWithTimeout(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return { ok: false };
-    try {
-      const data = await response.json();
-      return { ok: true, data };
-    } catch {
-      return { ok: false };
-    }
-  } catch {
-    return { ok: false };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 // A supplied country is a hard filter: if it's given but no candidate
 // matches it, we refuse to silently fall back to an unrelated same-named
 // city in a different country. A supplied region is only a soft
@@ -158,123 +124,171 @@ export function pickBestGeocodingResult(results, country, region) {
   return candidates[0] || null;
 }
 
-async function geocode(city, region, country) {
-  const params = new URLSearchParams({ name: city, count: "10", language: "fr", format: "json" });
-  const result = await fetchJsonWithTimeout(`${GEOCODING_URL}?${params.toString()}`);
-  if (!result.ok) return { ok: false, code: "WEATHER_UNAVAILABLE" };
-
-  const results = result.data && Array.isArray(result.data.results) ? result.data.results : [];
-  const best = pickBestGeocodingResult(results, country, region);
-  if (!best || !Number.isFinite(best.latitude) || !Number.isFinite(best.longitude)) {
-    return { ok: false, code: "LOCATION_NOT_FOUND" };
+// createWeatherHandler({ fetchImpl }) — same injectable-factory shape as
+// pages/api/proxy.js's createProxyHandler / pages/api/chat.js's
+// createChatHandler, extended to this route so its origin/CORS behavior
+// (and, incidentally, its outbound-fetch behavior) can be tested without
+// hitting the real Open-Meteo APIs. Weather's own geocode/forecast logic
+// is unchanged from before this fix — only wrapped so `fetchImpl` is
+// injectable instead of always calling the global `fetch`.
+export function createWeatherHandler({ fetchImpl = (...args) => fetch(...args) } = {}) {
+  async function fetchJsonWithTimeout(url) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetchImpl(url, { signal: controller.signal });
+      if (!response.ok) return { ok: false };
+      try {
+        const data = await response.json();
+        return { ok: true, data };
+      } catch {
+        return { ok: false };
+      }
+    } catch {
+      return { ok: false };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
-  return {
-    ok: true,
-    location: {
-      name: best.name || city,
-      region: best.admin1 || null,
-      country: best.country || null,
-      latitude: best.latitude,
-      longitude: best.longitude,
-    },
+  async function geocode(city, region, country) {
+    const params = new URLSearchParams({ name: city, count: "10", language: "fr", format: "json" });
+    const result = await fetchJsonWithTimeout(`${GEOCODING_URL}?${params.toString()}`);
+    if (!result.ok) return { ok: false, code: "WEATHER_UNAVAILABLE" };
+
+    const results = result.data && Array.isArray(result.data.results) ? result.data.results : [];
+    const best = pickBestGeocodingResult(results, country, region);
+    if (!best || !Number.isFinite(best.latitude) || !Number.isFinite(best.longitude)) {
+      return { ok: false, code: "LOCATION_NOT_FOUND" };
+    }
+
+    return {
+      ok: true,
+      location: {
+        name: best.name || city,
+        region: best.admin1 || null,
+        country: best.country || null,
+        latitude: best.latitude,
+        longitude: best.longitude,
+      },
+    };
+  }
+
+  async function fetchWeather(latitude, longitude) {
+    const params = new URLSearchParams({
+      latitude: String(latitude),
+      longitude: String(longitude),
+      daily: DAILY_VARS.join(","),
+      past_days: String(PAST_DAYS),
+      forecast_days: String(FORECAST_DAYS),
+      timezone: "auto",
+    });
+    const result = await fetchJsonWithTimeout(`${FORECAST_URL}?${params.toString()}`);
+    if (!result.ok) return { ok: false, code: "WEATHER_UNAVAILABLE" };
+
+    const daily = result.data && result.data.daily;
+    if (!daily || !Array.isArray(daily.time) || daily.time.length === 0) {
+      return { ok: false, code: "WEATHER_DATA_INVALID" };
+    }
+
+    const n = daily.time.length;
+    for (const key of DAILY_VARS) {
+      if (!Array.isArray(daily[key]) || daily[key].length !== n) {
+        return { ok: false, code: "WEATHER_DATA_INVALID" };
+      }
+    }
+    for (const date of daily.time) {
+      if (typeof date !== "string" || !DATE_RE.test(date)) {
+        return { ok: false, code: "WEATHER_DATA_INVALID" };
+      }
+    }
+
+    const days = daily.time.map((date, i) => ({
+      date,
+      precipitationMm: numOrNull(daily.precipitation_sum[i]),
+      precipitationProbabilityMax: numOrNull(daily.precipitation_probability_max[i]),
+      temperatureMaxC: numOrNull(daily.temperature_2m_max[i]),
+      temperatureMinC: numOrNull(daily.temperature_2m_min[i]),
+    }));
+
+    const timezone = typeof result.data.timezone === "string" ? result.data.timezone : null;
+    return { ok: true, timezone, days };
+  }
+
+  return async function handler(req, res) {
+    const host = req.headers.host;
+    const originHeader = req.headers.origin;
+    const originClass = classifyOrigin(originHeader, host);
+
+    if (originClass === "native") {
+      res.setHeader("Access-Control-Allow-Origin", originHeader);
+      res.setHeader("Vary", "Origin");
+    }
+
+    if (req.method === "OPTIONS") {
+      if (originClass === "native") {
+        res.setHeader("Access-Control-Allow-Methods", CORS_ALLOWED_METHODS);
+        res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
+      }
+      res.setHeader("Allow", "POST, OPTIONS");
+      return res.status(204).end();
+    }
+
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST, OPTIONS");
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    const isAllowedOrigin =
+      originClass === "native" ||
+      originClass === "same-origin" ||
+      (!originHeader && isSameOriginReferer(req.headers.referer, host));
+
+    if (!isAllowedOrigin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const body = req.body;
+    if (!body || typeof body !== "object") {
+      return res.status(400).json({ error: "Invalid request body" });
+    }
+
+    const city = cleanField(body.city);
+    const region = cleanField(body.region);
+    const country = cleanField(body.country);
+
+    if (!city) {
+      return res.status(400).json({ error: "Invalid request body" });
+    }
+
+    try {
+      const geo = await geocode(city, region, country);
+      if (!geo.ok) {
+        return res.status(200).json({ ok: false, code: geo.code });
+      }
+
+      const weather = await fetchWeather(geo.location.latitude, geo.location.longitude);
+      if (!weather.ok) {
+        return res.status(200).json({ ok: false, code: weather.code });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        location: {
+          name: geo.location.name,
+          region: geo.location.region,
+          country: geo.location.country,
+          latitude: geo.location.latitude,
+          longitude: geo.location.longitude,
+          timezone: weather.timezone,
+        },
+        days: weather.days,
+      });
+    } catch (error) {
+      console.error("Weather route error:", error);
+      return res.status(200).json({ ok: false, code: "WEATHER_UNAVAILABLE" });
+    }
   };
 }
 
-async function fetchWeather(latitude, longitude) {
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    daily: DAILY_VARS.join(","),
-    past_days: String(PAST_DAYS),
-    forecast_days: String(FORECAST_DAYS),
-    timezone: "auto",
-  });
-  const result = await fetchJsonWithTimeout(`${FORECAST_URL}?${params.toString()}`);
-  if (!result.ok) return { ok: false, code: "WEATHER_UNAVAILABLE" };
-
-  const daily = result.data && result.data.daily;
-  if (!daily || !Array.isArray(daily.time) || daily.time.length === 0) {
-    return { ok: false, code: "WEATHER_DATA_INVALID" };
-  }
-
-  const n = daily.time.length;
-  for (const key of DAILY_VARS) {
-    if (!Array.isArray(daily[key]) || daily[key].length !== n) {
-      return { ok: false, code: "WEATHER_DATA_INVALID" };
-    }
-  }
-  for (const date of daily.time) {
-    if (typeof date !== "string" || !DATE_RE.test(date)) {
-      return { ok: false, code: "WEATHER_DATA_INVALID" };
-    }
-  }
-
-  const days = daily.time.map((date, i) => ({
-    date,
-    precipitationMm: numOrNull(daily.precipitation_sum[i]),
-    precipitationProbabilityMax: numOrNull(daily.precipitation_probability_max[i]),
-    temperatureMaxC: numOrNull(daily.temperature_2m_max[i]),
-    temperatureMinC: numOrNull(daily.temperature_2m_min[i]),
-  }));
-
-  const timezone = typeof result.data.timezone === "string" ? result.data.timezone : null;
-  return { ok: true, timezone, days };
-}
-
-export default async function handler(req, res) {
-  if (req.method === "OPTIONS") {
-    res.setHeader("Allow", "POST, OPTIONS");
-    return res.status(204).end();
-  }
-
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST, OPTIONS");
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  if (!isRequestFromAllowedOrigin(req)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const body = req.body;
-  if (!body || typeof body !== "object") {
-    return res.status(400).json({ error: "Invalid request body" });
-  }
-
-  const city = cleanField(body.city);
-  const region = cleanField(body.region);
-  const country = cleanField(body.country);
-
-  if (!city) {
-    return res.status(400).json({ error: "Invalid request body" });
-  }
-
-  try {
-    const geo = await geocode(city, region, country);
-    if (!geo.ok) {
-      return res.status(200).json({ ok: false, code: geo.code });
-    }
-
-    const weather = await fetchWeather(geo.location.latitude, geo.location.longitude);
-    if (!weather.ok) {
-      return res.status(200).json({ ok: false, code: weather.code });
-    }
-
-    return res.status(200).json({
-      ok: true,
-      location: {
-        name: geo.location.name,
-        region: geo.location.region,
-        country: geo.location.country,
-        latitude: geo.location.latitude,
-        longitude: geo.location.longitude,
-        timezone: weather.timezone,
-      },
-      days: weather.days,
-    });
-  } catch (error) {
-    console.error("Weather route error:", error);
-    return res.status(200).json({ ok: false, code: "WEATHER_UNAVAILABLE" });
-  }
-}
+export default createWeatherHandler();
