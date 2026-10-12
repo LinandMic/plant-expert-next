@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { I18nProvider } from "@/lib/i18n";
 import { isNativePlatform, getWebOrigin } from "@/lib/platform";
 import { initNativeDeepLinks } from "@/lib/nativeDeepLink";
+import "@/styles/fonts.css";
 import "@/styles/globals.css";
 import "@/styles/ui-shell.css";
 
@@ -58,8 +59,6 @@ export default function App({ Component, pageProps }) {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Almeo" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </Head>
       <I18nProvider>
         <Component {...pageProps} />
