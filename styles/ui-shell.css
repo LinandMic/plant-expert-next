@@ -448,6 +448,11 @@
   outline-offset: 2px;
 }
 
+.pe-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .pe-btn-primary {
   background: var(--pe-accent);
   color: var(--pe-on-accent);

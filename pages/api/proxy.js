@@ -14,6 +14,7 @@
 import { randomUUID } from "node:crypto";
 import { classifyOrigin, isSameOriginReferer } from "../../lib/apiOrigin.js";
 import { createSupabaseAdminClient, getSupabaseAdminConfig } from "../../lib/supabaseAdmin.js";
+import { createAnthropicTimeout } from "../../lib/anthropicRequestConfig.js";
 
 const ALLOWED_MODEL = "claude-sonnet-4-5";
 const MAX_TOKENS_CAP = 8000;
@@ -187,53 +188,67 @@ export function createProxyHandler({
     }
 
     let response;
-    try {
-      response = await fetchImpl("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify(upstreamBody),
-      });
-    } catch (error) {
-      console.error("Anthropic proxy error:", error);
-      const refunded = await refundCredit(admin, userId, requestId);
-      await recordUsage(admin, {
-        request_id: requestId,
-        user_id: userId,
-        model: ALLOWED_MODEL,
-        status: refunded ? "refunded" : "refund_failed",
-        credit_source: creditSource,
-        upstream_status: null,
-        input_tokens: null,
-        output_tokens: null,
-        cache_creation_input_tokens: null,
-        cache_read_input_tokens: null,
-      });
-      return res.status(502).json({ error: "Upstream request failed" });
-    }
-
     let data;
+    const anthropicTimeout = createAnthropicTimeout();
     try {
-      data = await response.json();
-    } catch (error) {
-      console.error("proxy: invalid Anthropic JSON response:", error.message);
-      const refunded = await refundCredit(admin, userId, requestId);
-      await recordUsage(admin, {
-        request_id: requestId,
-        user_id: userId,
-        model: ALLOWED_MODEL,
-        status: refunded ? "refunded" : "refund_failed",
-        credit_source: creditSource,
-        upstream_status: response.status || null,
-        input_tokens: null,
-        output_tokens: null,
-        cache_creation_input_tokens: null,
-        cache_read_input_tokens: null,
-      });
-      return res.status(502).json({ error: "Upstream request failed" });
+      try {
+        response = await fetchImpl("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify(upstreamBody),
+          signal: anthropicTimeout.signal,
+        });
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          console.error("Anthropic proxy request timed out");
+        } else {
+          console.error("Anthropic proxy error:", error);
+        }
+        const refunded = await refundCredit(admin, userId, requestId);
+        await recordUsage(admin, {
+          request_id: requestId,
+          user_id: userId,
+          model: ALLOWED_MODEL,
+          status: refunded ? "refunded" : "refund_failed",
+          credit_source: creditSource,
+          upstream_status: null,
+          input_tokens: null,
+          output_tokens: null,
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+        });
+        return res.status(502).json({ error: "Upstream request failed" });
+      }
+
+      try {
+        data = await response.json();
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          console.error("Anthropic proxy request timed out while reading the response body");
+        } else {
+          console.error("proxy: invalid Anthropic JSON response:", error.message);
+        }
+        const refunded = await refundCredit(admin, userId, requestId);
+        await recordUsage(admin, {
+          request_id: requestId,
+          user_id: userId,
+          model: ALLOWED_MODEL,
+          status: refunded ? "refunded" : "refund_failed",
+          credit_source: creditSource,
+          upstream_status: response.status || null,
+          input_tokens: null,
+          output_tokens: null,
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+        });
+        return res.status(502).json({ error: "Upstream request failed" });
+      }
+    } finally {
+      anthropicTimeout.clear();
     }
 
     if (!response.ok) {

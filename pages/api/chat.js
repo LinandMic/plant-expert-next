@@ -59,6 +59,7 @@ import { createSupabaseAdminClient, getSupabaseAdminConfig } from "../../lib/sup
 import { CHAT_MODEL, CHAT_SESSION_LIMITS, CHAT_USAGE_STATUS } from "../../lib/chatConfig.js";
 import { resolveChatContext } from "../../lib/chatContext.js";
 import { buildChatSystemPrompt } from "../../lib/chatSystemPrompt.js";
+import { createAnthropicTimeout } from "../../lib/anthropicRequestConfig.js";
 
 const CORS_ALLOWED_METHODS = "POST";
 const CORS_ALLOWED_HEADERS = "Content-Type, Authorization";
@@ -387,37 +388,51 @@ export function createChatHandler({
     }
 
     let response;
-    try {
-      response = await fetchImpl("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify(upstreamBody),
-      });
-    } catch (error) {
-      console.error("chat: Anthropic request failed:", error);
-      if (isFirstChargeAttempt) await handleFirstCallFailure(null);
-      else await handleLaterCallFailure(null);
-      return res.status(502).json({
-        error: "Upstream request failed",
-        code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
-      });
-    }
-
     let data;
+    const anthropicTimeout = createAnthropicTimeout();
     try {
-      data = await response.json();
-    } catch (error) {
-      console.error("chat: invalid Anthropic JSON response:", error.message);
-      if (isFirstChargeAttempt) await handleFirstCallFailure(response.status || null);
-      else await handleLaterCallFailure(response.status || null);
-      return res.status(502).json({
-        error: "Upstream request failed",
-        code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
-      });
+      try {
+        response = await fetchImpl("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify(upstreamBody),
+          signal: anthropicTimeout.signal,
+        });
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          console.error("chat: Anthropic request timed out");
+        } else {
+          console.error("chat: Anthropic request failed:", error);
+        }
+        if (isFirstChargeAttempt) await handleFirstCallFailure(null);
+        else await handleLaterCallFailure(null);
+        return res.status(502).json({
+          error: "Upstream request failed",
+          code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
+        });
+      }
+
+      try {
+        data = await response.json();
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          console.error("chat: Anthropic request timed out while reading the response body");
+        } else {
+          console.error("chat: invalid Anthropic JSON response:", error.message);
+        }
+        if (isFirstChargeAttempt) await handleFirstCallFailure(response.status || null);
+        else await handleLaterCallFailure(response.status || null);
+        return res.status(502).json({
+          error: "Upstream request failed",
+          code: isFirstChargeAttempt ? "FIRST_MESSAGE_FAILED" : "MESSAGE_FAILED",
+        });
+      }
+    } finally {
+      anthropicTimeout.clear();
     }
 
     if (!response.ok) {
