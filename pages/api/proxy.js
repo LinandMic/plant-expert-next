@@ -14,7 +14,7 @@
 import { randomUUID } from "node:crypto";
 import { classifyOrigin, isSameOriginReferer } from "../../lib/apiOrigin.js";
 import { createSupabaseAdminClient, getSupabaseAdminConfig } from "../../lib/supabaseAdmin.js";
-import { createAnthropicTimeout } from "../../lib/anthropicRequestConfig.js";
+import { ANTHROPIC_ANALYSIS_TIMEOUT_MS, createAnthropicTimeout } from "../../lib/anthropicRequestConfig.js";
 
 const ALLOWED_MODEL = "claude-sonnet-4-5";
 const MAX_TOKENS_CAP = 8000;
@@ -27,6 +27,10 @@ export const config = {
       sizeLimit: "2mb",
     },
   },
+  // Vercel function budget (Hobby + Fluid compute allows up to 300s). Kept
+  // above ANTHROPIC_ANALYSIS_TIMEOUT_MS so a timed-out analysis is still
+  // refunded before the platform terminates the function.
+  maxDuration: 120,
 };
 
 function defaultGetAdminClient() {
@@ -189,7 +193,7 @@ export function createProxyHandler({
 
     let response;
     let data;
-    const anthropicTimeout = createAnthropicTimeout();
+    const anthropicTimeout = createAnthropicTimeout({ timeoutMs: ANTHROPIC_ANALYSIS_TIMEOUT_MS });
     try {
       try {
         response = await fetchImpl("https://api.anthropic.com/v1/messages", {
