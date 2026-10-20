@@ -53,9 +53,14 @@ captures/
 .idea/navEditor.xml
 
 # Keystore files
-# Uncomment the following lines if you do not want to check your keystore files in.
-#*.jks
-#*.keystore
+*.jks
+*.keystore
+
+# Real release-signing credentials (storeFile/storePassword/keyAlias/
+# keyPassword) — see keystore.properties.example, which IS tracked and
+# must stay that way (this pattern only matches the exact filename
+# "keystore.properties", never "keystore.properties.example").
+keystore.properties
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
