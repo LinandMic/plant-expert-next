@@ -14,6 +14,9 @@ const SPACE_TYPE_IDS = ["jardin", "terrasse", "balcon", "interieur", "mixte"];
 
 const EMPTY_FORM = { first_name: "", last_name: "", country: "", region: "", city: "", space_type: "" };
 
+const PRIVACY_POLICY_URL = "https://almeo.app/confidentialite/";
+const ACCOUNT_DELETION_URL = "https://almeo.app/suppression-compte/";
+
 // Same AccountBar pattern/markup as pages/index.js's own (page-local, not
 // exported there) — reuses the exact same auth.signOut() call, not a second
 // logout mechanism. Only rendered once a user is present; the unauthenticated
@@ -27,6 +30,21 @@ function ProfileAccountBar({ auth }) {
       <a className="pe-account-action" href="/profile">{t("account.myProfile")}</a>
       <button className="pe-account-action" onClick={() => auth.signOut()}>{t("account.logout")}</button>
     </div>
+  );
+}
+
+// Store-required legal links (privacy policy, account/data deletion),
+// rendered in every auth state so they stay reachable while logged out.
+// Plain external <a>: on native, Capacitor's own navigation handling hands
+// any non-app host to the system browser (Android Bridge.launchIntent,
+// iOS WebViewDelegationHandler), so they never load inside the WebView.
+function LegalLinks() {
+  const { t } = useI18n();
+  return (
+    <nav className="pro-legal-links" aria-label={t("profile.legal.label")}>
+      <a href={PRIVACY_POLICY_URL} target="_blank" rel="noopener noreferrer">{t("profile.legal.privacyPolicy")}</a>
+      <a href={ACCOUNT_DELETION_URL} target="_blank" rel="noopener noreferrer">{t("profile.legal.deleteAccountData")}</a>
+    </nav>
   );
 }
 
@@ -241,6 +259,8 @@ export default function ProfilePage() {
             )}
           </>
         )}
+
+        <LegalLinks />
       </div>
 
       {showDeleteModal && (
@@ -308,4 +328,9 @@ const PROFILE_STYLES = `
   .pro-lang-pill:hover { border-color:var(--pe-border-strong); }
   .pro-lang-pill:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
   .pro-lang-pill.active { border-color:var(--pe-accent);background:var(--pe-sand);color:var(--pe-accent); }
+
+  .pro-legal-links { display:flex;flex-wrap:wrap;justify-content:center;gap:4px 20px;margin-top:28px;padding-top:16px;border-top:1px solid var(--pe-border); }
+  .pro-legal-links a { display:inline-flex;align-items:center;min-height:44px;font:var(--pe-text-small);color:var(--pe-text-muted);text-decoration:underline;text-underline-offset:2px; }
+  .pro-legal-links a:hover { color:var(--pe-text); }
+  .pro-legal-links a:focus-visible { outline:2px solid var(--pe-accent);outline-offset:2px; }
 `;
