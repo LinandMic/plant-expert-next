@@ -1,8 +1,10 @@
 import Head from "next/head";
 import { useEffect } from "react";
+import { useRouter } from "next/router";
 import { I18nProvider } from "@/lib/i18n";
 import { isNativePlatform, getWebOrigin } from "@/lib/platform";
 import { initNativeDeepLinks } from "@/lib/nativeDeepLink";
+import { getKnownRoutes, installNativeLinkRouting, resolveColdStartPath } from "@/lib/nativeNavigation";
 import "@/styles/fonts.css";
 import "@/styles/globals.css";
 import "@/styles/ui-shell.css";
@@ -40,8 +42,32 @@ function useServiceWorker() {
   }, []);
 }
 
+// Native only: plain <a href> page links become client-side navigations,
+// and a cold start/reload that landed on a non-root route (Capacitor
+// served index.html as the fallback) is corrected once to the real page.
+// See lib/nativeNavigation.js. The web build never installs any of this.
+function useNativeNavigation() {
+  const router = useRouter();
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    return installNativeLinkRouting(router);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!isNativePlatform() || !router.isReady) return;
+    const path = resolveColdStartPath({
+      routerPathname: router.pathname,
+      location: window.location,
+      knownRoutes: getKnownRoutes(),
+    });
+    if (path) router.replace(path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+}
+
 export default function App({ Component, pageProps }) {
   useServiceWorker();
+  useNativeNavigation();
   useEffect(() => {
     initNativeDeepLinks(getWebOrigin());
   }, []);
