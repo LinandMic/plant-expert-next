@@ -110,7 +110,7 @@ Once Play App Signing is enrolled (Step 4):
    "App signing key certificate" (not the upload key's fingerprint).
 2. Update `public/.well-known/assetlinks.json`'s `sha256_cert_fingerprints`
    array with that value.
-3. Redeploy the web app so `https://almeo.app/.well-known/assetlinks.json`
+3. Redeploy the web app so `https://app.almeo.app/.well-known/assetlinks.json`
    serves the updated file.
 4. Re-verify on a device:
    ```

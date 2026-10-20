@@ -53,9 +53,8 @@ captures/
 .idea/navEditor.xml
 
 # Keystore files
-# Uncomment the following lines if you do not want to check your keystore files in.
-#*.jks
-#*.keystore
+*.jks
+*.keystore
 
 # Real release-signing credentials (storeFile/storePassword/keyAlias/
 # keyPassword) — see keystore.properties.example, which IS tracked and
