@@ -14,9 +14,14 @@
 import { randomUUID } from "node:crypto";
 import { classifyOrigin, isSameOriginReferer } from "../../lib/apiOrigin.js";
 import { createSupabaseAdminClient, getSupabaseAdminConfig } from "../../lib/supabaseAdmin.js";
-import { ANTHROPIC_ANALYSIS_TIMEOUT_MS, createAnthropicTimeout } from "../../lib/anthropicRequestConfig.js";
+import {
+  ANTHROPIC_ANALYSIS_TIMEOUT_MS,
+  ANTHROPIC_MODEL,
+  createAnthropicTimeout,
+  extractResponseText,
+} from "../../lib/anthropicRequestConfig.js";
 
-const ALLOWED_MODEL = "claude-sonnet-4-5";
+const ALLOWED_MODEL = ANTHROPIC_MODEL;
 const MAX_TOKENS_CAP = 8000;
 const CORS_ALLOWED_METHODS = "POST";
 const CORS_ALLOWED_HEADERS = "Content-Type, Authorization";
@@ -182,10 +187,16 @@ export function createProxyHandler({
       ? Math.min(requestedMaxTokens, MAX_TOKENS_CAP)
       : MAX_TOKENS_CAP;
 
+    // No assistant prefill: claude-sonnet-5-5 rejects it (400). The system
+    // prompt already requires a JSON-only answer, and the client extracts
+    // the JSON object from the text. Thinking stays off (between_tools) to
+    // keep latency and max_tokens equivalent to the previous model.
     const upstreamBody = {
       model: ALLOWED_MODEL,
       max_tokens,
-      messages: [...body.messages, { role: "assistant", content: "{" }],
+      thinking: { type: "between_tools" },
+      output_config: { effort: "high" },
+      messages: body.messages,
     };
     if (typeof body.system === "string") {
       upstreamBody.system = body.system;
@@ -273,7 +284,10 @@ export function createProxyHandler({
       return res.status(response.status || 502).json(data);
     }
 
-    if (!data || !Array.isArray(data.content) || !data.content[0] || typeof data.content[0].text !== "string") {
+    // Read the answer by block type (a response may contain non-text
+    // blocks). No text block at all - including a refusal - keeps the
+    // existing incomplete-response path: 502 + refund.
+    if (extractResponseText(data) === null) {
       const refunded = await refundCredit(admin, userId, requestId);
       await recordUsage(admin, {
         request_id: requestId,
@@ -289,8 +303,6 @@ export function createProxyHandler({
       });
       return res.status(502).json({ error: "Upstream response was incomplete" });
     }
-
-    data.content[0].text = "{" + data.content[0].text;
 
     const usage = data && typeof data.usage === "object" ? data.usage : {};
     await recordUsage(admin, {

@@ -59,7 +59,7 @@ import { createSupabaseAdminClient, getSupabaseAdminConfig } from "../../lib/sup
 import { CHAT_MODEL, CHAT_SESSION_LIMITS, CHAT_USAGE_STATUS } from "../../lib/chatConfig.js";
 import { resolveChatContext } from "../../lib/chatContext.js";
 import { buildChatSystemPrompt } from "../../lib/chatSystemPrompt.js";
-import { createAnthropicTimeout } from "../../lib/anthropicRequestConfig.js";
+import { createAnthropicTimeout, extractResponseText } from "../../lib/anthropicRequestConfig.js";
 
 const CORS_ALLOWED_METHODS = "POST";
 const CORS_ALLOWED_HEADERS = "Content-Type, Authorization";
@@ -350,6 +350,8 @@ export function createChatHandler({
     const upstreamBody = {
       model: CHAT_MODEL,
       max_tokens: CHAT_SESSION_LIMITS.MAX_OUTPUT_TOKENS_PER_MESSAGE,
+      thinking: { type: "between_tools" },
+      output_config: { effort: "medium" },
       system: systemPrompt,
       messages: messagesResult.messages,
     };
@@ -444,7 +446,8 @@ export function createChatHandler({
       });
     }
 
-    if (!data || !Array.isArray(data.content) || !data.content[0] || typeof data.content[0].text !== "string") {
+    const assistantText = extractResponseText(data);
+    if (assistantText === null) {
       if (isFirstChargeAttempt) await handleFirstCallFailure(response.status || null);
       else await handleLaterCallFailure(response.status || null);
       return res.status(502).json({
@@ -453,7 +456,6 @@ export function createChatHandler({
       });
     }
 
-    const assistantText = data.content[0].text;
     const usage = data && typeof data.usage === "object" ? data.usage : {};
     const inputTokens = nonNegativeIntOrZero(usage.input_tokens);
     const outputTokens = nonNegativeIntOrZero(usage.output_tokens);

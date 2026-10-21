@@ -190,7 +190,7 @@ async function analyzeWithClaude(imageBase64, plantName, plantation, usage, acce
       "Content-Type": "application/json",
       "Authorization": `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 8000, system: buildSystemPrompt(plantation, usage), messages: [{ role: "user", content }] })
+    body: JSON.stringify({ max_tokens: 8000, system: buildSystemPrompt(plantation, usage), messages: [{ role: "user", content }] })
   });
   let data = null;
   try {
