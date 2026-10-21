@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/useAuth";
-import { tabFromQuery, tabToQuery } from "@/lib/homeTabRouting";
+import { nameFromQuery, tabFromQuery, tabToQuery } from "@/lib/homeTabRouting";
 import { useGarden } from "@/lib/useGarden";
 import { useReminders } from "@/lib/useReminders";
 import { useMonetization } from "@/lib/useMonetization";
@@ -756,7 +756,7 @@ const PLANT_DETAIL_STYLES = `
   @media (max-width:480px) { .pdet-rejected-actions { flex-direction:column; } .pdet-rejected-actions .pe-btn { width:100%; } }
 `;
 
-function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, monetizationStatus, onMonetizationChanged, onAskAlmeo }) {
+function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, monetizationStatus, onMonetizationChanged, onAskAlmeo, initialPlantName = "" }) {
   const { t } = useI18n();
   const [plantName, setPlantName] = useState("");
   const [imageFile, setImageFile] = useState(null);
@@ -774,6 +774,15 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, mone
   const [showSourceSheet, setShowSourceSheet] = useState(false);
   const fileRef = useRef();
   const nameInputRef = useRef();
+
+  // Pre-fill from Plant Finder's "Analyser « … » avec l'IA" link
+  // (?tab=identifier&name=...). Only fills the plant-name field and brings
+  // it into view — never starts the analysis (it consumes an AI credit).
+  useEffect(() => {
+    if (!initialPlantName) return;
+    setPlantName(initialPlantName);
+    nameInputRef.current && nameInputRef.current.scrollIntoView({ block: "center" });
+  }, [initialPlantName]);
 
   const handleFile = useCallback((file) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -2130,6 +2139,7 @@ export default function Home() {
           monetizationStatus={monetization.status}
           onMonetizationChanged={monetization.refresh}
           onAskAlmeo={openAssistant}
+          initialPlantName={nameFromQuery(router.query)}
         />
       )}
       {activeNav === "jardin" && <MonJardinTab jardin={garden.jardin} deletePlant={garden.deletePlant} updateContext={garden.updateContext} updatePlantZone={garden.updatePlantZone} loading={garden.loading} migrating={garden.migrating} error={garden.error} reminders={reminders} weather={weather} weatherLoading={weatherLoading} zones={{ ...gardenZones, deleteZone: handleDeleteZone }} isAuthenticated={!!auth.user} onGoIdentifier={() => setActiveNav("identifier")} onAskAlmeo={openAssistant} />}
