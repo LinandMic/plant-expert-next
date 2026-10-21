@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.linandmic.almeo",
       "sha256_cert_fingerprints": [
-        "FF:98:D1:E1:24:6A:1B:32:52:F5:23:A1:C2:E6:98:21:A6:B2:3A:EC:CD:F7:0A:49:68:29:60:1C:FB:F5:85:71"
+        "FF:98:D1:E1:24:6A:1B:32:52:F5:23:A1:C2:E6:98:21:A6:B2:3A:EC:CD:F7:0A:49:68:29:60:1C:FB:F5:85:71",
+        "69:9A:CB:23:0E:F1:63:99:77:A4:01:DC:75:70:92:C0:15:CB:3F:E9:00:86:04:02:C2:3E:68:56:31:D3:30:69"
       ]
     }
   }
