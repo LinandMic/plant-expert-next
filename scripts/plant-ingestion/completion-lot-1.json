@@ -1,0 +1,96 @@
+{
+  "lot_id": "completion-lot-1",
+  "description": "Lot test de complétion : 15 espèces courantes, toutes en draft (contrôle Supabase fait par la curatrice). catalog_ref/taxon_ref repris des transaction plans existants.",
+  "plants": [
+    {
+      "catalog_ref": "buxus_sempervirens_species",
+      "taxon_ref": "buxus_sempervirens",
+      "slug": "buxus-sempervirens",
+      "canonical_name": "Buxus sempervirens"
+    },
+    {
+      "catalog_ref": "prunus_laurocerasus_species",
+      "taxon_ref": "prunus_laurocerasus",
+      "slug": "prunus-laurocerasus",
+      "canonical_name": "Prunus laurocerasus"
+    },
+    {
+      "catalog_ref": "taxus_baccata_species",
+      "taxon_ref": "taxus_baccata",
+      "slug": "taxus-baccata",
+      "canonical_name": "Taxus baccata"
+    },
+    {
+      "catalog_ref": "fagus_sylvatica_species",
+      "taxon_ref": "fagus_sylvatica",
+      "slug": "fagus-sylvatica",
+      "canonical_name": "Fagus sylvatica"
+    },
+    {
+      "catalog_ref": "ilex_aquifolium_species",
+      "taxon_ref": "ilex_aquifolium",
+      "slug": "ilex-aquifolium",
+      "canonical_name": "Ilex aquifolium"
+    },
+    {
+      "catalog_ref": "syringa_vulgaris_species",
+      "taxon_ref": "syringa_vulgaris",
+      "slug": "syringa-vulgaris",
+      "canonical_name": "Syringa vulgaris"
+    },
+    {
+      "catalog_ref": "buddleja_davidii_species",
+      "taxon_ref": "buddleja_davidii",
+      "slug": "buddleja-davidii",
+      "canonical_name": "Buddleja davidii"
+    },
+    {
+      "catalog_ref": "hydrangea_paniculata_species",
+      "taxon_ref": "hydrangea_paniculata",
+      "slug": "hydrangea-paniculata",
+      "canonical_name": "Hydrangea paniculata"
+    },
+    {
+      "catalog_ref": "malus_domestica_species",
+      "taxon_ref": "malus_domestica",
+      "slug": "malus-domestica",
+      "canonical_name": "Malus domestica"
+    },
+    {
+      "catalog_ref": "corylus_avellana_species",
+      "taxon_ref": "corylus_avellana",
+      "slug": "corylus-avellana",
+      "canonical_name": "Corylus avellana"
+    },
+    {
+      "catalog_ref": "salvia_officinalis_species",
+      "taxon_ref": "salvia_officinalis",
+      "slug": "salvia-officinalis",
+      "canonical_name": "Salvia officinalis"
+    },
+    {
+      "catalog_ref": "wisteria_sinensis_species",
+      "taxon_ref": "wisteria_sinensis",
+      "slug": "wisteria-sinensis",
+      "canonical_name": "Wisteria sinensis"
+    },
+    {
+      "catalog_ref": "hedera_helix_species",
+      "taxon_ref": "hedera_helix",
+      "slug": "hedera-helix",
+      "canonical_name": "Hedera helix"
+    },
+    {
+      "catalog_ref": "paeonia_lactiflora_species",
+      "taxon_ref": "paeonia_lactiflora",
+      "slug": "paeonia-lactiflora",
+      "canonical_name": "Paeonia lactiflora"
+    },
+    {
+      "catalog_ref": "digitalis_purpurea_species",
+      "taxon_ref": "digitalis_purpurea",
+      "slug": "digitalis-purpurea",
+      "canonical_name": "Digitalis purpurea"
+    }
+  ]
+}

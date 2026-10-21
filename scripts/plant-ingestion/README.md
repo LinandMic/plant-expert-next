@@ -658,6 +658,74 @@ Retour :
 - **Badges publics éventuels** : aucun aujourd'hui — `pages/plant-finder/*`
   n'importe pas ce module, délibérément, dans ce chantier.
 
+## 4quinquies. Complétion assistée des fiches draft (`src/completion/`, `src/completionCli.js`)
+
+Propose et **vérifie** les traits manquants des fiches `draft` sans relecture
+experte. **N'écrit jamais dans Supabase** (lecture seule pour un instantané
+des valeurs existantes) et n'a pas de `--apply` : ses sorties passent par
+`editorialCli.js` / `commonNamesCli.js` (dry-run → revue → `--apply` manuel).
+
+```
+npm run plant:ingestion:complete -- --input scripts/plant-ingestion/completion-lot-1.json            # --estimate (défaut) : aucun appel
+npm run plant:ingestion:complete -- --input scripts/plant-ingestion/completion-lot-1.json --execute  # PAYANT, plafond dur 8 $
+npm run plant:ingestion:complete -- --input scripts/plant-ingestion/completion-lot-1.json --replay   # cache seul : aucun appel, aucune dépense
+```
+
+**Cache** (`output/completion/<lot_id>/cache/`, gitignoré, jamais commité,
+supprimable) : réponses brutes de l'API, texte des pages lues compris, et
+instantané des fiches. `--execute` réutilise une requête identique déjà en
+cache (pas repayée) ; `--replay` re-décide tout le lot depuis le cache sans
+appel, sans clé et sans lecture Supabase — pour régler parseurs et règles
+gratuitement. Rien du cache n'est jamais recopié dans les sorties.
+
+Par plante :
+1. **Proposition** — `claude-sonnet-5-5`, sortie JSON imposée (vocabulaires
+   `editorialVocab.js`), sans pré-remplissage, `thinking: between_tools`.
+   Jamais enregistrée comme source : c'est le 3ᵉ avis.
+2. **Sources** — même modèle avec `web_search` / `web_fetch` limités aux
+   sites de `completionConfig.js` (`SOURCE_DOMAINS`). L'appel ne voit pas la
+   proposition. Il renvoie, page par page, le court passage qui énonce chaque
+   trait.
+3. **Ancrage** (`grounding.js`, code déterministe) — une source ne compte que
+   si sa page a réellement été lue dans cet appel, que son site est autorisé,
+   que le passage figure dans le texte de la page, et que `textParsers.js` en
+   extrait lui-même la valeur. Éditeur, statut institutionnel et licence
+   viennent de la table des sites, jamais du modèle. Aucun passage n'est
+   conservé.
+4. **Décision** (`decide.js`) — valeur retenue seulement si proposition IA +
+   ≥ 2 sites différents (dont ≥ 1 institutionnel) concordent et que les règles
+   de plausibilité passent. Tailles : accord par **recouvrement de
+   fourchettes** — chaque site donne un intervalle (« 4–8 m », « 15 ft »,
+   « plus de 12 m ») ; tous doivent avoir une intersection commune, la valeur
+   retenue est sa **borne haute** et la proposition IA doit tomber dedans
+   (± 5 cm d'arrondi d'unités seulement). Exposition : la proposition IA
+   doit être **exactement** l'ensemble commun aux sources. Floraison : une
+   période déjà en base n'est **jamais rétrécie** (seulement confirmée ou
+   élargie). Wikipédia FR ne compte que pour le nom français. Les valeurs déjà présentes subissent la même
+   règle (`existing_confirmed` / `existing_corrected` / `existing_unverified`).
+   Un nom FR préféré existant n'est jamais remplacé automatiquement.
+5. **Sorties** (`output/completion/<lot_id>/`, gitignoré) :
+   `editorial-input.json` (schema v2, `open_source_synthesis` ; 2ᵉ source dans
+   `review.note`, format `corroboration: éditeur | titre | url | date`),
+   `common-names.json`, `catalog-map.json` (pour `--catalog-map`),
+   `report.json` / `report.md` (décisions, raisons, valeur parsée de chaque
+   source — jamais le passage —, dépense, taux de blocage par site),
+   `publish-candidates.sql` (non exécuté ; ne liste que les fiches dont les
+   4 critères critiques sont réellement écrits par `editorial-input.json` ou
+   déjà confirmés, et revérifie l'état réel de chaque fiche à l'exécution).
+   Titres de pages nettoyés, jamais inventés (« titre non fourni »).
+   `--decided-by <uuid>` renseigne `review.decided_by` (UUID d'un utilisateur
+   `auth.users`).
+
+**Publiable** = les 4 critères critiques (type, exposition, hauteur,
+envergure) vérifiés. `evergreen` / `water_need` / `flowering_months` ne sont
+écrits que s'ils sont vérifiés et ne bloquent jamais la publication ;
+`flowering_months` est non applicable aux fougères et graminées (comme
+`lib/plantQuality.js`).
+
+Clé API : `ANTHROPIC_API_KEY` (variable d'environnement ou
+`.env.ingestion`) — seule sa présence est affichée.
+
 ## 5. Idempotence
 
 Ré-appliquer exactement le même plan une seconde fois doit toujours

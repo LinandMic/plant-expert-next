@@ -14,7 +14,8 @@
     "plant:ingestion:plan": "node scripts/plant-ingestion/src/planCli.js",
     "plant:ingestion:apply": "node scripts/plant-ingestion/src/applyCli.js",
     "plant:ingestion:verify": "node scripts/plant-ingestion/src/verifyCli.js",
-    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js scripts/plant-ingestion/test/plan/*.test.js scripts/plant-ingestion/test/apply/*.test.js scripts/plant-ingestion/test/editorial/*.test.js"
+    "plant:ingestion:complete": "node scripts/plant-ingestion/src/completionCli.js",
+    "plant:ingestion:test": "node --test scripts/plant-ingestion/test/*.test.js scripts/plant-ingestion/test/plan/*.test.js scripts/plant-ingestion/test/apply/*.test.js scripts/plant-ingestion/test/editorial/*.test.js scripts/plant-ingestion/test/completion/*.test.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
