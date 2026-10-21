@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button";
 import PlantFinderCard from "@/components/PlantFinderCard";
 import { searchPublishedPlants } from "@/lib/plantFinderApi";
 import { useI18n } from "@/lib/i18n";
+import { identifierHrefForName } from "@/lib/homeTabRouting";
 import {
   plantTypeLabel,
   sunLabel,
@@ -22,7 +23,7 @@ import {
   resetFilters,
   clearAllFilters,
 } from "@/lib/plantFinderFilters";
-import { IconSprig, IconX, IconFilter, IconSearch } from "@/components/ui/icons";
+import { IconSprig, IconX, IconFilter, IconSearch, IconCamera } from "@/components/ui/icons";
 import { getExternalNavItems } from "@/components/ui/externalNavItems";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -323,6 +324,14 @@ export default function PlantFinderPage() {
                 {hasActiveCriteria && (
                   <>
                     <p className="pf2-empty-sub">{t("finder.expandCriteria")}</p>
+                    {filters.query && (
+                      <>
+                        <p className="pf2-empty-sub">{t("finder.analyzeWithAiHint")}</p>
+                        <Button href={identifierHrefForName(filters.query)}>
+                          <IconCamera size={16} /> {t("finder.analyzeWithAi", { name: filters.query })}
+                        </Button>
+                      </>
+                    )}
                     <Button variant="secondary" onClick={handleClearAll}>{t("finder.resetFilters")}</Button>
                   </>
                 )}
