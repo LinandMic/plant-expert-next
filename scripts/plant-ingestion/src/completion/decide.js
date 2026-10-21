@@ -101,7 +101,10 @@ function decideSun(observations, aiValue) {
   if (why) return result("to_verify", null, domains, why);
   const inter = SUN_VALUES.filter((v) => domains.every((d) => d.value.includes(v)));
   if (!inter.length) return result("to_verify", null, domains, ["sources_disagree (no common exposure)"]);
-  if (!Array.isArray(aiValue) || !aiValue.some((v) => inter.includes(v))) return result("to_verify", null, domains, ["ai_disagrees"]);
+  // Strict: the AI proposal must be EXACTLY the common exposure set — a
+  // partial overlap would let the intersection silently narrow the value.
+  const ai = Array.isArray(aiValue) ? SUN_VALUES.filter((v) => aiValue.includes(v)) : [];
+  if (ai.join(",") !== inter.join(",")) return result("to_verify", null, domains, [`ai_disagrees (AI ${JSON.stringify(ai)} vs sources ${JSON.stringify(inter)})`]);
   return result("verified", inter, domains);
 }
 
@@ -241,6 +244,11 @@ function isPresent(v) {
 
 function applyExisting(decision, column, existingValue) {
   if (!isPresent(existingValue)) return { ...decision, existing: null, emit: decision.status === "verified" };
+  // Never narrow an existing flowering period: a verified value that drops
+  // any month already stored is not applied (it may only confirm or widen).
+  if (column === "flowering_months" && decision.status === "verified" && !existingValue.every((m) => decision.value.includes(m))) {
+    return { ...decision, status: "existing_unverified", value: null, existing: existingValue, emit: false, reasons: [`would narrow the existing flowering period ${JSON.stringify(existingValue)} -> ${JSON.stringify(decision.value)}; never applied automatically`] };
+  }
   if (decision.status === "verified") {
     return sameValue(column, existingValue, decision.value)
       ? { ...decision, status: "existing_confirmed", existing: existingValue, emit: false }

@@ -698,7 +698,10 @@ Par plante :
    fourchettes** — chaque site donne un intervalle (« 4–8 m », « 15 ft »,
    « plus de 12 m ») ; tous doivent avoir une intersection commune, la valeur
    retenue est sa **borne haute** et la proposition IA doit tomber dedans
-   (± 5 cm d'arrondi d'unités seulement). Les valeurs déjà présentes subissent la même
+   (± 5 cm d'arrondi d'unités seulement). Exposition : la proposition IA
+   doit être **exactement** l'ensemble commun aux sources. Floraison : une
+   période déjà en base n'est **jamais rétrécie** (seulement confirmée ou
+   élargie). Wikipédia FR ne compte que pour le nom français. Les valeurs déjà présentes subissent la même
    règle (`existing_confirmed` / `existing_corrected` / `existing_unverified`).
    Un nom FR préféré existant n'est jamais remplacé automatiquement.
 5. **Sorties** (`output/completion/<lot_id>/`, gitignoré) :
@@ -707,7 +710,12 @@ Par plante :
    `common-names.json`, `catalog-map.json` (pour `--catalog-map`),
    `report.json` / `report.md` (décisions, raisons, valeur parsée de chaque
    source — jamais le passage —, dépense, taux de blocage par site),
-   `publish-candidates.sql` (non exécuté).
+   `publish-candidates.sql` (non exécuté ; ne liste que les fiches dont les
+   4 critères critiques sont réellement écrits par `editorial-input.json` ou
+   déjà confirmés, et revérifie l'état réel de chaque fiche à l'exécution).
+   Titres de pages nettoyés, jamais inventés (« titre non fourni »).
+   `--decided-by <uuid>` renseigne `review.decided_by` (UUID d'un utilisateur
+   `auth.users`).
 
 **Publiable** = les 4 critères critiques (type, exposition, hauteur,
 envergure) vérifiés. `evergreen` / `water_need` / `flowering_months` ne sont

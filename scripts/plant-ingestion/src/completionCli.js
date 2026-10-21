@@ -31,12 +31,13 @@ import { runWithPauseTurn } from "./completion/anthropicClient.js";
 import { cachedCallApi } from "./completion/responseCache.js";
 import { getAnthropicConfig } from "./completion/anthropicConfig.js";
 import { loadSnapshot } from "./completion/snapshot.js";
-import { DEFAULT_BUDGET_CAP_USD } from "./completion/completionConfig.js";
+import { DEFAULT_BUDGET_CAP_USD, LIMITS } from "./completion/completionConfig.js";
 import {
   buildEditorialEntries,
   buildCommonNamesBatch,
   buildCatalogMap,
   buildPublishSql,
+  publishableSlugs,
   buildReport,
   buildReportMarkdown,
 } from "./completion/emit.js";
@@ -50,7 +51,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INGESTION_ROOT = path.resolve(__dirname, "..");
 
 export function parseArgs(argv) {
-  const args = { input: null, execute: false, estimate: false, replay: false, budgetUsd: DEFAULT_BUDGET_CAP_USD, out: null, snapshotFile: null };
+  const args = { input: null, execute: false, estimate: false, replay: false, budgetUsd: DEFAULT_BUDGET_CAP_USD, out: null, snapshotFile: null, decidedBy: null };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--input") args.input = argv[++i];
@@ -60,11 +61,16 @@ export function parseArgs(argv) {
     else if (a === "--budget-usd") args.budgetUsd = Number(argv[++i]);
     else if (a === "--out") args.out = argv[++i];
     else if (a === "--snapshot") args.snapshotFile = argv[++i];
+    else if (a === "--decided-by") args.decidedBy = argv[++i];
     else throw new Error(`unknown argument: ${a}`);
   }
   if ([args.execute, args.estimate, args.replay].filter(Boolean).length > 1) throw new Error("--execute, --estimate and --replay are mutually exclusive");
   if (!Number.isFinite(args.budgetUsd) || args.budgetUsd <= 0) throw new Error("--budget-usd must be a positive number");
   if (args.budgetUsd > DEFAULT_BUDGET_CAP_USD) throw new Error(`--budget-usd cannot exceed the hard cap of ${DEFAULT_BUDGET_CAP_USD} $`);
+  // plant_trait_selections.decided_by is uuid REFERENCES auth.users(id)
+  if (args.decidedBy !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args.decidedBy)) {
+    throw new Error("--decided-by must be a Supabase auth user id (UUID)");
+  }
   return args;
 }
 
@@ -79,7 +85,7 @@ function printEstimate(e) {
   console.log(`  plantes                      : ${e.plants}`);
   console.log(`  appels API (proposition + sources) : ${e.api_calls}`);
   console.log(`  recherches web max           : ${e.max_web_searches} (0,01 $ chacune)`);
-  console.log(`  pages lues max               : ${e.max_page_fetches} (≤ 12 000 tokens chacune)`);
+  console.log(`  pages lues max               : ${e.max_page_fetches} (≤ ${LIMITS.maxContentTokensPerFetch} tokens chacune)`);
   console.log(`  coût attendu                 : ${e.expected_usd.low.toFixed(2)} – ${e.expected_usd.high.toFixed(2)} $`);
   console.log(`  pire cas théorique           : ${e.worst_case_usd.toFixed(2)} $`);
   console.log(`  plafond dur                  : ${e.budget_cap_usd} $ (aucune plante n'est commencée si elle peut le dépasser)`);
@@ -136,7 +142,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
 
   mkdirSync(outDir, { recursive: true });
 
-  const editorial = buildEditorialEntries(run.results, { generatedAt });
+  const editorial = buildEditorialEntries(run.results, { generatedAt, decidedBy: args.decidedBy });
   const editorialErrors = editorial.flatMap((e) => validateEditorialInput(e).map((err) => `${e.catalog_ref}/${e.trait}: ${err.message}`));
   // Same plan builder editorialCli.js uses: throws on a duplicate (catalog_ref, trait).
   if (!editorialErrors.length && editorial.length) buildEditorialPlan(editorial);
@@ -145,6 +151,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   const report = buildReport(run.results, { lotId: lot.lot_id, generatedAt, spend: run.spend, budgetCapUsd: args.budgetUsd, stoppedForBudget: run.stoppedForBudget });
   report.output_validation = { editorial_errors: editorialErrors, common_names_errors: namesErrors };
   report.mode = args.replay ? "replay" : "execute";
+  report.publish_candidates = publishableSlugs(run.results, editorial);
 
   const files = {
     "editorial-input.json": JSON.stringify(editorial, null, 2),
@@ -152,7 +159,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     "catalog-map.json": JSON.stringify(buildCatalogMap(lot.plants), null, 2),
     "report.json": JSON.stringify(report, null, 2),
     "report.md": buildReportMarkdown(report),
-    "publish-candidates.sql": buildPublishSql(run.results, { lotId: lot.lot_id }),
+    "publish-candidates.sql": buildPublishSql(run.results, editorial, { lotId: lot.lot_id }),
   };
   for (const [name, content] of Object.entries(files)) writeFileSync(path.join(outDir, name), content);
 

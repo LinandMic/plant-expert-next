@@ -15,6 +15,15 @@ import { CURATION_LICENSE, COMPLETION_MODEL } from "./completionConfig.js";
 
 const COLUMN_ORDER = ["plant_type", "sun", "height_min_cm", "height_max_cm", "spread_max_cm", "evergreen", "water_need", "flowering_months"];
 
+// Page titles are provenance: cleaned (no newline, no "|" that would break
+// the corroboration format, bounded length) and NEVER invented — a page
+// without a title is recorded as "titre non fourni".
+export const NO_TITLE = "titre non fourni";
+export function sanitizeTitle(title) {
+  const t = String(title ?? "").replace(/\s+/g, " ").replace(/\|/g, "/").trim();
+  return t ? t.slice(0, 200) : NO_TITLE;
+}
+
 function primaryAndCorroboration(sources) {
   const primary = sources.find((s) => s.institutional) || sources[0];
   const corroboration = sources.find((s) => s.domain !== primary.domain);
@@ -22,7 +31,7 @@ function primaryAndCorroboration(sources) {
 }
 
 function corroborationText(s) {
-  return `corroboration: ${s.publisher} | ${s.title ?? "(sans titre)"} | ${s.url} | ${s.retrieved_at ?? "date inconnue"}`;
+  return `corroboration: ${s.publisher} | ${sanitizeTitle(s.title)} | ${s.url} | ${s.retrieved_at ?? "date inconnue"}`;
 }
 
 // raw_value: our own short, factual summary of what each site states —
@@ -32,7 +41,7 @@ function rawValueSummary(column, decision) {
   return `${column} = ${JSON.stringify(decision.value)} (proposition IA + ${decision.sources.length} sources concordantes : ${sites})`;
 }
 
-export function buildEditorialEntries(plantResults, { generatedAt }) {
+export function buildEditorialEntries(plantResults, { generatedAt, decidedBy = null }) {
   const entries = [];
   for (const r of plantResults) {
     if (!r.decision) continue;
@@ -48,7 +57,7 @@ export function buildEditorialEntries(plantResults, { generatedAt }) {
         normalized_value: d.value,
         curation: { method: "open_source_synthesis", license: CURATION_LICENSE },
         source: {
-          title: primary.title || `${r.plant.canonical_name} — ${primary.publisher}`,
+          title: sanitizeTitle(primary.title),
           publisher: primary.publisher,
           url: primary.url,
           license: primary.license,
@@ -61,7 +70,7 @@ export function buildEditorialEntries(plantResults, { generatedAt }) {
             corroboration ? corroborationText(corroboration) : null,
             "Aucun texte reproduit.",
           ].filter(Boolean).join(" "),
-          decided_by: null,
+          decided_by: decidedBy,
         },
         confidence: "high",
       });
@@ -84,7 +93,7 @@ export function buildCommonNamesBatch(plantResults, { generatedAt, lotId }) {
       name: d.value,
       is_preferred: true,
       source_url: primary.url,
-      source_title: primary.title || `${r.plant.canonical_name} — ${primary.publisher}`,
+      source_title: sanitizeTitle(primary.title),
       source_publisher: primary.publisher,
       curation_method: "open_source_synthesis",
       retrieved_at: primary.retrieved_at || generatedAt,
@@ -106,16 +115,38 @@ export function buildCatalogMap(plants) {
   return { mode: "completion_catalog_map", catalog_entries: plants.map((p) => ({ catalog_ref: p.catalog_ref, slug: p.slug })) };
 }
 
-export function buildPublishSql(plantResults, { lotId }) {
-  const slugs = plantResults.filter((r) => r.decision?.publishable).map((r) => r.plant.slug).sort();
+// Critical blocks -> plant_catalog columns (height: either bound).
+const CRITICAL_COLUMNS = { plant_type: ["plant_type"], sun: ["sun"], height: ["height_max_cm", "height_min_cm"], spread: ["spread_max_cm"] };
+
+// publishableSlugs(plantResults, entries) — a plant is a publication
+// candidate only if EVERY critical block is either written by an entry that
+// is really emitted in editorial-input.json, or already present in the
+// catalog and confirmed. (A decision alone is not enough: an entry can be
+// excluded from the applied file.)
+export function publishableSlugs(plantResults, entries) {
+  const emitted = new Set(entries.map((e) => `${e.catalog_ref}:${e.trait}`));
+  return plantResults
+    .filter((r) => r.decision?.publishable)
+    .filter((r) =>
+      Object.values(CRITICAL_COLUMNS).every((cols) =>
+        cols.some((c) => emitted.has(`${r.plant.catalog_ref}:${c}`) || r.decision.columns[c]?.status === "existing_confirmed")
+      )
+    )
+    .map((r) => r.plant.slug)
+    .sort();
+}
+
+export function buildPublishSql(plantResults, entries, { lotId }) {
+  const slugs = publishableSlugs(plantResults, entries);
   const list = slugs.map((s) => `  ('${s.replace(/'/g, "''")}')`).join(",\n");
   return `-- =============================================================================
 -- ÉCRITURE — NE PAS LANCER AVANT RELECTURE. Généré par la complétion, lot ${lotId}.
--- À lancer seulement APRÈS : editorialCli.js --apply puis --verify (valeurs
--- écrites et vérifiées), et commonNamesCli.js --apply si des noms FR sont ajoutés.
--- Publie uniquement les ${slugs.length} fiches dont les 4 critères critiques
--- (type, exposition, hauteur, envergure) sont vérifiés (IA + 2 sources ancrées).
--- Toute la transaction est annulée si le nombre de lignes ne correspond pas.
+-- À lancer seulement APRÈS editorialCli.js --apply puis --verify sur CE
+-- editorial-input.json (non modifié). Candidates : ${slugs.length} fiche(s) dont les
+-- 4 critères critiques sont écrits par ce fichier ou déjà confirmés en base.
+-- Double contrôle à l'exécution : une fiche n'est publiée que si son ÉTAT RÉEL
+-- en base a les 4 critères critiques renseignés ; sinon le nombre ne
+-- correspond pas et toute la transaction est annulée.
 -- =============================================================================
 ${slugs.length === 0 ? "-- Aucune fiche publiable dans ce lot.\n" : `begin;
 
@@ -125,14 +156,18 @@ from public.plant_catalog pc
 join (values
 ${list}
 ) as wanted(slug) on wanted.slug = pc.slug
-where pc.publication_status = 'draft';
+where pc.publication_status = 'draft'
+  and pc.plant_type is not null and pc.plant_type <> ''
+  and pc.sun is not null and cardinality(pc.sun) > 0
+  and (pc.height_min_cm is not null or pc.height_max_cm is not null)
+  and pc.spread_max_cm is not null;
 
 do $$
 declare expected constant int := ${slugs.length}; found int;
 begin
   select count(*) into found from to_publish;
   if found <> expected then
-    raise exception 'Attendu % fiches draft, trouvé % — transaction annulée.', expected, found;
+    raise exception 'Attendu % fiches draft complètes (4 critères critiques en base), trouvé % — transaction annulée.', expected, found;
   end if;
 end $$;
 
@@ -233,6 +268,7 @@ export function buildReportMarkdown(report) {
   lines.push(`# Complétion — lot ${report.lot_id}`, "");
   lines.push(`Généré le ${report.generated_at} · modèle ${report.model} · mode ${report.mode ?? "execute"} · dépense ${report.spend.usd.toFixed(2)} $ (plafond ${report.budget_cap_usd} $)${report.spend.reused_from_cache_usd_if_paid ? ` · réutilisé depuis le cache sans repayer : ${report.spend.reused_from_cache_usd_if_paid.toFixed(2)} $` : ""}${report.stopped_for_budget ? " · **arrêt sur plafond budgétaire**" : ""}`, "");
   lines.push(`**${report.summary.publishable} / ${report.summary.plants} fiches publiables** (4 critères critiques vérifiés) · erreurs : ${report.summary.errors} · non traitées : ${report.summary.skipped}`, "");
+  if (report.publish_candidates) lines.push(`Candidates de publication (valeurs réellement émises) : ${report.publish_candidates.length ? report.publish_candidates.join(", ") : "aucune"}`, "");
   lines.push("## Blocage par site", "", "| Site | Pages lues | Bloquées | Taux de blocage | Codes | Valeurs ancrées | Passages rejetés |", "|---|---|---|---|---|---|---|");
   for (const [domain, s] of Object.entries(report.site_stats)) {
     lines.push(`| ${domain} | ${s.fetch_ok} | ${s.fetch_blocked} | ${s.fetch_block_rate == null ? "—" : `${s.fetch_block_rate} %`} | ${Object.entries(s.blocked_codes).map(([k, v]) => `${k}×${v}`).join(", ") || "—"} | ${s.grounded_values} | ${s.rejected_passages} |`);

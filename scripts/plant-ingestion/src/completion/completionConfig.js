@@ -34,6 +34,34 @@ export const SOURCE_DOMAINS = Object.freeze({
     names_fr: false,
     license: "NC State Extension public-education resource — referenced for factual values only, no content reproduced",
   },
+  "landscapeplants.oregonstate.edu": {
+    publisher: "Oregon State University — Landscape Plants",
+    institutional: true,
+    traits: true,
+    names_fr: false,
+    license: "© Oregon State University — referenced for factual values only, no content reproduced",
+  },
+  "hort.extension.wisc.edu": {
+    publisher: "University of Wisconsin–Madison Extension — Horticulture",
+    institutional: true,
+    traits: true,
+    names_fr: false,
+    license: "© Board of Regents of the University of Wisconsin System — referenced for factual values only, no content reproduced",
+  },
+  "pfaf.org": {
+    publisher: "Plants For A Future (PFAF)",
+    institutional: false,
+    traits: true,
+    names_fr: false,
+    license: "Plants For A Future database — reuse license not independently confirmed; referenced for factual values only, no content reproduced",
+  },
+  "fr.wikipedia.org": {
+    publisher: "Wikipédia (français)",
+    institutional: false,
+    traits: false, // French common name ONLY
+    names_fr: true,
+    license: "Wikipédia — CC BY-SA 4.0; referenced for the French common name only, no content reproduced",
+  },
   "gardenersworld.com": {
     publisher: "BBC Gardeners' World",
     institutional: false,

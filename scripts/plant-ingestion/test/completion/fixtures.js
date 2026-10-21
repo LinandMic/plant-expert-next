@@ -26,6 +26,11 @@ export const PAGES = {
     title: "Testus exemplaris L., 1753",
     text: "Testus exemplaris L., 1753. Nom vernaculaire : Testier commun, Testier d'exemple.",
   },
+  wiki: {
+    url: "https://fr.wikipedia.org/wiki/Testus_exemplaris",
+    title: "Testus exemplaris — Wikipédia",
+    text: "Testus exemplaris, le Testier commun, est une espèce fictive utilisée pour les tests.",
+  },
 };
 
 // A page from a site that is NOT (or no longer) in the allowed list.
@@ -76,6 +81,7 @@ export const EVIDENCE_JSON = {
       common_name_fr: null,
     },
     { url: PAGES.inpn.url, traits: { common_name_fr: "Nom vernaculaire : Testier commun, Testier d'exemple." }, common_name_fr: "Testier commun" },
+    { url: PAGES.wiki.url, traits: { common_name_fr: "Testus exemplaris, le Testier commun, est une espèce" }, common_name_fr: "Testier commun" },
   ],
 };
 

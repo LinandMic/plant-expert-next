@@ -102,3 +102,18 @@ test("'conifer' maps to tree + shrub (the AI and the other sources decide)", () 
   assert.deepEqual(parsePlantType("Coniferous evergreen"), ["tree", "shrub"]);
   assert.deepEqual(parsePlantType("Conifère"), ["tree", "shrub"]);
 });
+
+test("site list after lot 1: 4 sites added, umn/uconn not added", async () => {
+  const { sourceInfoForUrl } = await import("../../src/completion/completionConfig.js");
+  assert.equal(sourceInfoForUrl("https://landscapeplants.oregonstate.edu/plants/x").institutional, true);
+  assert.equal(sourceInfoForUrl("https://hort.extension.wisc.edu/articles/x/").institutional, true);
+  const pfaf = sourceInfoForUrl("https://pfaf.org/user/Plant.aspx?LatinName=X");
+  assert.equal(pfaf.institutional, false);
+  assert.equal(pfaf.traits, true);
+  const wiki = sourceInfoForUrl("https://fr.wikipedia.org/wiki/X");
+  assert.equal(wiki.traits, false);
+  assert.equal(wiki.names_fr, true);
+  assert.equal(sourceInfoForUrl("https://en.wikipedia.org/wiki/X"), null, "only the French Wikipedia");
+  assert.equal(sourceInfoForUrl("https://extension.umn.edu/x"), null);
+  assert.equal(sourceInfoForUrl("https://hort.uconn.edu/x"), null);
+});

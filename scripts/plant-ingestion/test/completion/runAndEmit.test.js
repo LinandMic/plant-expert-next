@@ -79,17 +79,22 @@ test("emitted files are accepted by the existing editorial / common-names toolin
   assert.match(sun.review.note, /corroboration: Missouri Botanical Garden — Plant Finder \| .* \| https:\/\/www\.missouribotanicalgarden\.org\//);
   assert.ok(!/Sunlight:/.test(JSON.stringify(entries)), "no page passage is copied into the output");
 
-  // only one French-name site (INPN) -> no name row is emitted
   const names = buildCommonNamesBatch(run.results, { generatedAt, lotId: "test-lot" });
-  assert.equal(names.rows.length, 0);
+  assert.deepEqual(validateCommonNamesBatch(names), []);
+  assert.equal(names.rows[0].source_publisher, "INPN — Muséum national d'Histoire naturelle");
+  assert.equal(names.corroborating_sources[0].domain, "fr.wikipedia.org");
 
   const map = buildCatalogSlugMap(buildCatalogMap(LOT.plants));
   assert.equal(map.get(PLANT.catalog_ref), PLANT.slug);
 
-  const sql = buildPublishSql(run.results, { lotId: "test-lot" });
+  const sql = buildPublishSql(run.results, entries, { lotId: "test-lot" });
   assert.match(sql, /\('testus-exemplaris'\)/);
   assert.match(sql, /expected constant int := 1/);
   assert.match(sql, /publication_status = 'draft'/);
+  assert.match(sql, /pc\.spread_max_cm is not null/, "the real row state is checked at execution");
+  // an excluded critical entry removes the plant from the publication SQL
+  const withoutSpread = entries.filter((e) => e.trait !== "spread_max_cm");
+  assert.match(buildPublishSql(run.results, withoutSpread, { lotId: "test-lot" }), /Aucune fiche publiable/);
 });
 
 test("site stats report fetch blocking per site", async () => {
@@ -189,4 +194,23 @@ test("anthropicClient: retries a 529 then succeeds; continues a pause_turn; neve
 
   const denied = async () => ({ ok: false, status: 401, json: async () => ({ error: { type: "authentication_error", message: "invalid x-api-key" } }) });
   await assert.rejects(postMessages({}, { apiKey: "secret-key", fetchImpl: denied, sleep: async () => {} }), (err) => err.status === 401 && !err.message.includes("secret-key"));
+});
+
+test("titles: cleaned, never invented; decided_by only as a UUID", async () => {
+  const { sanitizeTitle, NO_TITLE } = await import("../../src/completion/emit.js");
+  assert.equal(sanitizeTitle("Buxus sempervirens\n  | NC State\tExtension"), "Buxus sempervirens / NC State Extension");
+  assert.equal(sanitizeTitle(null), NO_TITLE);
+  assert.equal(sanitizeTitle("   "), NO_TITLE);
+
+  const run = await runCompletion({ lot: LOT, snapshot: SNAPSHOT, callApi: fakeCallApi({ evidenceOptions: {} }), budgetCapUsd: 8 });
+  // drop the MBG title to simulate a page without title
+  for (const col of Object.values(run.results[0].decision.columns)) for (const s of col.sources) if (s.domain === "missouribotanicalgarden.org") s.title = null;
+  const entries = buildEditorialEntries(run.results, { generatedAt: "2026-10-21T12:00:00.000Z", decidedBy: "3f2a1b4c-5d6e-4f70-8a91-b2c3d4e5f607" });
+  assert.ok(entries.every((e) => !/Plant Finder$/.test(e.source.title) || e.source.publisher !== "Missouri Botanical Garden — Plant Finder"));
+  assert.ok(entries.some((e) => e.review.note.includes(`| ${NO_TITLE} |`)), "a missing corroboration title is recorded as such");
+  assert.ok(entries.every((e) => e.review.decided_by === "3f2a1b4c-5d6e-4f70-8a91-b2c3d4e5f607"));
+  for (const e of entries) assert.equal((e.review.note.match(/corroboration: /g) || []).length, 1);
+
+  assert.throws(() => parseArgs(["--input", "x.json", "--decided-by", "lindsey"]), /UUID/);
+  assert.equal(parseArgs(["--input", "x.json", "--decided-by", "3f2a1b4c-5d6e-4f70-8a91-b2c3d4e5f607"]).decidedBy, "3f2a1b4c-5d6e-4f70-8a91-b2c3d4e5f607");
 });

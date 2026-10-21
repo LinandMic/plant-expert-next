@@ -23,9 +23,9 @@ test("AI + 2 grounded sites (1 institutional) agreeing -> every column verified,
   assert.equal(d.columns.evergreen.value, true);
   assert.equal(d.columns.water_need.value, "moderate");
   assert.deepEqual(d.columns.flowering_months.value, [3, 4, 5]);
-  // only one French-name site left (INPN) -> the name cannot be verified
-  assert.equal(d.common_name_fr.status, "to_verify");
-  assert.match(d.common_name_fr.reasons[0], /insufficient_sources/);
+  // INPN (institutional) + Wikipedia FR agree with the AI
+  assert.equal(d.common_name_fr.value, "Testier commun");
+  assert.equal(d.common_name_fr.sources[0].domain, "inpn.mnhn.fr");
   for (const col of Object.values(d.columns)) assert.equal(col.emit, true);
   assert.deepEqual(d.columns.plant_type.sources.map((s) => s.domain).sort(), ["missouribotanicalgarden.org", "rhs.org.uk"]);
 });
@@ -166,6 +166,26 @@ test("an implausible verified combination is downgraded to to_verify (fern of 3.
   assert.match(d.columns.height_max_cm.reasons[0], /implausible/);
   assert.equal(d.columns.plant_type.status, "to_verify");
   assert.equal(d.publishable, false);
+});
+
+test("sun: the AI proposal must EQUAL the common exposure set (no silent narrowing)", () => {
+  const partial = decidePlant({ proposal: { ...PROPOSAL, sun: ["full_sun"] }, observations: grounded(), existing: DRAFT_EMPTY_ROW });
+  assert.equal(partial.columns.sun.status, "to_verify");
+  assert.match(partial.columns.sun.reasons[0], /ai_disagrees/);
+  const wider = decidePlant({ proposal: { ...PROPOSAL, sun: ["full_sun", "partial_sun", "shade"] }, observations: grounded(), existing: DRAFT_EMPTY_ROW });
+  assert.equal(wider.columns.sun.status, "to_verify");
+  const exact = decidePlant({ proposal: { ...PROPOSAL, sun: ["partial_sun", "full_sun"] }, observations: grounded(), existing: DRAFT_EMPTY_ROW });
+  assert.deepEqual(exact.columns.sun.value, ["full_sun", "partial_sun"]);
+});
+
+test("flowering_months: an existing period is never narrowed, only confirmed or widened", () => {
+  const narrowed = decidePlant({ proposal: PROPOSAL, observations: grounded(), existing: { ...DRAFT_EMPTY_ROW, flowering_months: [2, 3, 4] } });
+  assert.equal(narrowed.columns.flowering_months.status, "existing_unverified");
+  assert.equal(narrowed.columns.flowering_months.emit, false);
+  assert.match(narrowed.columns.flowering_months.reasons[0], /never applied automatically/);
+  const widened = decidePlant({ proposal: PROPOSAL, observations: grounded(), existing: { ...DRAFT_EMPTY_ROW, flowering_months: [4] } });
+  assert.equal(widened.columns.flowering_months.status, "existing_corrected");
+  assert.deepEqual(widened.columns.flowering_months.value, [3, 4, 5]);
 });
 
 test("plausibility rules", () => {

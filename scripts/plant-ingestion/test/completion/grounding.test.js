@@ -7,10 +7,10 @@ import { PAGES, EVIDENCE_JSON, OFF_LIST_PAGE, evidenceContent } from "./fixtures
 test("collectFetchedDocuments: fetched text pages, fetch errors and search hits are logged per site", () => {
   const content = evidenceContent({ blocked: [{ url: "https://www.gardenersworld.com/plants/testus-exemplaris/", error_code: "url_not_allowed" }] });
   const { docs, fetchLog, searchLog } = collectFetchedDocuments(content);
-  assert.equal(docs.size, 3);
+  assert.equal(docs.size, 4);
   assert.deepEqual(fetchLog.filter((f) => !f.ok), [{ url: "https://www.gardenersworld.com/plants/testus-exemplaris/", domain: "gardenersworld.com", ok: false, error_code: "url_not_allowed" }]);
-  assert.equal(fetchLog.filter((f) => f.ok).length, 3);
-  assert.equal(searchLog.length, 4);
+  assert.equal(fetchLog.filter((f) => f.ok).length, 4);
+  assert.equal(searchLog.length, 5);
 });
 
 test("extractFinalJson reads the final ```json block", () => {
@@ -27,7 +27,7 @@ test("groundEvidence: values are parsed from passages found in the fetched pages
   assert.equal(rhsHeight.publisher, "Royal Horticultural Society (RHS)", "publisher comes from the site table, not the model");
   assert.equal(rhsHeight.institutional, true);
   const names = observations.filter((o) => o.trait === "common_name_fr");
-  assert.deepEqual(names.map((n) => n.domain), ["inpn.mnhn.fr"]);
+  assert.deepEqual(names.map((n) => n.domain).sort(), ["fr.wikipedia.org", "inpn.mnhn.fr"]);
   assert.ok(observations.every((o) => !("quote" in o)), "passages are never kept");
 });
 
@@ -56,6 +56,13 @@ test("a site removed from the list (tela-botanica.org) never counts, even when f
   const { observations, rejected } = groundEvidence({ sources: [{ url: OFF_LIST_PAGE.url, traits: { flowering_months: "Floraison : mars à mai." }, common_name_fr: "Testier commun" }] }, docs);
   assert.equal(observations.length, 0);
   assert.deepEqual(rejected.map((r) => r.reason), ["site_not_allowed"]);
+});
+
+test("Wikipedia FR only ever counts for the French common name", () => {
+  const { docs } = collectFetchedDocuments(evidenceContent());
+  const { observations, rejected } = groundEvidence({ sources: [{ url: PAGES.wiki.url, traits: { plant_type: "une espèce", common_name_fr: "Testus exemplaris, le Testier commun, est une espèce" }, common_name_fr: "Testier commun" }] }, docs);
+  assert.deepEqual(observations.map((o) => o.trait), ["common_name_fr"]);
+  assert.deepEqual(rejected.map((r) => `${r.trait}:${r.reason}`), ["plant_type:site_not_used_for_traits"]);
 });
 
 test("groundEvidence: a name must literally appear in the grounded passage", () => {
