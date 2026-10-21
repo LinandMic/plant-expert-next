@@ -2,15 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { collectFetchedDocuments, extractFinalJson, groundEvidence } from "../../src/completion/grounding.js";
-import { PAGES, EVIDENCE_JSON, evidenceContent } from "./fixtures.js";
+import { PAGES, EVIDENCE_JSON, OFF_LIST_PAGE, evidenceContent } from "./fixtures.js";
 
 test("collectFetchedDocuments: fetched text pages, fetch errors and search hits are logged per site", () => {
   const content = evidenceContent({ blocked: [{ url: "https://www.gardenersworld.com/plants/testus-exemplaris/", error_code: "url_not_allowed" }] });
   const { docs, fetchLog, searchLog } = collectFetchedDocuments(content);
-  assert.equal(docs.size, 4);
+  assert.equal(docs.size, 3);
   assert.deepEqual(fetchLog.filter((f) => !f.ok), [{ url: "https://www.gardenersworld.com/plants/testus-exemplaris/", domain: "gardenersworld.com", ok: false, error_code: "url_not_allowed" }]);
-  assert.equal(fetchLog.filter((f) => f.ok).length, 4);
-  assert.equal(searchLog.length, 5);
+  assert.equal(fetchLog.filter((f) => f.ok).length, 3);
+  assert.equal(searchLog.length, 4);
 });
 
 test("extractFinalJson reads the final ```json block", () => {
@@ -27,7 +27,7 @@ test("groundEvidence: values are parsed from passages found in the fetched pages
   assert.equal(rhsHeight.publisher, "Royal Horticultural Society (RHS)", "publisher comes from the site table, not the model");
   assert.equal(rhsHeight.institutional, true);
   const names = observations.filter((o) => o.trait === "common_name_fr");
-  assert.deepEqual(names.map((n) => n.domain).sort(), ["inpn.mnhn.fr", "tela-botanica.org"]);
+  assert.deepEqual(names.map((n) => n.domain), ["inpn.mnhn.fr"]);
   assert.ok(observations.every((o) => !("quote" in o)), "passages are never kept");
 });
 
@@ -49,6 +49,13 @@ test("groundEvidence rejects: URL never fetched, site outside the list, passage 
   assert.ok(reasons.includes("rhs.org.uk:water_need:passage_not_parseable"));
   assert.ok(reasons.includes("missouribotanicalgarden.org:common_name_fr:site_not_used_for_names"));
   assert.deepEqual(observations.map((o) => `${o.domain}:${o.trait}`), ["rhs.org.uk:sun"]);
+});
+
+test("a site removed from the list (tela-botanica.org) never counts, even when fetched", () => {
+  const { docs } = collectFetchedDocuments(evidenceContent({ pages: [...Object.values(PAGES), OFF_LIST_PAGE] }));
+  const { observations, rejected } = groundEvidence({ sources: [{ url: OFF_LIST_PAGE.url, traits: { flowering_months: "Floraison : mars à mai." }, common_name_fr: "Testier commun" }] }, docs);
+  assert.equal(observations.length, 0);
+  assert.deepEqual(rejected.map((r) => r.reason), ["site_not_allowed"]);
 });
 
 test("groundEvidence: a name must literally appear in the grounded passage", () => {

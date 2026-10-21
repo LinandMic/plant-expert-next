@@ -41,13 +41,6 @@ export const SOURCE_DOMAINS = Object.freeze({
     names_fr: false,
     license: "© Immediate Media / BBC Gardeners' World — referenced for factual values only, no content reproduced",
   },
-  "tela-botanica.org": {
-    publisher: "Tela Botanica",
-    institutional: false,
-    traits: true,
-    names_fr: true,
-    license: "Tela Botanica (eFlore) — CC BY-SA content, referenced for factual values only, no content reproduced",
-  },
   "inpn.mnhn.fr": {
     publisher: "INPN — Muséum national d'Histoire naturelle",
     institutional: true,
@@ -85,12 +78,15 @@ export function sourceInfoForUrl(url) {
 // the same value the existing editorial files use.
 export const CURATION_LICENSE = "proprietary_internal_curation_v1";
 
+// Lot 1 showed ~222k input tokens per plant: every server-side loop
+// iteration re-reads the whole accumulated context, so the number of
+// fetches and the size of each page dominate the cost.
 export const LIMITS = Object.freeze({
   proposalMaxTokens: 2000,
   evidenceMaxTokens: 8000,
-  maxSearchesPerPlant: 6,
-  maxFetchesPerPlant: 6,
-  maxContentTokensPerFetch: 12000,
+  maxSearchesPerPlant: 4,
+  maxFetchesPerPlant: 4,
+  maxContentTokensPerFetch: 5000,
   maxPauseTurnContinuations: 3,
   maxRetries: 2,
 });
@@ -108,15 +104,16 @@ export const PRICING = Object.freeze({
 // 6 searches, 6 fetches capped at 12k tokens each, server-loop re-reads
 // and pause_turn continuations). Used only to refuse starting a plant
 // that could push spending past the hard cap.
-export const WORST_CASE_PER_PLANT_USD = 0.75;
+export const WORST_CASE_PER_PLANT_USD = 0.6;
 export const DEFAULT_BUDGET_CAP_USD = 8;
 
 // Expected range per plant (for --estimate only).
-export const EXPECTED_PER_PLANT_USD = Object.freeze({ low: 0.15, high: 0.35 });
+export const EXPECTED_PER_PLANT_USD = Object.freeze({ low: 0.15, high: 0.3 });
 
 // Agreement tolerances (decide.js).
 export const TOLERANCES = Object.freeze({
-  lengthRelative: 0.25, // 25 % between two sources / AI vs retained
+  lengthRelative: 0.25, // 25 % — only used to compare an EXISTING value with the retained one
   lengthAbsoluteCm: 30, // or within 30 cm for small plants
+  lengthUnitSlackCm: 5, // unit-conversion rounding margin (ft/in -> cm) for interval checks
   monthsOverlapRatio: 0.5, // |intersection| / |union| >= 0.5
 });

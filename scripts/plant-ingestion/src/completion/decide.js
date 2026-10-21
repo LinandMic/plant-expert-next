@@ -38,10 +38,6 @@ export function withinTolerance(a, b) {
   return Math.abs(a - b) <= Math.max(TOLERANCES.lengthRelative * Math.max(a, b), TOLERANCES.lengthAbsoluteCm);
 }
 
-function round10(v) {
-  return Math.round(v / 10) * 10;
-}
-
 // One value per site; a site whose pages disagree is a conflict.
 function perDomain(observations, trait) {
   const map = new Map();
@@ -123,56 +119,63 @@ function decideMonths(observations, aiValue) {
   return result("verified", inter, domains);
 }
 
-// lengths: trait "height" | "spread"; returns { max, min } decisions.
+// Lengths (trait "height" | "spread") — agreement by INTERVAL OVERLAP.
+// Each site states a range: [min, max] for "1–1.5 m", [x, x] for a single
+// value, [min, +∞) for "higher than 12 m". All grounded sites must share a
+// common intersection I = [max of lows, min of highs]; the retained
+// maximum is the upper bound of I (the most conservative value compatible
+// with every source), and the AI proposal must fall inside I. This is what
+// lets a wide RHS band ("4–8 m") agree with a precise "15 ft" without
+// averaging away a real disagreement. A ±lengthUnitSlackCm margin only
+// absorbs ft/in -> cm rounding.
+function intervalOf(value) {
+  const lo = value.min_cm ?? value.max_cm;
+  const hi = value.open_ended ? Infinity : value.max_cm ?? value.min_cm;
+  return { lo, hi };
+}
+
+function inInterval(x, lo, hi) {
+  const slack = TOLERANCES.lengthUnitSlackCm;
+  return x >= lo - slack && x <= hi + slack;
+}
+
 function decideLength(observations, trait, aiMax, aiMin) {
   const { domains, conflict } = perDomain(observations, trait);
   const out = {};
+  const fail = (support, reasons) => result("to_verify", null, support, reasons);
 
-  // maximum
-  const closed = domains.filter((d) => d.value.max_cm != null);
-  const opens = domains.filter((d) => d.value.open_ended && d.value.min_cm != null);
-  let maxRes;
-  if (conflict) maxRes = result("to_verify", null, domains, ["sources_disagree (same site, different pages)"]);
-  else if (closed.length >= 2) {
-    const values = closed.map((d) => d.value.max_cm);
-    const agree = values.every((a) => values.every((b) => withinTolerance(a, b)));
-    const support = [...closed, ...opens.filter((o) => o.value.min_cm <= Math.max(...values) * (1 + TOLERANCES.lengthRelative))];
-    if (!agree) maxRes = result("to_verify", null, closed, [`sources_disagree (${values.join(" / ")} cm)`]);
-    else if (!enoughSources(support)) maxRes = result("to_verify", null, support, insufficient(support, false) || []);
-    else maxRes = result("verified", round10(values.reduce((s, v) => s + v, 0) / values.length), support);
-  } else if (closed.length === 1 && opens.length >= 1) {
-    const m = closed[0].value.max_cm;
-    const support = [closed[0], ...opens.filter((o) => o.value.min_cm <= m * (1 + TOLERANCES.lengthRelative))];
-    if (support.length < 2) maxRes = result("to_verify", null, domains, ["sources_disagree (open-ended minimum above stated maximum)"]);
-    else if (!enoughSources(support)) maxRes = result("to_verify", null, support, insufficient(support, false) || []);
-    else maxRes = result("verified", round10(m), support);
+  let inter = null;
+  if (conflict) {
+    out.max = fail(domains, ["sources_disagree (same site, different pages)"]);
+  } else if (domains.length < 2 || !domains.some((d) => d.obs.institutional)) {
+    out.max = fail(domains, insufficient(domains, false));
   } else {
-    maxRes = result("to_verify", null, closed, [`insufficient_sources (${closed.length} site(s) state a maximum)`]);
+    const ranges = domains.map((d) => ({ d, ...intervalOf(d.value) }));
+    const lo = Math.max(...ranges.map((r) => r.lo));
+    const hi = Math.min(...ranges.map((r) => r.hi));
+    const describe = ranges.map((r) => `${r.d.domain} ${r.lo}–${r.hi === Infinity ? "∞" : r.hi}`).join(" / ");
+    if (lo > hi + TOLERANCES.lengthUnitSlackCm) {
+      out.max = fail(domains, [`sources_disagree (no common range: ${describe} cm)`]);
+    } else if (hi === Infinity) {
+      inter = { lo, hi };
+      out.max = fail(domains, ["insufficient_sources (no site states an upper bound)"]);
+    } else {
+      inter = { lo: Math.min(lo, hi), hi };
+      if (aiMax == null) out.max = fail(domains, ["ai_no_value"]);
+      else if (!inInterval(aiMax, inter.lo, inter.hi)) out.max = fail(domains, [`ai_disagrees (${aiMax} cm outside common range ${inter.lo}–${inter.hi} cm)`]);
+      else out.max = result("verified", inter.hi, domains);
+    }
   }
-  if (maxRes.status === "verified") {
-    if (aiMax == null) maxRes = { ...maxRes, status: "to_verify", value: null, reasons: ["ai_no_value"] };
-    else if (!withinTolerance(aiMax, maxRes.value)) maxRes = { ...maxRes, status: "to_verify", value: null, reasons: [`ai_disagrees (${aiMax} cm vs ${maxRes.value} cm)`] };
-  }
-  out.max = maxRes;
 
-  // minimum (height only; optional)
+  // minimum (height only; optional): the lower bound of the same common
+  // range, when at least two sites state a real minimum.
   if (trait === "height") {
     const withMin = domains.filter((d) => d.value.min_cm != null);
-    let minRes;
-    if (conflict) minRes = result("to_verify", null, domains, ["sources_disagree (same site, different pages)"]);
-    else if (withMin.length < 2) minRes = result("to_verify", null, withMin, [`insufficient_sources (${withMin.length} site(s) state a minimum)`]);
-    else {
-      const values = withMin.map((d) => d.value.min_cm);
-      if (!values.every((a) => values.every((b) => withinTolerance(a, b)))) minRes = result("to_verify", null, withMin, [`sources_disagree (${values.join(" / ")} cm)`]);
-      else if (!enoughSources(withMin)) minRes = result("to_verify", null, withMin, insufficient(withMin, false) || []);
-      else {
-        const v = round10(values.reduce((s, x) => s + x, 0) / values.length);
-        if (aiMin == null) minRes = result("to_verify", null, withMin, ["ai_no_value"]);
-        else if (!withinTolerance(aiMin, v)) minRes = result("to_verify", null, withMin, [`ai_disagrees (${aiMin} cm vs ${v} cm)`]);
-        else minRes = result("verified", v, withMin);
-      }
-    }
-    out.min = minRes;
+    if (!inter) out.min = fail(withMin, out.max.reasons);
+    else if (withMin.length < 2 || !withMin.some((d) => d.obs.institutional)) out.min = fail(withMin, insufficient(withMin, false) || [`insufficient_sources (${withMin.length} site(s) state a minimum)`]);
+    else if (aiMin == null) out.min = fail(withMin, ["ai_no_value"]);
+    else if (!inInterval(aiMin, inter.lo, inter.hi === Infinity ? Infinity : inter.hi)) out.min = fail(withMin, [`ai_disagrees (${aiMin} cm outside common range)`]);
+    else out.min = result("verified", inter.lo, withMin);
   }
   return out;
 }

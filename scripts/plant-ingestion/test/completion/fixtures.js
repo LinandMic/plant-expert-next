@@ -26,11 +26,13 @@ export const PAGES = {
     title: "Testus exemplaris L., 1753",
     text: "Testus exemplaris L., 1753. Nom vernaculaire : Testier commun, Testier d'exemple.",
   },
-  tela: {
-    url: "https://www.tela-botanica.org/bdtfx-nn-99999-synthese",
-    title: "Testus exemplaris - eFlore",
-    text: "Testus exemplaris L. Noms communs : Testier commun. Floraison : mars à mai. Feuillage persistant.",
-  },
+};
+
+// A page from a site that is NOT (or no longer) in the allowed list.
+export const OFF_LIST_PAGE = {
+  url: "https://www.tela-botanica.org/bdtfx-nn-99999-synthese",
+  title: "Testus exemplaris - eFlore",
+  text: "Testus exemplaris L. Noms communs : Testier commun. Floraison : mars à mai.",
 };
 
 export const PROPOSAL = {
@@ -38,7 +40,7 @@ export const PROPOSAL = {
   sun: ["full_sun", "partial_sun"],
   height_min_cm: 200,
   height_max_cm: 350,
-  spread_max_cm: 250,
+  spread_max_cm: 240,
   evergreen: true,
   water_need: "moderate",
   flowering_months: [3, 4, 5],
@@ -74,7 +76,6 @@ export const EVIDENCE_JSON = {
       common_name_fr: null,
     },
     { url: PAGES.inpn.url, traits: { common_name_fr: "Nom vernaculaire : Testier commun, Testier d'exemple." }, common_name_fr: "Testier commun" },
-    { url: PAGES.tela.url, traits: { common_name_fr: "Noms communs : Testier commun." }, common_name_fr: "Testier commun" },
   ],
 };
 

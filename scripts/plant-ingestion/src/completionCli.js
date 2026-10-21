@@ -3,6 +3,7 @@
 //
 //   node scripts/plant-ingestion/src/completionCli.js --input <lot.json> [--estimate]
 //   node scripts/plant-ingestion/src/completionCli.js --input <lot.json> --execute [--budget-usd 8] [--out <dir>]
+//   node scripts/plant-ingestion/src/completionCli.js --input <lot.json> --replay [--out <dir>]
 //
 // --estimate (default): prints the planned calls and cost range. No
 //   network, no Supabase, no API key needed.
@@ -10,6 +11,13 @@
 //   web search). Reads plant_catalog READ-ONLY for a snapshot of current
 //   values, then writes local files under --out
 //   (default scripts/plant-ingestion/output/completion/<lot_id>/).
+// --replay: re-decides the lot from the local cache only (raw responses +
+//   snapshot saved by a previous --execute): no API call, no API key, no
+//   Supabase read, no cost. Used to tune parsers / rules for free.
+// The cache (output/completion/<lot_id>/cache/, gitignored) holds raw API
+// responses including fetched page text; it is never committed and can be
+// deleted at any time. --execute reuses an identical cached request instead
+// of paying for it again.
 // It never writes to Supabase and has no --apply: the generated
 // editorial-input.json / common-names.json go through the existing
 // editorialCli.js / commonNamesCli.js dry-run -> review -> manual --apply.
@@ -20,6 +28,7 @@ import { fileURLToPath } from "node:url";
 
 import { validateLot, estimateLot, runCompletion } from "./completion/runCompletion.js";
 import { runWithPauseTurn } from "./completion/anthropicClient.js";
+import { cachedCallApi } from "./completion/responseCache.js";
 import { getAnthropicConfig } from "./completion/anthropicConfig.js";
 import { loadSnapshot } from "./completion/snapshot.js";
 import { DEFAULT_BUDGET_CAP_USD } from "./completion/completionConfig.js";
@@ -41,18 +50,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INGESTION_ROOT = path.resolve(__dirname, "..");
 
 export function parseArgs(argv) {
-  const args = { input: null, execute: false, estimate: false, budgetUsd: DEFAULT_BUDGET_CAP_USD, out: null, snapshotFile: null };
+  const args = { input: null, execute: false, estimate: false, replay: false, budgetUsd: DEFAULT_BUDGET_CAP_USD, out: null, snapshotFile: null };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--input") args.input = argv[++i];
     else if (a === "--execute") args.execute = true;
     else if (a === "--estimate") args.estimate = true;
+    else if (a === "--replay") args.replay = true;
     else if (a === "--budget-usd") args.budgetUsd = Number(argv[++i]);
     else if (a === "--out") args.out = argv[++i];
     else if (a === "--snapshot") args.snapshotFile = argv[++i];
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (args.execute && args.estimate) throw new Error("--execute and --estimate are mutually exclusive");
+  if ([args.execute, args.estimate, args.replay].filter(Boolean).length > 1) throw new Error("--execute, --estimate and --replay are mutually exclusive");
   if (!Number.isFinite(args.budgetUsd) || args.budgetUsd <= 0) throw new Error("--budget-usd must be a positive number");
   if (args.budgetUsd > DEFAULT_BUDGET_CAP_USD) throw new Error(`--budget-usd cannot exceed the hard cap of ${DEFAULT_BUDGET_CAP_USD} $`);
   return args;
@@ -83,33 +93,47 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   const lotErrors = validateLot(lot);
   if (lotErrors.length) throw new Error(`invalid lot: ${lotErrors.join("; ")}`);
 
-  if (!args.execute) {
+  if (!args.execute && !args.replay) {
     printEstimate(estimateLot(lot, args.budgetUsd));
     console.log("\nPour lancer réellement (dépense) : relancer avec --execute.");
     return { mode: "estimate" };
   }
 
-  console.log(`Mode: EXECUTE — appels payants (Anthropic) · plafond ${args.budgetUsd} $ · aucune écriture Supabase.`);
-  const anthropic = (deps.getAnthropicConfig || getAnthropicConfig)();
-  console.log(`  ANTHROPIC_API_KEY configurée : ${anthropic.hasApiKey}`);
-  if (!anthropic.hasApiKey) throw new Error("ANTHROPIC_API_KEY missing (environment or scripts/plant-ingestion/.env.ingestion) — see .env.ingestion.example");
+  const outDir = path.resolve(process.cwd(), args.out || path.join(INGESTION_ROOT, "output", "completion", lot.lot_id));
+  const cacheDir = path.join(outDir, "cache");
+  const snapshotCacheFile = path.join(cacheDir, "snapshot.json");
+
+  let liveCallApi = null;
+  if (args.replay) {
+    console.log("Mode: REPLAY — cache local uniquement : aucun appel API, aucune clé, aucune lecture Supabase, aucune dépense.");
+  } else {
+    console.log(`Mode: EXECUTE — appels payants (Anthropic) · plafond ${args.budgetUsd} $ · aucune écriture Supabase · cache ${path.relative(process.cwd(), cacheDir)}/`);
+    const anthropic = (deps.getAnthropicConfig || getAnthropicConfig)();
+    console.log(`  ANTHROPIC_API_KEY configurée : ${anthropic.hasApiKey}`);
+    if (!anthropic.hasApiKey) throw new Error("ANTHROPIC_API_KEY missing (environment or scripts/plant-ingestion/.env.ingestion) — see .env.ingestion.example");
+    liveCallApi = deps.callApi || ((body) => runWithPauseTurn(body, { apiKey: anthropic.apiKey }));
+  }
 
   let snapshot;
   if (args.snapshotFile) {
     snapshot = readJson(args.snapshotFile);
+  } else if (args.replay) {
+    if (!existsSync(snapshotCacheFile)) throw new Error(`no cached snapshot at ${path.relative(process.cwd(), snapshotCacheFile)} — run --execute first (or pass --snapshot <file>)`);
+    snapshot = readJson(snapshotCacheFile);
   } else {
     const supa = (deps.getSupabaseConfig || getSupabaseConfig)();
     console.log(`  Supabase (lecture seule) : hasUrl=${supa.hasUrl} hasServiceRoleKey=${supa.hasServiceRoleKey}`);
     if (!supa.hasUrl || !supa.hasServiceRoleKey) throw new Error("Supabase credentials missing for the read-only snapshot (or pass --snapshot <file>)");
     const client = (deps.createClient || createSupabaseAdminClient)(supa);
     snapshot = await loadSnapshot(client, lot.plants.map((p) => p.slug));
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(snapshotCacheFile, JSON.stringify(snapshot, null, 2));
   }
 
-  const callApi = deps.callApi || ((body) => runWithPauseTurn(body, { apiKey: anthropic.apiKey }));
+  const callApi = cachedCallApi({ cacheDir, liveCallApi, mode: args.replay ? "replay" : "execute" });
   const generatedAt = (deps.now || (() => new Date()))().toISOString();
   const run = await runCompletion({ lot, snapshot, callApi, budgetCapUsd: args.budgetUsd, log: deps.log || console.log });
 
-  const outDir = path.resolve(process.cwd(), args.out || path.join(INGESTION_ROOT, "output", "completion", lot.lot_id));
   mkdirSync(outDir, { recursive: true });
 
   const editorial = buildEditorialEntries(run.results, { generatedAt });
@@ -120,6 +144,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   const namesErrors = commonNames.rows.length ? validateCommonNamesBatch(commonNames).map((err) => err.message ?? err.code) : [];
   const report = buildReport(run.results, { lotId: lot.lot_id, generatedAt, spend: run.spend, budgetCapUsd: args.budgetUsd, stoppedForBudget: run.stoppedForBudget });
   report.output_validation = { editorial_errors: editorialErrors, common_names_errors: namesErrors };
+  report.mode = args.replay ? "replay" : "execute";
 
   const files = {
     "editorial-input.json": JSON.stringify(editorial, null, 2),
@@ -131,10 +156,10 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   };
   for (const [name, content] of Object.entries(files)) writeFileSync(path.join(outDir, name), content);
 
-  console.log(`\nDépense réelle : ${run.spend.usd.toFixed(2)} $ · publiables : ${report.summary.publishable}/${report.summary.plants}`);
+  console.log(`\nDépense réelle : ${run.spend.usd.toFixed(2)} $ (réutilisé depuis le cache : ${run.spend.reused_from_cache_usd_if_paid.toFixed(2)} $ non repayés) · publiables : ${report.summary.publishable}/${report.summary.plants}`);
   if (editorialErrors.length || namesErrors.length) console.log(`⚠️ validation des sorties : ${[...editorialErrors, ...namesErrors].join(" | ")}`);
   console.log(`Fichiers écrits dans ${path.relative(process.cwd(), outDir)}/ : ${Object.keys(files).join(", ")}`);
-  return { mode: "execute", outDir, report };
+  return { mode: report.mode, outDir, report };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

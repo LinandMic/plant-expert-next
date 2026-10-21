@@ -79,10 +79,9 @@ test("emitted files are accepted by the existing editorial / common-names toolin
   assert.match(sun.review.note, /corroboration: Missouri Botanical Garden — Plant Finder \| .* \| https:\/\/www\.missouribotanicalgarden\.org\//);
   assert.ok(!/Sunlight:/.test(JSON.stringify(entries)), "no page passage is copied into the output");
 
+  // only one French-name site (INPN) -> no name row is emitted
   const names = buildCommonNamesBatch(run.results, { generatedAt, lotId: "test-lot" });
-  assert.deepEqual(validateCommonNamesBatch(names), []);
-  assert.equal(names.rows[0].source_publisher, "INPN — Muséum national d'Histoire naturelle");
-  assert.equal(names.corroborating_sources[0].domain, "tela-botanica.org");
+  assert.equal(names.rows.length, 0);
 
   const map = buildCatalogSlugMap(buildCatalogMap(LOT.plants));
   assert.equal(map.get(PLANT.catalog_ref), PLANT.slug);

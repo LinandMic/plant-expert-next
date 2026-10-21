@@ -57,10 +57,10 @@ export function buildProposalRequest(plant) {
 
 const EVIDENCE_SYSTEM = `You collect evidence about one plant species from authoritative horticultural and botanical web pages. You never answer from memory.
 Steps:
-1. Use web_search to find this exact species' own page on the allowed sites. Prefer: rhs.org.uk, missouribotanicalgarden.org, plants.ces.ncsu.edu, then gardenersworld.com and tela-botanica.org. For the French common name use inpn.mnhn.fr and tela-botanica.org.
-2. Use web_fetch to read at least two different sites' pages for the species itself (never a cultivar, a hybrid or another species page). Fetch at most ${LIMITS.maxFetchesPerPlant} pages.
+1. Use web_search to find this exact species' own page on the allowed sites. Prefer: rhs.org.uk, missouribotanicalgarden.org, plants.ces.ncsu.edu, then gardenersworld.com. For the French common name use inpn.mnhn.fr.
+2. Use web_fetch to read the species' own page (never a cultivar, a hybrid or another species page) on two or three DIFFERENT sites, at most ${LIMITS.maxFetchesPerPlant} pages in total. Stop fetching as soon as two different sites cover type, height, spread and sun. If a site refuses a fetch, do not retry it: move to another site.
 3. From each fetched page, copy for each trait the SHORT passage (at most 200 characters) that states it, EXACTLY as written on the page (no paraphrase, no translation, no unit conversion). If a page does not state a trait, leave it out. Never fill a trait from another page or from memory.
-Traits: plant_type (e.g. "Type: Deciduous shrub"), height, spread, sun, evergreen (evergreen/deciduous), water_need (water/moisture), flowering_months (bloom time / flowering season), common_name_fr (only from inpn.mnhn.fr or tela-botanica.org: the passage containing the French common name).
+Traits: plant_type (e.g. "Type: Deciduous shrub"), height, spread, sun, evergreen (evergreen/deciduous), water_need (water/moisture), flowering_months (bloom time / flowering season), common_name_fr (only from the French-name sites: the passage containing the French common name).
 Final answer: only one JSON object inside a \`\`\`json block, with this shape:
 {"sources":[{"url":"<exact fetched URL>","traits":{"plant_type":"...","height":"...","spread":"...","sun":"...","evergreen":"...","water_need":"...","flowering_months":"...","common_name_fr":"..."},"common_name_fr":"<the French name exactly as written, or null>"}]}`;
 

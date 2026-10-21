@@ -668,7 +668,15 @@ des valeurs existantes) et n'a pas de `--apply` : ses sorties passent par
 ```
 npm run plant:ingestion:complete -- --input scripts/plant-ingestion/completion-lot-1.json            # --estimate (défaut) : aucun appel
 npm run plant:ingestion:complete -- --input scripts/plant-ingestion/completion-lot-1.json --execute  # PAYANT, plafond dur 8 $
+npm run plant:ingestion:complete -- --input scripts/plant-ingestion/completion-lot-1.json --replay   # cache seul : aucun appel, aucune dépense
 ```
+
+**Cache** (`output/completion/<lot_id>/cache/`, gitignoré, jamais commité,
+supprimable) : réponses brutes de l'API, texte des pages lues compris, et
+instantané des fiches. `--execute` réutilise une requête identique déjà en
+cache (pas repayée) ; `--replay` re-décide tout le lot depuis le cache sans
+appel, sans clé et sans lecture Supabase — pour régler parseurs et règles
+gratuitement. Rien du cache n'est jamais recopié dans les sorties.
 
 Par plante :
 1. **Proposition** — `claude-sonnet-5-5`, sortie JSON imposée (vocabulaires
@@ -686,15 +694,20 @@ Par plante :
    conservé.
 4. **Décision** (`decide.js`) — valeur retenue seulement si proposition IA +
    ≥ 2 sites différents (dont ≥ 1 institutionnel) concordent et que les règles
-   de plausibilité passent. Les valeurs déjà présentes subissent la même
+   de plausibilité passent. Tailles : accord par **recouvrement de
+   fourchettes** — chaque site donne un intervalle (« 4–8 m », « 15 ft »,
+   « plus de 12 m ») ; tous doivent avoir une intersection commune, la valeur
+   retenue est sa **borne haute** et la proposition IA doit tomber dedans
+   (± 5 cm d'arrondi d'unités seulement). Les valeurs déjà présentes subissent la même
    règle (`existing_confirmed` / `existing_corrected` / `existing_unverified`).
    Un nom FR préféré existant n'est jamais remplacé automatiquement.
 5. **Sorties** (`output/completion/<lot_id>/`, gitignoré) :
    `editorial-input.json` (schema v2, `open_source_synthesis` ; 2ᵉ source dans
    `review.note`, format `corroboration: éditeur | titre | url | date`),
    `common-names.json`, `catalog-map.json` (pour `--catalog-map`),
-   `report.json` / `report.md` (décisions, raisons, dépense, taux de blocage
-   par site), `publish-candidates.sql` (non exécuté).
+   `report.json` / `report.md` (décisions, raisons, valeur parsée de chaque
+   source — jamais le passage —, dépense, taux de blocage par site),
+   `publish-candidates.sql` (non exécuté).
 
 **Publiable** = les 4 critères critiques (type, exposition, hauteur,
 envergure) vérifiés. `evergreen` / `water_need` / `flowering_months` ne sont

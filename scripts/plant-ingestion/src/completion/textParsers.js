@@ -136,6 +136,9 @@ const PLANT_TYPE_PHRASES = [
   ["perennial", /\b(herbaceous perennial|perennial|vivace)\b/g],
   ["groundcover", /\b(ground ?cover|couvre-sol|couvre sol)\b/g],
   ["climber", /\b(climber|climbing|vine|liana|grimpante|liane)\b/g],
+  // a conifer can be a tree or a shrub: both are returned, the AI proposal
+  // and the other sources decide (decide.js requires agreement on one).
+  ["conifer", /\b(conifers?|coniferes?|coniferous)\b/g],
   ["tree", /\b(trees?|arbres?)\b/g],
   ["shrub", /\b(shrubs?|arbustes?|arbrisseaux?|arbrisseau|bush)\b/g],
   ["annual", /\b(annual|annuelle)\b/g],
@@ -153,6 +156,10 @@ export function parsePlantType(quote) {
       found.add(value);
       return " § ";
     });
+  }
+  if (found.delete("conifer")) {
+    found.add("tree");
+    found.add("shrub");
   }
   const values = PLANT_TYPE_VALUES.filter((v) => found.has(v));
   return values.length ? values : null;

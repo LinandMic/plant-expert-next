@@ -210,6 +210,10 @@ export function buildReport(plantResults, { lotId, generatedAt, spend, budgetCap
       critical: r.decision?.critical ?? null,
       columns: r.decision?.columns ?? null,
       common_name_fr: r.decision?.common_name_fr ?? null,
+      // parsed value of every grounded source (never the passage itself)
+      source_values: r.observations ?? [],
+      from_cache: r.fromCache ?? false,
+      cached_request_changed: r.cachedRequestChanged ?? [],
       rejected_passages: r.rejected ?? [],
     })),
   };
@@ -227,7 +231,7 @@ const STATUS_FR = {
 export function buildReportMarkdown(report) {
   const lines = [];
   lines.push(`# Complétion — lot ${report.lot_id}`, "");
-  lines.push(`Généré le ${report.generated_at} · modèle ${report.model} · dépense ${report.spend.usd.toFixed(2)} $ (plafond ${report.budget_cap_usd} $)${report.stopped_for_budget ? " · **arrêt sur plafond budgétaire**" : ""}`, "");
+  lines.push(`Généré le ${report.generated_at} · modèle ${report.model} · mode ${report.mode ?? "execute"} · dépense ${report.spend.usd.toFixed(2)} $ (plafond ${report.budget_cap_usd} $)${report.spend.reused_from_cache_usd_if_paid ? ` · réutilisé depuis le cache sans repayer : ${report.spend.reused_from_cache_usd_if_paid.toFixed(2)} $` : ""}${report.stopped_for_budget ? " · **arrêt sur plafond budgétaire**" : ""}`, "");
   lines.push(`**${report.summary.publishable} / ${report.summary.plants} fiches publiables** (4 critères critiques vérifiés) · erreurs : ${report.summary.errors} · non traitées : ${report.summary.skipped}`, "");
   lines.push("## Blocage par site", "", "| Site | Pages lues | Bloquées | Taux de blocage | Codes | Valeurs ancrées | Passages rejetés |", "|---|---|---|---|---|---|---|");
   for (const [domain, s] of Object.entries(report.site_stats)) {

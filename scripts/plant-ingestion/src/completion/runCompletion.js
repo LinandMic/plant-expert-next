@@ -45,7 +45,8 @@ export function estimateLot(lot, budgetCapUsd) {
 
 export async function runCompletion({ lot, snapshot, callApi, budgetCapUsd, log = () => {} }) {
   const results = [];
-  const totalUsage = [];
+  const totalUsage = []; // billed (live) calls only
+  const cachedUsage = []; // reused from the local cache: no cost
   let spent = 0;
   let stoppedForBudget = false;
 
@@ -66,15 +67,19 @@ export async function runCompletion({ lot, snapshot, callApi, budgetCapUsd, log 
     }
 
     const usages = [];
+    const track = (run) => (run.fromCache ? cachedUsage : usages).push(run.usage);
+    const requestChanged = [];
     try {
       log(`→ ${plant.canonical_name}: proposition`);
-      const proposalRun = await callApi(buildProposalRequest(plant));
-      usages.push(proposalRun.usage);
+      const proposalRun = await callApi(buildProposalRequest(plant), { slug: plant.slug, kind: "proposal" });
+      track(proposalRun);
+      if (proposalRun.requestChanged) requestChanged.push("proposal");
       const proposal = parseProposal(proposalRun.content);
 
       log(`→ ${plant.canonical_name}: sources`);
-      const evidenceRun = await callApi(buildEvidenceRequest(plant));
-      usages.push(evidenceRun.usage);
+      const evidenceRun = await callApi(buildEvidenceRequest(plant), { slug: plant.slug, kind: "evidence" });
+      track(evidenceRun);
+      if (evidenceRun.requestChanged) requestChanged.push("evidence");
 
       const { docs, fetchLog, searchLog } = collectFetchedDocuments(evidenceRun.content);
       const evidence = extractFinalJson(evidenceRun.content);
@@ -94,6 +99,8 @@ export async function runCompletion({ lot, snapshot, callApi, budgetCapUsd, log 
         fetchLog,
         searchLog,
         costUsd: +plantCost.toFixed(4),
+        fromCache: proposalRun.fromCache && evidenceRun.fromCache,
+        cachedRequestChanged: requestChanged,
       });
       log(`  ${decision.publishable ? "publiable" : "non publiable"} · ${plantCost.toFixed(3)} $ (total ${spent.toFixed(2)} $)`);
     } catch (error) {
@@ -107,5 +114,10 @@ export async function runCompletion({ lot, snapshot, callApi, budgetCapUsd, log 
   }
 
   const usage = sumUsage(totalUsage);
-  return { results, spend: { usd: +costUsd(usage).toFixed(4), usage }, stoppedForBudget };
+  const reused = sumUsage(cachedUsage);
+  return {
+    results,
+    spend: { usd: +costUsd(usage).toFixed(4), usage, reused_from_cache_usd_if_paid: +costUsd(reused).toFixed(4) },
+    stoppedForBudget,
+  };
 }
