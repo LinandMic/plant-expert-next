@@ -69,7 +69,7 @@ const USAGE_TYPES = [
   { id: "isole", label: "Arbre / plante isolé(e)", icon: "🌳" },
   { id: "haie_taillee", label: "Haie taillée", icon: "✂️" },
   { id: "haie_libre", label: "Haie libre / champêtre", icon: "🌿" },
-  { id: "massif", label: "Massif / mixed-border", icon: "🌺" },
+  { id: "massif", label: "Massif", icon: "🌺" },
   { id: "couvre_sol", label: "Couvre-sol", icon: "🍃" },
   { id: "palisse", label: "Palissé / espalier", icon: "🪟" },
   { id: "bordure", label: "Bordure", icon: "〰️" },
@@ -1766,6 +1766,9 @@ const GARDEN_STYLES = `
   .mj-search-clear:hover { color:var(--pe-text); }
 
   .mj-cats-row { display:flex;gap:8px;overflow-x:auto;margin-bottom:22px;padding-bottom:2px; }
+  /* Tablet/desktop: wrap instead of a horizontal scroller that silently hides
+     chips past the right edge (phones keep the swipeable single row). */
+  @media (min-width:768px) { .mj-cats-row { flex-wrap:wrap;overflow-x:visible; } }
   .mj-cat-chip { flex-shrink:0;padding:8px 15px;border-radius:999px;border:1px solid var(--pe-border);background:var(--pe-surface);color:var(--pe-text-muted);font:var(--pe-text-small);font-weight:600;cursor:pointer;min-height:44px; white-space:nowrap; }
   .mj-cat-chip:hover { border-color:var(--pe-border-strong);color:var(--pe-text); }
   .mj-cat-chip.active { background:var(--pe-accent);border-color:var(--pe-accent);color:var(--pe-on-accent); }
