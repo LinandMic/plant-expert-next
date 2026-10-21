@@ -80,7 +80,7 @@ export function parseLength(quote, trait = "height") {
     return orderedRange(a, b);
   }
 
-  const open = new RegExp(`(higher than|more than|over|greater than|plus de|au-dessus de|superieure? a)\\s*${NUM}\\s*${UNIT}`).exec(t);
+  const open = new RegExp(`(higher than|taller than|wider than|larger than|more than|over|greater than|plus de|plus large que|au-dessus de|superieure? a)\\s*${NUM}\\s*${UNIT}`).exec(t);
   if (open) {
     const v = unitToCm(toNumber(open[2]), open[3]);
     return v == null ? null : { min_cm: roundCm(v), max_cm: null, open_ended: true };

@@ -74,3 +74,11 @@ test("quoteContainsName: whole-name match, punctuation and accents ignored", () 
   assert.equal(quoteContainsName("Noms : Érable champêtre", "erable champetre"), true);
   assert.equal(quoteContainsName("Nom : Buisson", "Buis"), false);
 });
+
+test("parseLength: open-ended spread wording ('wider than', as written by RHS) is a minimum, never a maximum", () => {
+  assert.deepEqual(parseLength("Max Spread wider than 8 metres", "spread"), { min_cm: 800, max_cm: null, open_ended: true });
+  assert.deepEqual(parseLength("wider than 8 metres", "spread"), { min_cm: 800, max_cm: null, open_ended: true });
+  assert.deepEqual(parseLength("Max Height taller than 12 metres", "height"), { min_cm: 1200, max_cm: null, open_ended: true });
+  assert.deepEqual(parseLength("Envergure : plus large que 3 m", "spread"), { min_cm: 300, max_cm: null, open_ended: true });
+  assert.deepEqual(parseLength("Max Spread 4-8 metres", "spread"), { min_cm: 400, max_cm: 800, open_ended: false });
+});
