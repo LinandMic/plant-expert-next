@@ -63,6 +63,14 @@ export function buildTaxonDryRun(wcvpTaxonomy) {
 // is not available from the reused provider's output shape (only the
 // resolved synonym name STRING is), so source_taxon_id stays null for
 // synonym rows rather than a fabricated id.
+//
+// A synonym whose normalized name is identical to the accepted name's is
+// skipped: it carries no extra name, and keeping it would put two rows
+// with the same (taxon_ref, normalized_name) key but different name_type
+// in the bundle — a TAXON_NAME_CONTRADICTION at plan time, and a
+// plant_taxon_names_taxon_normalized_name_unique violation in the DB. Real
+// case: Daucus carota subsp. sativus, whose basionym "Daucus carota var.
+// sativus" has the same GBIF canonicalName ("Daucus carota sativus").
 export function buildTaxonNames(wcvpTaxonomy, taxonRefValue) {
   if (!wcvpTaxonomy || !wcvpTaxonomy.canonical_name) return [];
 
@@ -76,8 +84,10 @@ export function buildTaxonNames(wcvpTaxonomy, taxonRefValue) {
     },
   ];
 
+  const acceptedNormalized = names[0].normalized_name;
   for (const synonym of wcvpTaxonomy.synonyms || []) {
     if (!synonym) continue;
+    if (normalizeName(synonym) === acceptedNormalized) continue;
     names.push({
       taxon_ref: taxonRefValue,
       name: synonym,

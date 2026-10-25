@@ -58,6 +58,35 @@ test("buildTaxonNames: includes the accepted name plus only real WCVP-provided s
   assert.equal(names[1].name, "Acer polymorphum");
 });
 
+test("buildTaxonNames: a synonym identical to the accepted name once normalized is skipped, other synonyms are kept (Daucus carota sativus)", () => {
+  const carrot = {
+    ...ACCEPTED_ACER_TAXONOMY,
+    canonical_name: "Daucus carota sativus",
+    accepted_name: "Daucus carota sativus",
+    taxonomic_rank: "SUBSPECIES",
+    family: "Apiaceae",
+    genus: "Daucus",
+    species: "Daucus carota",
+    accepted_taxon_id: "206523625",
+    source_taxon_id: "206523625",
+    // GBIF canonicalName of the basionym "Daucus carota var. sativus Hoffm."
+    // drops the rank marker, so it collides with the accepted name.
+    synonyms: ["Carota sativa", "Daucus carota  Sativus", "Daucus sativus"],
+  };
+  const names = buildTaxonNames(carrot, "daucus_carota_sativus");
+  assert.deepEqual(
+    names.map((n) => [n.name_type, n.normalized_name]),
+    [
+      ["accepted", "daucus carota sativus"],
+      ["synonym", "carota sativa"],
+      ["synonym", "daucus sativus"],
+    ]
+  );
+  assert.equal(names[0].source_taxon_id, "206523625");
+  const keys = names.map((n) => `${n.taxon_ref}:${n.normalized_name}`);
+  assert.equal(new Set(keys).size, keys.length);
+});
+
 test("buildTaxonNames: no synonyms in WCVP response -> only the accepted row, nothing invented", () => {
   const names = buildTaxonNames({ ...ACCEPTED_ACER_TAXONOMY, synonyms: [] }, "acer_palmatum");
   assert.equal(names.length, 1);
