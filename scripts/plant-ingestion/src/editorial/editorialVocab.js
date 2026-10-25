@@ -42,8 +42,16 @@ export const PLANT_TYPE_VALUES = [
 // value unwritten instead.
 export const WATER_NEED_VALUES = ["low", "moderate", "high"];
 
+// lib/plantFinderFormat.js GARDEN_USE_VALUES — identical to the real DB
+// CHECK constraint (plant_catalog_garden_uses_check in supabase/migrations/
+// 20261025100000_add_plant_catalog_garden_uses_v1.sql). Garden-use
+// categories a plant belongs to IN ADDITION to its plant_type; a plant
+// with none is left unwritten (NULL), never given an empty array, and there
+// is deliberately no "ornamental" value.
+export const GARDEN_USE_VALUES = ["vegetable", "fruit", "herb", "rose"];
+
 // TRAIT_KINDS describes, for every trait an editorial observation may ever
-// target, how its normalized_value must be shaped. Only the 13
+// target, how its normalized_value must be shaped. Only the 14
 // PROMOTABLE_CATALOG_COLUMNS traits ever appear here — "soil" and anything
 // else is rejected in validateEditorialInput.js before this map is even
 // consulted. growth_form has no DB CHECK and no existing app-level
@@ -90,4 +98,5 @@ export const TRAIT_KINDS = {
   container_suitable: { kind: "boolean" },
   edible: { kind: "boolean" },
   flowering_months: { kind: "int_array", min: 1, max: 12 },
+  garden_uses: { kind: "enum_array", values: GARDEN_USE_VALUES },
 };

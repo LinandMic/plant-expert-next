@@ -136,6 +136,14 @@ test("9: flowering_months (int array trait) promotes correctly", async () => {
   assert.deepEqual(tables.plant_catalog[0].flowering_months, [4, 5]);
 });
 
+// 9b. garden_uses promotion
+test("9b: garden_uses (enum array trait) promotes correctly", async () => {
+  const plan = buildEditorialPlan([validInput({ trait: "garden_uses", raw_value: ["fruit"], normalized_value: ["fruit"] })]);
+  const { client, tables } = createFakeSupabaseClient({ plant_catalog: [seedCatalog({ garden_uses: null })] });
+  await applyEditorialPlan({ client, plan, catalogSlugByRef, dryRun: false });
+  assert.deepEqual(tables.plant_catalog[0].garden_uses, ["fruit"]);
+});
+
 // 10. existing identical observation -> unchanged
 test("10: re-applying with an identical existing editorial observation reports unchanged, no duplicate row", async () => {
   const plan = buildEditorialPlan([validInput()]);
