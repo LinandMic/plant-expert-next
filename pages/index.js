@@ -12,7 +12,13 @@ import { fetchProfile } from "@/lib/profileApi";
 import { fetchWeatherForProfile } from "@/lib/weatherApi";
 import { evaluateWateringWeather } from "@/lib/weatherEngine";
 import { getEffectivePlantContext } from "@/lib/effectivePlantContext";
-import { gardenPlantDisplayName, gardenPlantLatinName, gardenPlantCategory } from "@/lib/gardenPlantDisplay";
+import {
+  gardenPlantDisplayName,
+  gardenPlantLatinName,
+  gardenPlantCategory,
+  gardenPlantCategoryKeys,
+  GARDEN_CATEGORY_KEYS,
+} from "@/lib/gardenPlantDisplay";
 import { isNativePlatform, getWebOrigin } from "@/lib/platform";
 import { captureNativePhoto } from "@/lib/nativeCamera";
 import AuthModal from "@/components/AuthModal";
@@ -51,7 +57,6 @@ import {
   IconArrowRight,
 } from "@/components/ui/icons";
 
-const CATEGORIES = ["Arbre", "Arbuste", "Plante vivace", "Annuelle", "Aromate", "Légume", "Fruit", "Rosier", "Autre"];
 const MONTHS = [["jan","Jan"],["fev","Fév"],["mar","Mar"],["avr","Avr"],["mai","Mai"],["jun","Jun"],["jul","Jul"],["aou","Août"],["sep","Sep"],["oct","Oct"],["nov","Nov"],["dec","Déc"]];
 
 const PLANTATION_TYPES = [
@@ -1169,7 +1174,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   // copy of the same plant going stale.
   const [selectedId, setSelectedId] = useState(null);
   const selectedPlant = selectedId ? jardin.find((p) => p.id === selectedId) || null : null;
-  const [filterCat, setFilterCat] = useState("Tout");
+  const [filterCat, setFilterCat] = useState("all");
   const [searchQ, setSearchQ] = useState("");
   const [deleteError, setDeleteError] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -1227,10 +1232,10 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
 
   const filtered = jardin.filter(p => {
     const nom = (gardenPlantDisplayName(p, locale) || "").toLowerCase();
-    const cat = gardenPlantCategory(p, t) || "";
     const matchesZone =
       zoneFilter === "all" || (zoneFilter === "unassigned" ? !p.zoneId : p.zoneId === zoneFilter);
-    return (filterCat === "Tout" || cat === filterCat) && (!searchQ || nom.includes(searchQ.toLowerCase())) && matchesZone;
+    const matchesCategory = filterCat === "all" || gardenPlantCategoryKeys(p).includes(filterCat);
+    return matchesCategory && (!searchQ || nom.includes(searchQ.toLowerCase())) && matchesZone;
   });
 
   const toggleSelected = (id) => {
@@ -1263,7 +1268,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   // reset action.
   const handleResetFilters = () => {
     setSearchQ("");
-    setFilterCat("Tout");
+    setFilterCat("all");
     setZoneFilter("all");
   };
 
@@ -1377,7 +1382,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
   }
 
   const hasZones = zones.zones.length > 0;
-  const hasActiveFilters = searchQ !== "" || filterCat !== "Tout" || zoneFilter !== "all";
+  const hasActiveFilters = searchQ !== "" || filterCat !== "all" || zoneFilter !== "all";
   const activeZoneName = zoneFilter !== "all" && zoneFilter !== "unassigned" ? zoneNameForPlant({ zoneId: zoneFilter }, zones.zones) : null;
 
   return (
@@ -1537,14 +1542,14 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
             </div>
           </div>
           <div className="mj-cats-row">
-            {["Tout", ...CATEGORIES].map((c) => (
+            {["all", ...GARDEN_CATEGORY_KEYS].map((c) => (
               <button
                 key={c}
                 type="button"
                 className={"mj-cat-chip" + (filterCat === c ? " active" : "")}
                 onClick={() => setFilterCat(c)}
               >
-                {c === "Tout" ? t("garden.all") : c}
+                {c === "all" ? t("garden.all") : t(`garden.category.${c}`)}
               </button>
             ))}
           </div>

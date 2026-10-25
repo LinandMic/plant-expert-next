@@ -9,9 +9,11 @@ import { useI18n } from "@/lib/i18n";
 import { identifierHrefForName } from "@/lib/homeTabRouting";
 import {
   plantTypeLabel,
+  gardenUseLabel,
   sunLabel,
   heightCategoryLabel,
   PLANT_TYPE_VALUES,
+  GARDEN_USE_VALUES,
   SUN_VALUES,
   HEIGHT_CATEGORY_VALUES,
 } from "@/lib/plantFinderFormat";
@@ -27,7 +29,7 @@ import { IconSprig, IconX, IconFilter, IconSearch, IconCamera } from "@/componen
 import { getExternalNavItems } from "@/components/ui/externalNavItems";
 
 const SEARCH_DEBOUNCE_MS = 300;
-const EMPTY_FILTERS = { query: "", plantType: null, sun: null, heightCategory: null };
+const EMPTY_FILTERS = { query: "", plantType: null, gardenUse: null, sun: null, heightCategory: null };
 
 export default function PlantFinderPage() {
   const router = useRouter();
@@ -89,6 +91,7 @@ export default function PlantFinderPage() {
     searchPublishedPlants({
       query: filters.query,
       plantType: filters.plantType,
+      gardenUse: filters.gardenUse,
       sun: filters.sun,
       heightCategory: filters.heightCategory,
     })
@@ -123,6 +126,7 @@ export default function PlantFinderPage() {
     searchPublishedPlants({
       query: filters.query,
       plantType: filters.plantType,
+      gardenUse: filters.gardenUse,
       sun: filters.sun,
       heightCategory: filters.heightCategory,
       offset: plants.length,
@@ -145,6 +149,11 @@ export default function PlantFinderPage() {
   function handleTypeChange(e) {
     const value = e.target.value;
     setFilters((f) => ({ ...f, plantType: value || null }));
+  }
+
+  function handleGardenUseChange(e) {
+    const value = e.target.value;
+    setFilters((f) => ({ ...f, gardenUse: value || null }));
   }
 
   function handleSunToggle(value) {
@@ -175,11 +184,12 @@ export default function PlantFinderPage() {
   }
 
   const activeSun = filters.sun || [];
-  const activeCount = (filters.plantType ? 1 : 0) + activeSun.length + (filters.heightCategory ? 1 : 0);
-  const hasActiveCriteria = Boolean(filters.query || filters.plantType || activeSun.length > 0 || filters.heightCategory);
+  const activeCount = (filters.plantType ? 1 : 0) + (filters.gardenUse ? 1 : 0) + activeSun.length + (filters.heightCategory ? 1 : 0);
+  const hasActiveCriteria = Boolean(filters.query || filters.plantType || filters.gardenUse || activeSun.length > 0 || filters.heightCategory);
 
   const chips = [];
   if (filters.plantType) chips.push({ key: "plantType", value: null, label: plantTypeLabel(filters.plantType, t) });
+  if (filters.gardenUse) chips.push({ key: "gardenUse", value: null, label: gardenUseLabel(filters.gardenUse, t) });
   activeSun.forEach((value) => chips.push({ key: "sun", value, label: sunLabel(value, t) }));
   if (filters.heightCategory) chips.push({ key: "height", value: null, label: heightCategoryLabel(filters.heightCategory, t) });
 
@@ -243,6 +253,22 @@ export default function PlantFinderPage() {
                     <label key={value} className="pf2-pill">
                       <input type="radio" name="pf2-type" value={value} checked={filters.plantType === value} onChange={handleTypeChange} />
                       <span>{plantTypeLabel(value, t)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pf2-filter-group">
+                <div className="pf2-filter-label" id="pf2-use-label">{t("finder.gardenUse")}</div>
+                <div className="pf2-pill-row" role="group" aria-labelledby="pf2-use-label">
+                  <label className="pf2-pill">
+                    <input type="radio" name="pf2-use" value="" checked={!filters.gardenUse} onChange={handleGardenUseChange} />
+                    <span>{t("finder.all")}</span>
+                  </label>
+                  {GARDEN_USE_VALUES.map((value) => (
+                    <label key={value} className="pf2-pill">
+                      <input type="radio" name="pf2-use" value={value} checked={filters.gardenUse === value} onChange={handleGardenUseChange} />
+                      <span>{gardenUseLabel(value, t)}</span>
                     </label>
                   ))}
                 </div>

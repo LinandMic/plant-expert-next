@@ -127,6 +127,20 @@ test("7b: water_need accepts the locked low/moderate/high vocabulary and rejects
   assert.ok(hasErrorCode(freeText, "NORMALIZED_VALUE_INVALID"), "free-text water_need values are no longer accepted");
 });
 
+// 7c. garden_uses vocabulaire verrouillé (même forme que sun)
+test("7c: garden_uses accepts the vegetable/fruit/herb/rose vocabulary and rejects ornamental, unknown values and an empty array", () => {
+  for (const value of [["vegetable"], ["fruit"], ["herb"], ["rose"], ["fruit", "herb"]]) {
+    const ok = validateEditorialInput(validInput({ trait: "garden_uses", raw_value: value, normalized_value: value }));
+    assert.deepEqual(ok, [], `expected ${JSON.stringify(value)} to be accepted`);
+  }
+  const ornamental = validateEditorialInput(validInput({ trait: "garden_uses", raw_value: ["ornamental"], normalized_value: ["ornamental"] }));
+  assert.ok(hasErrorCode(ornamental, "NORMALIZED_VALUE_INVALID"), "there is deliberately no ornamental value");
+  const scalar = validateEditorialInput(validInput({ trait: "garden_uses", raw_value: "fruit", normalized_value: "fruit" }));
+  assert.ok(hasErrorCode(scalar, "NORMALIZED_VALUE_INVALID"), "garden_uses must be an array, never a bare string");
+  const empty = validateEditorialInput(validInput({ trait: "garden_uses", raw_value: [], normalized_value: [] }));
+  assert.ok(hasErrorCode(empty, "NORMALIZED_VALUE_NOT_INFORMATIVE"), "no use is NULL (unwritten), never an empty array");
+});
+
 // 8. source_url manquante (open_source_synthesis)
 test("8: a missing source.url is rejected for curation.method=open_source_synthesis", () => {
   const input = validInput();

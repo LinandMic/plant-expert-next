@@ -33,6 +33,10 @@ import { PROMOTABLE_CATALOG_COLUMNS } from "../plan/catalogColumns.js";
 // applies unconditionally — a provider-proposed null AND a provider-
 // proposed different-but-non-null value are both overridden the same way;
 // manual_resolution always wins.
+//
+// garden_uses is deliberately absent: it is editorial-only (no provider
+// supplies it, see plan/catalogColumns.js), so a provider apply must never
+// write it, not even a null.
 const CATALOG_INGESTION_FIELDS = [
   "display_name", "common_name", "entry_type", "cultivar_name",
   "plant_type", "growth_form", "height_min_cm", "height_max_cm", "spread_max_cm",

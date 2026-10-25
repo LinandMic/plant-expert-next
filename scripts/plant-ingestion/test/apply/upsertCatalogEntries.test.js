@@ -304,6 +304,23 @@ test("dry-run never writes, protection included: nothing changes in the fake DB"
   assert.deepEqual(tables.plant_catalog[0].sun, ["shade"]); // untouched in dry-run
 });
 
+test("garden_uses is editorial-only: a provider apply never writes it, even when the plan entry carries garden_uses=null", async () => {
+  const { client, tables } = createFakeSupabaseClient({
+    plant_catalog: [{ id: "catalog-1", ...buildCatalogEntry(), height_max_cm: 750, garden_uses: ["fruit"] }],
+  });
+  // compileCatalogEntries seeds every PROMOTABLE_CATALOG_COLUMNS entry to null,
+  // garden_uses included.
+  const result = await upsertCatalogEntries({
+    client,
+    catalogEntries: [buildCatalogEntry({ height_max_cm: 800, garden_uses: null })],
+    taxonIdByRef,
+    dryRun: false,
+  });
+  assert.equal(result.updated, 1);
+  assert.equal(tables.plant_catalog[0].height_max_cm, 800);
+  assert.deepEqual(tables.plant_catalog[0].garden_uses, ["fruit"]);
+});
+
 // 11. Un échec de la lecture de protection ne doit jamais aboutir à une
 // écriture "à l'aveugle" — la ligne est refusée, pas silencieusement
 // écrite sans vérification.
