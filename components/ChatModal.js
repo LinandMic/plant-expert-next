@@ -4,6 +4,7 @@ import IconButton from "@/components/ui/IconButton";
 import Button from "@/components/ui/Button";
 import { useI18n } from "@/lib/i18n";
 import { createSessionId, sendMessage } from "@/lib/chatApi";
+import { chatCostNoticeVars } from "@/lib/chatConfig";
 
 // Per-errorCode UI policy: which message to show, and which actions the
 // user gets. Mirrors exactly what pages/api/chat.js can return (see that
@@ -28,18 +29,22 @@ function policyFor(errorCode) {
   return ERROR_POLICY[errorCode] || ERROR_POLICY.generic;
 }
 
-// ChatModal — reusable overlay/panel for the ALMEO Conversational
-// Assistant, mirroring DeleteAccountModal.js's structural conventions
+// ChatModal — reusable overlay/panel for EDEN (ALMEO conversational
+// assistant), mirroring DeleteAccountModal.js's structural conventions
 // (role="dialog", overlay+panel, scoped inline <style>). `context` is the
 // small, optional { mode: "plant"|"identification", plantId?,
 // identification? } payload forwarded to pages/api/chat.js on every
 // message — see lib/chatContext.js for what the server actually trusts
 // from it. `title` is display-only (never sent to the server).
+// `availableCredits` is the already-loaded monetization status count (or
+// null when none is loaded) — display-only, the server stays the sole
+// enforcer. `onCreditsChanged` refreshes it once a conversation's first
+// message has consumed its credit.
 //
 // V1 does not persist the transcript anywhere (see the spec's chat-
 // content-persistence section) — `messages` lives only in this
 // component's own state and is lost on close/reload by design.
-export default function ChatModal({ onClose, context, title }) {
+export default function ChatModal({ onClose, context, title, availableCredits = null, onCreditsChanged }) {
   const { t } = useI18n();
   const sessionIdRef = useRef(null);
   if (!sessionIdRef.current) {
@@ -81,6 +86,11 @@ export default function ChatModal({ onClose, context, title }) {
       if (policy.sessionEnded) setSessionEnded(true);
       setError({ policy });
       return;
+    }
+
+    // Only a conversation's first user message consumes a credit.
+    if (messagesToSend.filter((m) => m.role === "user").length === 1 && onCreditsChanged) {
+      void onCreditsChanged();
     }
 
     const reply = result.data && result.data.message;
@@ -134,6 +144,21 @@ export default function ChatModal({ onClose, context, title }) {
           ))}
           {sending && <div className="cm-bubble cm-bubble-assistant cm-bubble-thinking">{t("assistant.thinking")}</div>}
         </div>
+
+        {messages.length === 0 && (
+          <p className="cm-cost-notice">
+            {t("assistant.costNotice", chatCostNoticeVars())}
+            {availableCredits !== null && (
+              <>
+                <br />
+                {t("monetization.analysesAvailable", { count: availableCredits })}
+              </>
+            )}
+          </p>
+        )}
+        {messages.length > 0 && !sessionEnded && (
+          <p className="cm-cost-notice">{t("assistant.conversationInProgress")}</p>
+        )}
 
         {error && (
           <div className="cm-error">
@@ -195,6 +220,8 @@ const CHAT_MODAL_STYLES = `
   .cm-bubble-user { align-self:flex-end;background:var(--pe-accent);color:var(--pe-on-accent);border-bottom-right-radius:4px; }
   .cm-bubble-assistant { align-self:flex-start;background:var(--pe-sand);color:var(--pe-text);border-bottom-left-radius:4px; }
   .cm-bubble-thinking { color:var(--pe-text-muted);font-style:italic; }
+
+  .cm-cost-notice { margin:0 20px 10px;font:var(--pe-text-small);color:var(--pe-text-muted);text-align:center; }
 
   .cm-error { margin:0 20px 10px;padding:10px 14px;background:#fff5f5;border:1px solid rgba(139,58,30,0.2);border-radius:var(--pe-radius-sm);color:var(--pe-terracotta,#8b3a1e);font:var(--pe-text-small);display:flex;flex-direction:column;gap:8px; }
   .cm-error-actions { display:flex;gap:8px;flex-wrap:wrap; }
