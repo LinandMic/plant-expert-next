@@ -1022,7 +1022,7 @@ function IdentifierTab({ addPlant, accessToken, authLoading, onRequireAuth, mone
               </div>
 
               <Button onClick={handleAnalyze} className="pi-analyze-btn">
-                <IconSearch size={16} /> {t("identifier.analyze")}
+                <IconSearch size={16} /> {t("identifier.analyze")} {t("identifier.analyzeCost")}
               </Button>
 
               {error && <div className="error-box pi-error"><IconAlertCircle size={14} /> {error}</div>}
@@ -2115,7 +2115,13 @@ export default function Home() {
 
       {showAuthModal && <AuthModal auth={auth} onClose={() => setShowAuthModal(false)} initialMode={authModalMode} />}
       {chatModal && (
-        <ChatModal context={chatModal.context} title={chatModal.title} onClose={() => setChatModal(null)} />
+        <ChatModal
+          context={chatModal.context}
+          title={chatModal.title}
+          availableCredits={monetization.status ? monetization.status.availableCredits : null}
+          onCreditsChanged={monetization.refresh}
+          onClose={() => setChatModal(null)}
+        />
       )}
 
       {activeNav === "accueil" && (

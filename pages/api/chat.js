@@ -1,4 +1,4 @@
-// ALMEO Conversational Assistant V1 — server-side chat endpoint.
+// EDEN (ALMEO conversational assistant) V1 — server-side chat endpoint.
 //
 // A deliberately SEPARATE endpoint from pages/api/proxy.js (never
 // modified by this feature — see AGENTS.md / the V1 spec). Some request-
