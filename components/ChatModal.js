@@ -45,7 +45,7 @@ function policyFor(errorCode) {
 // content-persistence section) — `messages` lives only in this
 // component's own state and is lost on close/reload by design.
 export default function ChatModal({ onClose, context, title, availableCredits = null, onCreditsChanged }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const sessionIdRef = useRef(null);
   if (!sessionIdRef.current) {
     sessionIdRef.current = createSessionId();
@@ -72,6 +72,7 @@ export default function ChatModal({ onClose, context, title, availableCredits = 
       sessionId: sessionIdRef.current,
       messages: messagesToSend,
       context,
+      language: locale,
     });
     setSending(false);
 

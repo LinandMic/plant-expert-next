@@ -58,7 +58,7 @@ import { classifyOrigin, isSameOriginReferer } from "../../lib/apiOrigin.js";
 import { createSupabaseAdminClient, getSupabaseAdminConfig } from "../../lib/supabaseAdmin.js";
 import { CHAT_MODEL, CHAT_SESSION_LIMITS, CHAT_USAGE_STATUS } from "../../lib/chatConfig.js";
 import { resolveChatContext } from "../../lib/chatContext.js";
-import { buildChatSystemPrompt } from "../../lib/chatSystemPrompt.js";
+import { buildChatSystemPrompt, resolveChatLanguage } from "../../lib/chatSystemPrompt.js";
 import { createAnthropicTimeout, extractResponseText } from "../../lib/anthropicRequestConfig.js";
 
 const CORS_ALLOWED_METHODS = "POST";
@@ -346,7 +346,7 @@ export function createChatHandler({
       creditSource = consumption.credit_source || null;
     }
 
-    const systemPrompt = buildChatSystemPrompt(resolvedContext);
+    const systemPrompt = buildChatSystemPrompt(resolvedContext, resolveChatLanguage(body.language));
     const upstreamBody = {
       model: CHAT_MODEL,
       max_tokens: CHAT_SESSION_LIMITS.MAX_OUTPUT_TOKENS_PER_MESSAGE,
