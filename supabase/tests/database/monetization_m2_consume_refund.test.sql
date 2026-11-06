@@ -1,5 +1,5 @@
--- Baseline tests for consume_ai_credit / refund_ai_credit (M2), current
--- behavior. Runs only against the local database, rolled back.
+-- Tests for consume_ai_credit / refund_ai_credit (M2; Free monthly credit
+-- rules from M8). Runs only against the local database, rolled back.
 begin;
 create extension if not exists pgtap with schema extensions;
 select plan(36);
@@ -67,23 +67,25 @@ select is(
 insert into r values ('k9', public.consume_ai_credit('11111111-1111-1111-1111-111111111111', 'k9'));
 select is((select res ->> 'code' from r where step = 'k9'), 'NO_CREDITS', 'the Free monthly credit is not cumulative');
 
--- CURRENT BEHAVIOR (to change in M8): refunding a Free monthly credit
--- turns it into a stored included credit.
+-- Refunding a Free monthly credit makes it available again, never stored (M8)
 select public.refund_ai_credit('11111111-1111-1111-1111-111111111111', 'k8');
-select is((select included_credits from public.ai_credit_balances where user_id = '11111111-1111-1111-1111-111111111111'), 1, 'baseline: refunded Free monthly credit becomes a stored credit');
+select is((select included_credits from public.ai_credit_balances where user_id = '11111111-1111-1111-1111-111111111111'), 0, 'a refunded Free monthly credit is not stored as an included credit');
 
 -- Purchased credits are used last
 update public.ai_credit_balances set purchased_credits = 2 where user_id = '11111111-1111-1111-1111-111111111111';
 insert into r values ('k10', public.consume_ai_credit('11111111-1111-1111-1111-111111111111', 'k10'));
-select is((select res ->> 'credit_source' from r where step = 'k10'), 'included', 'included credits are used before purchased ones');
+select is((select res ->> 'credit_source' from r where step = 'k10'), 'included', 'the Free monthly credit made available again is used before purchased ones');
 insert into r values ('k11', public.consume_ai_credit('11111111-1111-1111-1111-111111111111', 'k11'));
 select is((select res ->> 'credit_source' from r where step = 'k11'), 'purchased', 'purchased credits are used once included ones run out');
 select is((select purchased_credits from public.ai_credit_balances where user_id = '11111111-1111-1111-1111-111111111111'), 1, 'one purchased credit consumed');
 select public.refund_ai_credit('11111111-1111-1111-1111-111111111111', 'k11');
 select is((select purchased_credits from public.ai_credit_balances where user_id = '11111111-1111-1111-1111-111111111111'), 2, 'refunding a purchased credit restores it');
 
--- Premium accounts never get the Free monthly credit
-update public.user_entitlements set tier = 'premium' where user_id = '33333333-3333-3333-3333-333333333333';
+-- Effective Premium accounts never get the Free monthly credit
+update public.user_entitlements
+set tier = 'premium', billing_period = 'monthly', subscription_status = 'active',
+    current_period_start_at = now() - interval '1 day', current_period_end_at = now() + interval '29 days'
+where user_id = '33333333-3333-3333-3333-333333333333';
 update public.ai_credit_balances
 set included_credits = 0, welcome_exhausted_at = now() - interval '2 months'
 where user_id = '33333333-3333-3333-3333-333333333333';

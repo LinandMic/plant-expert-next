@@ -2,7 +2,7 @@
 -- Premium since M7. Runs only against the local database, rolled back.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(27);
+select plan(28);
 
 create function pg_temp.new_user(uid uuid) returns void language sql as $$
   insert into auth.users (id, instance_id, aud, role, created_at, updated_at)
@@ -85,7 +85,7 @@ select is(public.get_monetization_status() ->> 'tier', 'premium', 'a canceled bu
 -- Expired Premium: reported and limited as Free
 update public.user_entitlements
 set tier = 'premium', billing_period = 'monthly', subscription_status = 'expired',
-    current_period_start_at = now() - interval '2 months', current_period_end_at = now() - interval '1 month'
+    current_period_start_at = now() - interval '2 months', current_period_end_at = now() - interval '1 month 1 day'
 where user_id = '44444444-4444-4444-4444-444444444444';
 update public.ai_credit_balances
 set included_credits = 0, welcome_exhausted_at = now() - interval '2 months'
@@ -94,9 +94,12 @@ select pg_temp.act_as('44444444-4444-4444-4444-444444444444');
 select is(public.get_monetization_status() ->> 'tier', 'free', 'an expired Premium account reports tier free');
 select is((public.get_monetization_status() ->> 'garden_plant_limit')::int, 10, 'an expired Premium account has the Free garden limit');
 select is((public.get_monetization_status() ->> 'reminder_plant_limit')::int, 3, 'an expired Premium account has the Free reminder-plant limit');
--- CURRENT BEHAVIOR (to change in M8): the Free monthly credit still looks at
--- the stored tier, so an expired Premium account does not get it.
-select is(public.get_monetization_status() ->> 'free_monthly_available', 'false', 'baseline: an expired Premium account has no Free monthly credit');
+-- Free monthly credit one month after the end of Premium (M8)
+select is(public.get_monetization_status() ->> 'free_monthly_available', 'true', 'an account whose Premium ended over a month ago has the Free monthly credit');
+update public.user_entitlements
+set current_period_start_at = now() - interval '40 days', current_period_end_at = now() - interval '10 days'
+where user_id = '44444444-4444-4444-4444-444444444444';
+select is(public.get_monetization_status() ->> 'free_monthly_available', 'false', 'an account whose Premium ended 10 days ago has no Free monthly credit yet');
 
 -- Missing monetization state
 select pg_temp.act_as('55555555-5555-5555-5555-555555555555');
