@@ -1685,7 +1685,7 @@ function MonJardinTab({ jardin, deletePlant, updateContext, updatePlantZone, loa
                       )}
                     </div>
                     <div className="mj-card-body">
-                      {nom && <div className="mj-card-name">{nom}</div>}
+                      {nom && <div className="mj-card-name" title={nom}>{nom}</div>}
                       {nomLatin && <div className="mj-card-latin">{nomLatin}</div>}
                       <div className="mj-card-meta">
                         {categorie && <span className="mj-card-tag">{categorie}</span>}
@@ -1810,9 +1810,9 @@ const GARDEN_STYLES = `
   .mj-select-count { font:var(--pe-text-small);color:var(--pe-text-muted); }
   .mj-select-reminder-btn { display:inline-flex;align-items:center;gap:8px; }
 
-  .mj-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:16px; }
-  @media (max-width:1080px) { .mj-grid { grid-template-columns:repeat(2,1fr); } }
-  @media (max-width:640px) { .mj-grid { grid-template-columns:1fr; } }
+  .mj-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px; }
+  @media (max-width:1080px) { .mj-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:640px) { .mj-grid { grid-template-columns:minmax(0,1fr); } }
 
   .mj-card { position:relative;display:flex;gap:14px;align-items:center;padding:14px;border-radius:var(--pe-radius-md);border:1px solid var(--pe-border);background:var(--pe-surface);box-shadow:var(--pe-shadow-sm);cursor:pointer;transition:box-shadow .15s,border-color .15s; }
   .mj-card:hover { box-shadow:var(--pe-shadow-md);border-color:var(--pe-border-strong); }
