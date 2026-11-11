@@ -2,7 +2,7 @@
 -- Premium since M7. Runs only against the local database, rolled back.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(30);
 
 create function pg_temp.new_user(uid uuid) returns void language sql as $$
   insert into auth.users (id, instance_id, aud, role, created_at, updated_at)
@@ -44,6 +44,11 @@ select is(public.get_monetization_status() ->> 'free_monthly_available', 'false'
 select ok(
   public.get_monetization_status() -> 'current_period_end_at' = 'null'::jsonb,
   'a Free account reports current_period_end_at as null'
+);
+select is((public.get_monetization_status() ->> 'premium_monthly_due')::int, 0, 'a Free account has no Premium monthly credit due');
+select ok(
+  public.get_monetization_status() -> 'next_premium_monthly_at' = 'null'::jsonb,
+  'a Free account reports next_premium_monthly_at as null'
 );
 
 -- Free monthly credit shown as available once due
