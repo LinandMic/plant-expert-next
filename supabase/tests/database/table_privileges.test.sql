@@ -6,7 +6,7 @@
 -- w=UPDATE d=DELETE D=TRUNCATE x=REFERENCES t=TRIGGER m=MAINTAIN.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(22);
 
 create function pg_temp.table_acl(tbl regclass) returns text language sql stable as $$
   with p as (
@@ -46,6 +46,7 @@ insert into expected_acl values
   ('plant_trait_observations', 'service_role=arwdDxtm'),
   ('plant_trait_selections',   'service_role=arwdDxtm'),
   ('plants',                   'authenticated=arwd,service_role=rDxtm'),
+  ('premium_period_grants',    'service_role=r'),
   ('profiles',                 'authenticated=rw,service_role=rDxtm'),
   ('user_entitlements',        'authenticated=r,service_role=rDxtm');
 
